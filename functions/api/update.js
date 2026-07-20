@@ -25,7 +25,8 @@ export async function onRequestGet() {
     if (position === -1) {
       return Response.json({
         success: false,
-        message: "Không tìm thấy số đặc biệt trong HTML"
+        message: "Không tìm thấy giải đặc biệt 39128 trong HTML",
+        htmlLength: html.length
       });
     }
 
