@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111827">
+
+  <title>XSMB Analytics</title>
+
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+</head>
+
+<body>
+
+<header>
+  <h1>XSMB Analytics</h1>
+  <p>Phân tích và thống kê XSMB</p>
+</header>
+
+<main>
+
+  <section class="card">
+    <h2>Kết quả mới nhất</h2>
+
+    <p class="date">Chưa có dữ liệu</p>
+
+    <div class="special">
+      -----
+    </div>
+  </section>
+
+
+  <section class="card">
+
+    <h2>Cầu hôm nay</h2>
+
+    <div class="prediction">
+
+      <span class="pair">
+        -- - --
+      </span>
+
+      <p>
+        Chưa có dữ liệu phân tích
+      </p>
+
+    </div>
+
+  </section>
+
+
+  <section class="card">
+
+    <h2>Phân tích</h2>
+
+    <button onclick="analyze()">
+      Phân tích hôm nay
+    </button>
+
+    <div id="result"></div>
+
+  </section>
+
+
+  <section class="menu">
+
+    <button>Thống kê</button>
+
+    <button>Cầu hôm nay</button>
+
+    <button>Backtest</button>
+
+    <button>Lịch sử</button>
+
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+
+</body>
+</html>
