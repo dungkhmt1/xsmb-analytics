@@ -10,7 +10,7 @@ class TextCollector {
 
 export async function onRequestGet(context) {
   try {
-    const SOURCE_URL = "https://xoso.com.vn/";
+    const SOURCE_URL = "https://xoso.com.vn/xsmb-20-07-2026.html";
 
     const response = await fetch(SOURCE_URL, {
       headers: {
