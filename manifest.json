@@ -1,0 +1,9 @@
+{
+  "name": "XSMB Analytics",
+  "short_name": "XSMB",
+  "description": "Công cụ phân tích và thống kê XSMB",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#111827"
+}
