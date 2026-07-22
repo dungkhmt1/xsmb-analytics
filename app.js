@@ -1,43 +1,51 @@
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", function () {
   loadDashboard();
 });
 
 
 async function loadDashboard() {
-  setSystemStatus(
-    "Đang kết nối cơ sở dữ liệu...",
-    ""
-  );
+  setSystemStatus("Đang kết nối cơ sở dữ liệu...", "");
 
   try {
-    const [latestResponse, predictResponse] =
-      await Promise.all([
-        fetch("/api/latest", {
-          cache: "no-store"
-        }),
+    const [latestRes, predictRes] = await Promise.all([
+      fetch("/api/latest", {
+        cache: "no-store"
+      }),
 
-        fetch("/api/predict?top=15", {
-          cache: "no-store"
-        })
-      ]);
+      fetch("/api/predict?top=15", {
+        cache: "no-store"
+      })
+    ]);
+
+    if (!latestRes.ok) {
+      throw new Error(
+        `Latest API lỗi ${latestRes.status}`
+      );
+    }
+
+    if (!predictRes.ok) {
+      throw new Error(
+        `Predict API lỗi ${predictRes.status}`
+      );
+    }
 
     const latest =
-      await latestResponse.json();
+      await latestRes.json();
 
     const predict =
-      await predictResponse.json();
+      await predictRes.json();
 
     if (!latest.success) {
       throw new Error(
         latest.message ||
-        "Không lấy được kết quả mới nhất"
+        "Không đọc được kết quả"
       );
     }
 
     if (!predict.success) {
       throw new Error(
         predict.message ||
-        "Không lấy được dữ liệu phân tích"
+        "Không đọc được phân tích"
       );
     }
 
@@ -46,33 +54,179 @@ async function loadDashboard() {
     renderStatistics(predict);
 
     setSystemStatus(
-      `Đã kết nối D1 • ${predict.data.totalDraws} kỳ dữ liệu`,
+      `Đã kết nối D1 • ${predict.data?.totalDraws || 0} kỳ dữ liệu`,
       "success"
     );
 
   } catch (error) {
-    console.error(error);
+    console.error("Dashboard error:", error);
 
     setSystemStatus(
-      "Lỗi kết nối: " + error.message,
+      "Lỗi tải dữ liệu: " + error.message,
       "error"
     );
+
+    const latestBox =
+      document.getElementById(
+        "latest-result"
+      );
+
+    if (latestBox) {
+      latestBox.innerHTML = `
+        <div class="loading-box">
+          Không tải được kết quả.
+        </div>
+      `;
+    }
+
+    const predictionBox =
+      document.getElementById(
+        "today-prediction"
+      );
+
+    if (predictionBox) {
+      predictionBox.innerHTML = `
+        <div class="loading-box">
+          Không tải được phân tích.
+        </div>
+      `;
+    }
   }
 }
-function renderPrediction(data) {
-  const headerDraws =
-  document.getElementById(
-    "header-total-draws"
-  );
 
-if (
-  headerDraws &&
-  data.data?.totalDraws
-) {
-  headerDraws.textContent =
-    `${data.data.totalDraws} kỳ`;
+
+/* =========================================
+   KẾT QUẢ XSMB
+========================================= */
+
+function renderLatest(data) {
+  const container =
+    document.getElementById(
+      "latest-result"
+    );
+
+  const badge =
+    document.getElementById(
+      "latest-date-badge"
+    );
+
+  if (!container) return;
+
+  if (badge) {
+    badge.textContent =
+      formatDate(data.drawDate);
+  }
+
+  const r = data.results || {};
+
+  const prizeRow =
+    (
+      name,
+      values,
+      columns,
+      extraClass = ""
+    ) => {
+
+      const list =
+        Array.isArray(values)
+          ? values
+          : [values];
+
+      return `
+        <div class="prize-row ${extraClass}">
+
+          <div class="prize-name">
+            ${name}
+          </div>
+
+          <div
+            class="
+              prize-values
+              cols-${columns}
+            "
+          >
+
+            ${list
+              .filter(Boolean)
+              .map(
+                number => `
+                  <span class="prize-number">
+                    ${number}
+                  </span>
+                `
+              )
+              .join("")}
+
+          </div>
+
+        </div>
+      `;
+    };
+
+
+  container.innerHTML = `
+    <div class="xsmb-board">
+
+      ${prizeRow(
+        "ĐB",
+        r.special,
+        1,
+        "special-row"
+      )}
+
+      ${prizeRow(
+        "G1",
+        r.g1,
+        1
+      )}
+
+      ${prizeRow(
+        "G2",
+        r.g2,
+        2
+      )}
+
+      ${prizeRow(
+        "G3",
+        r.g3,
+        6
+      )}
+
+      ${prizeRow(
+        "G4",
+        r.g4,
+        4
+      )}
+
+      ${prizeRow(
+        "G5",
+        r.g5,
+        6
+      )}
+
+      ${prizeRow(
+        "G6",
+        r.g6,
+        3
+      )}
+
+      ${prizeRow(
+        "G7",
+        r.g7,
+        4,
+        "g7-row"
+      )}
+
+    </div>
+  `;
 }
 
+
+/* =========================================
+   DỰ ĐOÁN
+========================================= */
+
+function renderPrediction(data) {
   const container =
     document.getElementById(
       "today-prediction"
@@ -80,34 +234,41 @@ if (
 
   if (!container) return;
 
-
   const numbers =
-    data.topNumbers || [];
+    Array.isArray(data.topNumbers)
+      ? data.topNumbers
+      : [];
 
   const pairs =
-    data.topPairs || [];
+    Array.isArray(data.topPairs)
+      ? data.topPairs
+      : [];
 
   const touches =
-    data.topTouches || [];
+    Array.isArray(data.topTouches)
+      ? data.topTouches
+      : [];
 
-
-  const top1 =
-    numbers[0];
-
-  const top2 =
-    numbers[1];
-
-  const top3 =
-    numbers[2];
+  const top1 = numbers[0];
+  const top2 = numbers[1];
+  const top3 = numbers[2];
 
   const bestPair =
     pairs[0];
 
+  const headerDraws =
+    document.getElementById(
+      "header-total-draws"
+    );
+
+  if (headerDraws) {
+    headerDraws.textContent =
+      `${data.data?.totalDraws || 0} kỳ`;
+  }
+
 
   container.innerHTML = `
-
     <div class="prediction-grid">
-
 
       <div
         class="
@@ -116,11 +277,7 @@ if (
         "
       >
 
-        <div
-          class="
-            prediction-title
-          "
-        >
+        <div class="prediction-title">
           Số ưu tiên
         </div>
 
@@ -130,7 +287,7 @@ if (
 
         <div class="score">
           Điểm:
-          ${top1?.score || 0}
+          ${top1?.score ?? "--"}
         </div>
 
       </div>
@@ -143,11 +300,7 @@ if (
         "
       >
 
-        <div
-          class="
-            prediction-title
-          "
-        >
+        <div class="prediction-title">
           Cặp đảo mạnh nhất
         </div>
 
@@ -156,8 +309,8 @@ if (
         </div>
 
         <div class="score">
-          Điểm cặp:
-          ${bestPair?.score || 0}
+          Điểm:
+          ${bestPair?.score ?? "--"}
         </div>
 
       </div>
@@ -169,25 +322,13 @@ if (
           Top tiếp theo
         </div>
 
-        <div
-          class="
-            secondary-numbers
-          "
-        >
+        <div class="secondary-numbers">
 
-          <span
-            class="
-              secondary-number
-            "
-          >
+          <span class="secondary-number">
             ${top2?.number || "--"}
           </span>
 
-          <span
-            class="
-              secondary-number
-            "
-          >
+          <span class="secondary-number">
             ${top3?.number || "--"}
           </span>
 
@@ -202,21 +343,13 @@ if (
           Chạm mạnh
         </div>
 
-        <div
-          class="
-            secondary-numbers
-          "
-        >
+        <div class="secondary-numbers">
 
           ${touches
             .slice(0, 3)
             .map(
               item => `
-                <span
-                  class="
-                    secondary-number
-                  "
-                >
+                <span class="secondary-number">
                   ${item.digit}
                 </span>
               `
@@ -229,28 +362,29 @@ if (
 
     </div>
 
-
     <div class="warning-box">
 
       Phân tích cho
       <strong>
         ${formatDate(
-          data.data.predictionDate
+          data.data?.predictionDate
         )}
       </strong>
 
-      • ${data.data.totalDraws}
+      •
+      ${data.data?.totalDraws || 0}
       kỳ dữ liệu
-
-      • Điểm là chỉ số xếp hạng,
-      không phải xác suất trúng.
 
     </div>
   `;
 }
 
-function renderStatistics(data) {
 
+/* =========================================
+   TOP MODEL
+========================================= */
+
+function renderStatistics(data) {
   const container =
     document.getElementById(
       "analysis-detail"
@@ -259,12 +393,18 @@ function renderStatistics(data) {
   if (!container) return;
 
   const top =
-    data.topNumbers
-      .slice(0, 10);
+    Array.isArray(data.topNumbers)
+      ? data.topNumbers.slice(0, 10)
+      : [];
 
+  if (!top.length) {
+    container.innerHTML =
+      "Chưa có dữ liệu thống kê.";
+
+    return;
+  }
 
   let rows = "";
-
 
   top.forEach(
     (item, index) => {
@@ -276,11 +416,7 @@ function renderStatistics(data) {
             ${index + 1}
           </td>
 
-          <td
-            class="
-              number-cell
-            "
-          >
+          <td class="number-cell">
             ${item.number}
           </td>
 
@@ -289,56 +425,42 @@ function renderStatistics(data) {
           </td>
 
           <td>
-            ${item.signals.gan}
+            ${item.signals?.gan ?? "-"}
           </td>
 
           <td>
-            ${item.signals.freq7}
+            ${item.signals?.freq7 ?? "-"}
           </td>
 
           <td>
-            ${item.signals.freq30}
+            ${item.signals?.freq30 ?? "-"}
           </td>
 
           <td>
-            ${item.reverse}
+            ${item.reverse || "-"}
           </td>
 
         </tr>
       `;
-
     }
   );
 
 
   container.innerHTML = `
-
     <div class="table-wrapper">
 
-      <table
-        class="
-          analysis-table
-        "
-      >
+      <table class="analysis-table">
 
         <thead>
 
           <tr>
-
             <th>#</th>
-
             <th>Số</th>
-
             <th>Điểm</th>
-
             <th>Gan</th>
-
             <th>7 kỳ</th>
-
             <th>30 kỳ</th>
-
             <th>Đảo</th>
-
           </tr>
 
         </thead>
@@ -351,234 +473,70 @@ function renderStatistics(data) {
 
     </div>
 
-
     <div class="warning-box">
-
-      Ba vị trí đầu được tô nổi bật
-      để dễ quan sát.
-
-    </div>
-  `;
-}
-
-/* ================================
-   KẾT QUẢ MỚI NHẤT
-================================ */
-
-function renderLatest(data) {
-
-  const container =
-    document.getElementById(
-      "latest-result"
-    );
-
-  const dateBadge =
-    document.getElementById(
-      "latest-date-badge"
-    );
-
-  if (!container) return;
-
-  const r = data.results;
-
-  if (dateBadge) {
-    dateBadge.textContent =
-      formatDate(
-        data.drawDate
-      );
-  }
-
-
-  function prizeValues(
-    values,
-    columns,
-    extraClass = ""
-  ) {
-
-    const list =
-      Array.isArray(values)
-        ? values
-        : [values];
-
-    return `
-      <div
-        class="
-          prize-values
-          cols-${columns}
-          ${extraClass}
-        "
-      >
-
-        ${list
-          .map(
-            number => `
-              <span
-                class="prize-number"
-              >
-                ${number}
-              </span>
-            `
-          )
-          .join("")}
-
-      </div>
-    `;
-  }
-
-
-  container.innerHTML = `
-
-    <div class="xsmb-board">
-
-      <div class="
-        prize-row
-        special-row
-      ">
-
-        <div class="prize-name">
-          ĐB
-        </div>
-
-        ${prizeValues(
-          r.special,
-          1
-        )}
-
-      </div>
-
-
-      <div class="prize-row">
-
-        <div class="prize-name">
-          G1
-        </div>
-
-        ${prizeValues(
-          r.g1,
-          1
-        )}
-
-      </div>
-
-
-      <div class="prize-row">
-
-        <div class="prize-name">
-          G2
-        </div>
-
-        ${prizeValues(
-          r.g2,
-          2
-        )}
-
-      </div>
-
-
-      <div class="prize-row">
-
-        <div class="prize-name">
-          G3
-        </div>
-
-        ${prizeValues(
-          r.g3,
-          6
-        )}
-
-      </div>
-
-
-      <div class="prize-row">
-
-        <div class="prize-name">
-          G4
-        </div>
-
-        ${prizeValues(
-          r.g4,
-          4
-        )}
-
-      </div>
-
-
-      <div class="prize-row">
-
-        <div class="prize-name">
-          G5
-        </div>
-
-        ${prizeValues(
-          r.g5,
-          6
-        )}
-
-      </div>
-
-
-      <div class="prize-row">
-
-        <div class="prize-name">
-          G6
-        </div>
-
-        ${prizeValues(
-          r.g6,
-          3
-        )}
-
-      </div>
-
-
-      <div class="
-        prize-row
-        g7-row
-      ">
-
-        <div class="prize-name">
-          G7
-        </div>
-
-        ${prizeValues(
-          r.g7,
-          4
-        )}
-
-      </div>
-
+      Điểm mô hình dùng để xếp hạng,
+      không phải xác suất trúng.
     </div>
   `;
 }
 
 
-/* ================================
-   FORMAT DATE
-================================ */
+/* =========================================
+   STATUS
+========================================= */
+
+function setSystemStatus(
+  message,
+  status
+) {
+  const element =
+    document.getElementById(
+      "system-status"
+    );
+
+  if (!element) return;
+
+  element.textContent =
+    message;
+
+  element.className =
+    `system-status ${status || ""}`;
+}
+
+
+/* =========================================
+   DATE
+========================================= */
 
 function formatDate(value) {
-  if (!value) return "--";
+  if (!value) {
+    return "--/--/----";
+  }
 
-  const [
-    year,
-    month,
-    day
-  ] =
-    value.split("-");
+  const parts =
+    String(value).split("-");
 
-  return `${day}/${month}/${year}`;
+  if (parts.length !== 3) {
+    return value;
+  }
+
+  return (
+    `${parts[2]}/${parts[1]}/${parts[0]}`
+  );
 }
 
 
-/* ================================
+/* =========================================
    REFRESH
-================================ */
+========================================= */
 
 window.refreshAnalysis =
   async function () {
 
     const button =
-      document.getElementById("analyze-button");
+      document.getElementById(
+        "analyze-button"
+      );
 
     if (button) {
       button.disabled = true;
@@ -596,14 +554,17 @@ window.refreshAnalysis =
   };
 
 
-/* ================================
-   MENU TẠM THỜI
-================================ */
+/* =========================================
+   MENU
+========================================= */
 
 window.showStatistics =
   function () {
+
     document
-      .getElementById("analysis-detail")
+      .getElementById(
+        "analysis-detail"
+      )
       ?.scrollIntoView({
         behavior: "smooth"
       });
@@ -612,8 +573,11 @@ window.showStatistics =
 
 window.showPrediction =
   function () {
+
     document
-      .getElementById("today-prediction")
+      .getElementById(
+        "today-prediction"
+      )
       ?.scrollIntoView({
         behavior: "smooth"
       });
@@ -622,18 +586,28 @@ window.showPrediction =
 
 window.showBacktest =
   function () {
-    window.location.href =
-      "/api/backtest?days=100";
+
+    window.open(
+      "/api/backtest?days=100",
+      "_blank"
+    );
   };
 
 
 window.showHistory =
   function () {
+
     alert(
-      "Trang lịch sử sẽ được tạo ở bước tiếp theo."
+      "Trang lịch sử đang được phát triển."
     );
   };
-  window.showTracking =
+
+
+/* =========================================
+   THEO DÕI DỰ ĐOÁN
+========================================= */
+
+window.showTracking =
   async function () {
 
     const section =
@@ -641,9 +615,7 @@ window.showHistory =
         "tracking-section"
       );
 
-    if (!section) {
-      return;
-    }
+    if (!section) return;
 
     section.style.display =
       "block";
@@ -667,6 +639,10 @@ async function loadPredictionHistory() {
       "tracking-table"
     );
 
+  if (!summary || !table) {
+    return;
+  }
+
   try {
     const response =
       await fetch(
@@ -676,133 +652,127 @@ async function loadPredictionHistory() {
         }
       );
 
+    if (!response.ok) {
+      throw new Error(
+        `API lỗi ${response.status}`
+      );
+    }
+
     const data =
       await response.json();
 
     if (!data.success) {
       throw new Error(
-        data.message
+        data.message ||
+        "Không đọc được lịch sử"
       );
     }
 
-    /*
-     * Tổng kết
-     */
-
     const s =
-      data.summary;
+      data.summary || {};
 
     summary.innerHTML = `
       <div class="tracking-summary-grid">
 
         <div>
-          <small>Tổng kỳ</small>
+          <small>Kỳ hoàn thành</small>
           <strong>
-            ${s.completed}
+            ${s.completed || 0}
           </strong>
         </div>
 
         <div>
           <small>Tổng lần về</small>
           <strong>
-            ${s.totalHits}
+            ${s.totalHits || 0}
           </strong>
         </div>
 
         <div>
-          <small>Tổng tiền đánh</small>
+          <small>Tiền đánh</small>
           <strong>
-            ${money(s.totalCost)}
+            ${money(
+              s.totalCost || 0
+            )}
           </strong>
         </div>
 
         <div>
-          <small>Tổng tiền nhận</small>
+          <small>Tiền nhận</small>
           <strong>
-            ${money(s.totalPayout)}
+            ${money(
+              s.totalPayout || 0
+            )}
           </strong>
         </div>
 
         <div>
-          <small>Lãi / Lỗ</small>
+          <small>Lãi/Lỗ</small>
 
           <strong
             class="${
-              s.totalProfit >= 0
+              (s.totalProfit || 0) >= 0
                 ? "profit"
                 : "loss"
             }"
           >
+
             ${
-              s.totalProfit >= 0
+              (s.totalProfit || 0) > 0
                 ? "+"
                 : ""
             }
 
             ${money(
-              s.totalProfit
+              s.totalProfit || 0
             )}
+
           </strong>
         </div>
 
       </div>
     `;
 
-    /*
-     * Bảng từng ngày
-     */
 
-    let html = `
-      <div class="table-wrapper">
+    const history =
+      Array.isArray(data.history)
+        ? data.history
+        : [];
 
-      <table class="tracking-table">
+    if (!history.length) {
+      table.innerHTML =
+        `<div class="loading-box">
+          Chưa có lịch sử dự đoán.
+        </div>`;
 
-        <thead>
-          <tr>
-            <th>Ngày</th>
-            <th>Dàn số</th>
-            <th>Kết quả</th>
-            <th>Lần về</th>
-            <th>Tiền đánh</th>
-            <th>Tiền nhận</th>
-            <th>Lãi/Lỗ</th>
-          </tr>
-        </thead>
+      return;
+    }
 
-        <tbody>
-    `;
 
-    for (
-      const row
-      of data.history
-    ) {
-      let resultText = "";
+    let rows = "";
 
-      for (
-        const number
-        of row.numbers
-      ) {
+    history.forEach(
+      row => {
+
         const hits =
-          row.hitsByNumber?.[
-            number
-          ] || 0;
+          row.numbers
+            .map(
+              number => {
 
-        resultText += `
-          <div>
-            ${number}:
-            <strong>
-              ${hits}
-            </strong>
-            lần
-          </div>
-        `;
-      }
+                const count =
+                  row.hitsByNumber?.[
+                    number
+                  ] || 0;
 
-      if (
-        row.status ===
-        "pending"
-      ) {
-        html += `
+                return (
+                  `${number}: ${count} lần`
+                );
+              }
+            )
+            .join("<br>");
+
+
+        rows += `
           <tr>
 
             <td>
@@ -820,103 +790,105 @@ async function loadPredictionHistory() {
             </td>
 
             <td>
-              Chưa xổ
+              ${
+                row.status ===
+                "pending"
+                  ? "Chưa xổ"
+                  : hits
+              }
             </td>
-
-            <td>-</td>
 
             <td>
-              ${money(
-                row.cost
-              )}
+              ${
+                row.status ===
+                "pending"
+                  ? "-"
+                  : row.totalHits
+              }
             </td>
 
-            <td>-</td>
+            <td>
+              ${money(row.cost)}
+            </td>
 
-            <td>-</td>
+            <td>
+              ${
+                row.status ===
+                "pending"
+                  ? "-"
+                  : money(
+                      row.payout
+                    )
+              }
+            </td>
+
+            <td
+              class="${
+                row.profit >= 0
+                  ? "profit"
+                  : "loss"
+              }"
+            >
+
+              ${
+                row.status ===
+                "pending"
+                  ? "-"
+                  :
+                  (
+                    row.profit > 0
+                      ? "+"
+                      : ""
+                  ) +
+                  money(
+                    row.profit
+                  )
+              }
+
+            </td>
 
           </tr>
         `;
-
-        continue;
       }
+    );
 
-      html += `
-        <tr>
 
-          <td>
-            ${formatDate(
-              row.date
-            )}
-          </td>
+    table.innerHTML = `
+      <div class="table-wrapper">
 
-          <td>
-            <strong>
-              ${row.numbers.join(
-                " - "
-              )}
-            </strong>
-          </td>
+        <table class="tracking-table">
 
-          <td>
-            ${resultText}
-          </td>
+          <thead>
+            <tr>
+              <th>Ngày</th>
+              <th>Dàn số</th>
+              <th>Kết quả</th>
+              <th>Lần về</th>
+              <th>Tiền đánh</th>
+              <th>Tiền nhận</th>
+              <th>Lãi/Lỗ</th>
+            </tr>
+          </thead>
 
-          <td>
-            <strong>
-              ${row.totalHits}
-            </strong>
-          </td>
+          <tbody>
+            ${rows}
+          </tbody>
 
-          <td>
-            ${money(
-              row.cost
-            )}
-          </td>
+        </table>
 
-          <td>
-            ${money(
-              row.payout
-            )}
-          </td>
-
-          <td
-            class="${
-              row.profit >= 0
-                ? "profit"
-                : "loss"
-            }"
-          >
-
-            ${
-              row.profit >= 0
-                ? "+"
-                : ""
-            }
-
-            ${money(
-              row.profit
-            )}
-
-          </td>
-
-        </tr>
-      `;
-    }
-
-    html += `
-        </tbody>
-      </table>
       </div>
     `;
 
-    table.innerHTML =
-      html;
-
   } catch (error) {
+    console.error(
+      "Tracking error:",
+      error
+    );
+
     summary.innerHTML =
-      "Không tải được dữ liệu: " +
-      error.message;
+      `Không tải được dữ liệu: ${error.message}`;
+
+    table.innerHTML = "";
   }
 }
 
