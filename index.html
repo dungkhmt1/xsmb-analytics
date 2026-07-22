@@ -2,61 +2,142 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#111827">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta name="theme-color" content="#b91c1c">
 
   <title>XSMB Analytics</title>
 
-  <link rel="stylesheet" href="style.css">
-  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="manifest" href="/manifest.json">
 </head>
 
 <body>
 
-<header>
-  <h1>XSMB Analytics</h1>
-  <p>Phân tích và thống kê XSMB</p>
+<header class="top-header">
+  <div class="header-inner">
+
+    <div>
+      <h1>XSMB Analytics</h1>
+      <p>
+        Phân tích • Thống kê • Theo dõi dự đoán
+      </p>
+    </div>
+
+    <div class="header-badge">
+      XSMB
+    </div>
+
+  </div>
 </header>
 
-<main>
 
-  <!-- KẾT QUẢ MỚI NHẤT -->
-  <section class="card">
+<main class="dashboard">
 
-    <h2>Kết quả mới nhất</h2>
+  <!-- ===================================
+       KẾT QUẢ MỚI NHẤT
+  ==================================== -->
+
+  <section class="panel result-panel">
+
+    <div class="panel-heading">
+
+      <div>
+        <span class="eyebrow">
+          KẾT QUẢ MỚI NHẤT
+        </span>
+
+        <h2>
+          Xổ số miền Bắc
+        </h2>
+      </div>
+
+      <div
+        id="latest-date-badge"
+        class="date-badge"
+      >
+        --/--/----
+      </div>
+
+    </div>
 
     <div id="latest-result">
-      Đang tải dữ liệu...
+      <div class="loading-box">
+        Đang tải kết quả...
+      </div>
     </div>
 
   </section>
 
 
-  <!-- CẦU HÔM NAY -->
-  <section class="card">
+  <!-- ===================================
+       DỰ ĐOÁN
+  ==================================== -->
 
-    <h2>Cầu hôm nay</h2>
+  <section class="panel prediction-panel">
+
+    <div class="panel-heading">
+
+      <div>
+        <span class="eyebrow">
+          PHÂN TÍCH MODEL
+        </span>
+
+        <h2>
+          Dàn số gợi ý
+        </h2>
+      </div>
+
+      <div class="hot-badge">
+        HOT
+      </div>
+
+    </div>
 
     <div id="today-prediction">
-      Đang phân tích...
+      <div class="loading-box">
+        Đang phân tích...
+      </div>
     </div>
 
   </section>
 
 
-  <!-- PHÂN TÍCH -->
-  <section class="card">
+  <!-- ===================================
+       PHÂN TÍCH TOP
+  ==================================== -->
 
-    <h2>Phân tích</h2>
+  <section class="panel">
 
-    <button
-      id="analyze-button"
-      onclick="refreshAnalysis()"
+    <div class="panel-heading">
+
+      <div>
+        <span class="eyebrow">
+          THỐNG KÊ
+        </span>
+
+        <h2>
+          Top số theo mô hình
+        </h2>
+      </div>
+
+      <button
+        id="analyze-button"
+        class="primary-button"
+        onclick="refreshAnalysis()"
+      >
+        Phân tích hôm nay
+      </button>
+
+    </div>
+
+    <div
+      id="system-status"
+      class="system-status"
     >
-      Phân tích hôm nay
-    </button>
-
-    <div id="system-status">
       Đang kết nối cơ sở dữ liệu...
     </div>
 
@@ -65,50 +146,103 @@
   </section>
 
 
-  <!-- MENU -->
-  <section class="menu">
+  <!-- ===================================
+       MENU
+  ==================================== -->
+
+  <section class="menu-grid">
 
     <button onclick="showStatistics()">
-      Thống kê
+      <span class="menu-icon">
+        📊
+      </span>
+      <span>
+        Thống kê
+      </span>
     </button>
 
     <button onclick="showPrediction()">
-      Cầu hôm nay
+      <span class="menu-icon">
+        🔥
+      </span>
+      <span>
+        Cầu hôm nay
+      </span>
     </button>
 
     <button onclick="showBacktest()">
-      Backtest
+      <span class="menu-icon">
+        🧪
+      </span>
+      <span>
+        Backtest
+      </span>
     </button>
 
     <button onclick="showHistory()">
-      Lịch sử
+      <span class="menu-icon">
+        🗂
+      </span>
+      <span>
+        Lịch sử
+      </span>
     </button>
 
-    <button onclick="showTracking()">
-  Theo dõi dự đoán
-</button>
-<section
-  class="card"
-  id="tracking-section"
-  style="display:none;"
->
+    <button
+      class="tracking-menu"
+      onclick="showTracking()"
+    >
+      <span class="menu-icon">
+        💰
+      </span>
 
-  <h2>
-    Theo dõi dự đoán
-  </h2>
+      <span>
+        Theo dõi dự đoán
+      </span>
+    </button>
 
-  <div id="tracking-summary">
-    Đang tải...
-  </div>
+  </section>
 
-  <div id="tracking-table">
-  </div>
 
-</section>
+  <!-- ===================================
+       THEO DÕI DỰ ĐOÁN
+  ==================================== -->
+
+  <section
+    class="panel"
+    id="tracking-section"
+    style="display:none;"
+  >
+
+    <div class="panel-heading">
+
+      <div>
+        <span class="eyebrow">
+          HIỆU QUẢ
+        </span>
+
+        <h2>
+          Theo dõi dự đoán
+        </h2>
+      </div>
+
+    </div>
+
+    <div id="tracking-summary">
+      Đang tải...
+    </div>
+
+    <div id="tracking-table"></div>
 
   </section>
 
 </main>
+
+
+<footer>
+  XSMB Analytics • Điểm mô hình chỉ dùng để xếp hạng
+</footer>
+
 
 <script src="/app.js"></script>
 

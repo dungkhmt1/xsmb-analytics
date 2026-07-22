@@ -59,77 +59,15 @@ async function loadDashboard() {
     );
   }
 }
-
-
-/* ================================
-   KẾT QUẢ MỚI NHẤT
-================================ */
-
-function renderLatest(data) {
-  const container =
-    document.getElementById("latest-result");
-
-  if (!container) return;
-
-  const r =
-    data.results;
-
-  container.innerHTML = `
-    <p class="date">
-      XSMB ${formatDate(data.drawDate)}
-    </p>
-
-    <div class="special">
-      ${r.special}
-    </div>
-
-    <div class="result-row">
-      <strong>G1:</strong>
-      ${r.g1.join(" ")}
-    </div>
-
-    <div class="result-row">
-      <strong>G2:</strong>
-      ${r.g2.join(" ")}
-    </div>
-
-    <div class="result-row">
-      <strong>G3:</strong>
-      ${r.g3.join(" ")}
-    </div>
-
-    <div class="result-row">
-      <strong>G4:</strong>
-      ${r.g4.join(" ")}
-    </div>
-
-    <div class="result-row">
-      <strong>G5:</strong>
-      ${r.g5.join(" ")}
-    </div>
-
-    <div class="result-row">
-      <strong>G6:</strong>
-      ${r.g6.join(" ")}
-    </div>
-
-    <div class="result-row">
-      <strong>G7:</strong>
-      ${r.g7.join(" ")}
-    </div>
-  `;
-}
-
-
-/* ================================
-   DỰ ĐOÁN
-================================ */
-
 function renderPrediction(data) {
+
   const container =
-    document.getElementById("today-prediction");
+    document.getElementById(
+      "today-prediction"
+    );
 
   if (!container) return;
+
 
   const numbers =
     data.topNumbers || [];
@@ -140,157 +78,465 @@ function renderPrediction(data) {
   const touches =
     data.topTouches || [];
 
-  const top1 = numbers[0];
-  const top2 = numbers[1];
-  const top3 = numbers[2];
 
-  const bestPair = pairs[0];
+  const top1 =
+    numbers[0];
+
+  const top2 =
+    numbers[1];
+
+  const top3 =
+    numbers[2];
+
+  const bestPair =
+    pairs[0];
+
 
   container.innerHTML = `
-    <p class="date">
-      Phân tích cho ${formatDate(
-        data.data.predictionDate
-      )}
-    </p>
 
-    <div class="prediction">
+    <div class="prediction-grid">
 
-      <span class="pair">
-        ${bestPair?.pair || "--"}
-      </span>
 
-      <p>
-        Ưu tiên:
-        <strong>
+      <div
+        class="
+          prediction-card
+          highlight
+        "
+      >
+
+        <div
+          class="
+            prediction-title
+          "
+        >
+          Số ưu tiên
+        </div>
+
+        <div class="big-number">
           ${top1?.number || "--"}
-        </strong>
-      </p>
+        </div>
 
-      <p>
-        Điểm mô hình:
-        ${top1?.score || 0}
-      </p>
+        <div class="score">
+          Điểm:
+          ${top1?.score || 0}
+        </div>
 
-      <p>
-        Top tiếp theo:
-        <strong>
-          ${top2?.number || "--"}
-          -
-          ${top3?.number || "--"}
-        </strong>
-      </p>
+      </div>
 
-      <p>
-        Chạm mạnh:
-        <strong>
-          ${
-            touches
-              .slice(0, 3)
-              .map(x => x.digit)
-              .join(" - ")
-          }
-        </strong>
-      </p>
+
+      <div
+        class="
+          prediction-card
+          pair-card
+        "
+      >
+
+        <div
+          class="
+            prediction-title
+          "
+        >
+          Cặp đảo mạnh nhất
+        </div>
+
+        <div class="big-pair">
+          ${bestPair?.pair || "--"}
+        </div>
+
+        <div class="score">
+          Điểm cặp:
+          ${bestPair?.score || 0}
+        </div>
+
+      </div>
+
+
+      <div class="prediction-card">
+
+        <div class="prediction-title">
+          Top tiếp theo
+        </div>
+
+        <div
+          class="
+            secondary-numbers
+          "
+        >
+
+          <span
+            class="
+              secondary-number
+            "
+          >
+            ${top2?.number || "--"}
+          </span>
+
+          <span
+            class="
+              secondary-number
+            "
+          >
+            ${top3?.number || "--"}
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <div class="prediction-card">
+
+        <div class="prediction-title">
+          Chạm mạnh
+        </div>
+
+        <div
+          class="
+            secondary-numbers
+          "
+        >
+
+          ${touches
+            .slice(0, 3)
+            .map(
+              item => `
+                <span
+                  class="
+                    secondary-number
+                  "
+                >
+                  ${item.digit}
+                </span>
+              `
+            )
+            .join("")}
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="warning-box">
+
+      Phân tích cho
+      <strong>
+        ${formatDate(
+          data.data.predictionDate
+        )}
+      </strong>
+
+      • ${data.data.totalDraws}
+      kỳ dữ liệu
+
+      • Điểm là chỉ số xếp hạng,
+      không phải xác suất trúng.
 
     </div>
   `;
 }
 
-
-/* ================================
-   BẢNG PHÂN TÍCH
-================================ */
-
 function renderStatistics(data) {
+
   const container =
-    document.getElementById("analysis-detail");
+    document.getElementById(
+      "analysis-detail"
+    );
 
   if (!container) return;
 
   const top =
-    data.topNumbers.slice(0, 10);
+    data.topNumbers
+      .slice(0, 10);
 
-  let html = `
-    <h3>Top 10 theo mô hình</h3>
 
-    <table>
-      <thead>
+  let rows = "";
+
+
+  top.forEach(
+    (item, index) => {
+
+      rows += `
         <tr>
-          <th>#</th>
-          <th>Số</th>
-          <th>Điểm</th>
-          <th>Gan</th>
-          <th>7 kỳ</th>
-          <th>30 kỳ</th>
-          <th>Đảo</th>
-        </tr>
-      </thead>
 
-      <tbody>
-  `;
+          <td>
+            ${index + 1}
+          </td>
 
-  top.forEach((item, index) => {
-    html += `
-      <tr>
-        <td>${index + 1}</td>
-
-        <td>
-          <strong>
+          <td
+            class="
+              number-cell
+            "
+          >
             ${item.number}
-          </strong>
-        </td>
+          </td>
 
-        <td>
-          ${item.score}
-        </td>
+          <td>
+            ${item.score}
+          </td>
 
-        <td>
-          ${item.signals.gan}
-        </td>
+          <td>
+            ${item.signals.gan}
+          </td>
 
-        <td>
-          ${item.signals.freq7}
-        </td>
+          <td>
+            ${item.signals.freq7}
+          </td>
 
-        <td>
-          ${item.signals.freq30}
-        </td>
+          <td>
+            ${item.signals.freq30}
+          </td>
 
-        <td>
-          ${item.reverse}
-        </td>
-      </tr>
-    `;
-  });
+          <td>
+            ${item.reverse}
+          </td>
 
-  html += `
-      </tbody>
-    </table>
+        </tr>
+      `;
 
-    <p>
-      Điểm chỉ dùng để xếp hạng,
-      không phải xác suất trúng.
-    </p>
+    }
+  );
+
+
+  container.innerHTML = `
+
+    <div class="table-wrapper">
+
+      <table
+        class="
+          analysis-table
+        "
+      >
+
+        <thead>
+
+          <tr>
+
+            <th>#</th>
+
+            <th>Số</th>
+
+            <th>Điểm</th>
+
+            <th>Gan</th>
+
+            <th>7 kỳ</th>
+
+            <th>30 kỳ</th>
+
+            <th>Đảo</th>
+
+          </tr>
+
+        </thead>
+
+        <tbody>
+          ${rows}
+        </tbody>
+
+      </table>
+
+    </div>
+
+
+    <div class="warning-box">
+
+      Ba vị trí đầu được tô nổi bật
+      để dễ quan sát.
+
+    </div>
   `;
-
-  container.innerHTML = html;
 }
 
-
 /* ================================
-   TRẠNG THÁI
+   KẾT QUẢ MỚI NHẤT
 ================================ */
 
-function setSystemStatus(message, status) {
-  const el =
-    document.getElementById("system-status");
+function renderLatest(data) {
 
-  if (!el) return;
+  const container =
+    document.getElementById(
+      "latest-result"
+    );
 
-  el.textContent = message;
+  const dateBadge =
+    document.getElementById(
+      "latest-date-badge"
+    );
 
-  el.className =
-    `system-status ${status || ""}`;
+  if (!container) return;
+
+  const r = data.results;
+
+  if (dateBadge) {
+    dateBadge.textContent =
+      formatDate(
+        data.drawDate
+      );
+  }
+
+
+  function prizeValues(
+    values,
+    columns,
+    extraClass = ""
+  ) {
+
+    const list =
+      Array.isArray(values)
+        ? values
+        : [values];
+
+    return `
+      <div
+        class="
+          prize-values
+          cols-${columns}
+          ${extraClass}
+        "
+      >
+
+        ${list
+          .map(
+            number => `
+              <span
+                class="prize-number"
+              >
+                ${number}
+              </span>
+            `
+          )
+          .join("")}
+
+      </div>
+    `;
+  }
+
+
+  container.innerHTML = `
+
+    <div class="xsmb-board">
+
+      <div class="
+        prize-row
+        special-row
+      ">
+
+        <div class="prize-name">
+          ĐB
+        </div>
+
+        ${prizeValues(
+          r.special,
+          1
+        )}
+
+      </div>
+
+
+      <div class="prize-row">
+
+        <div class="prize-name">
+          G1
+        </div>
+
+        ${prizeValues(
+          r.g1,
+          1
+        )}
+
+      </div>
+
+
+      <div class="prize-row">
+
+        <div class="prize-name">
+          G2
+        </div>
+
+        ${prizeValues(
+          r.g2,
+          2
+        )}
+
+      </div>
+
+
+      <div class="prize-row">
+
+        <div class="prize-name">
+          G3
+        </div>
+
+        ${prizeValues(
+          r.g3,
+          6
+        )}
+
+      </div>
+
+
+      <div class="prize-row">
+
+        <div class="prize-name">
+          G4
+        </div>
+
+        ${prizeValues(
+          r.g4,
+          4
+        )}
+
+      </div>
+
+
+      <div class="prize-row">
+
+        <div class="prize-name">
+          G5
+        </div>
+
+        ${prizeValues(
+          r.g5,
+          6
+        )}
+
+      </div>
+
+
+      <div class="prize-row">
+
+        <div class="prize-name">
+          G6
+        </div>
+
+        ${prizeValues(
+          r.g6,
+          3
+        )}
+
+      </div>
+
+
+      <div class="
+        prize-row
+        g7-row
+      ">
+
+        <div class="prize-name">
+          G7
+        </div>
+
+        ${prizeValues(
+          r.g7,
+          4
+        )}
+
+      </div>
+
+    </div>
+  `;
 }
 
 

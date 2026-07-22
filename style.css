@@ -1,158 +1,876 @@
+:root {
+  --red-dark: #7f1d1d;
+  --red: #dc2626;
+  --red-light: #ef4444;
+
+  --orange: #f97316;
+  --orange-light: #fb923c;
+
+  --yellow: #facc15;
+  --yellow-soft: #fef3c7;
+
+  --cream: #fff7ed;
+
+  --dark: #1f2937;
+  --gray: #6b7280;
+  --gray-light: #f3f4f6;
+
+  --white: #ffffff;
+
+  --green: #059669;
+
+  --shadow:
+    0 8px 24px
+    rgba(127, 29, 29, 0.12);
+}
+
+
+/* ===================================
+   RESET
+=================================== */
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f3f4f6;
-  color: #111827;
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  background:
+    linear-gradient(
+      180deg,
+      #fff7ed 0%,
+      #f9fafb 40%
+    );
+
+  color: var(--dark);
 }
 
-header {
-  background: #111827;
+
+/* ===================================
+   HEADER
+=================================== */
+
+.top-header {
+  background:
+    linear-gradient(
+      135deg,
+      #7f1d1d,
+      #dc2626,
+      #f97316
+    );
+
   color: white;
-  padding: 25px 20px;
-  text-align: center;
+
+  padding:
+    22px 20px;
+
+  box-shadow:
+    0 5px 18px
+    rgba(127, 29, 29, 0.25);
 }
 
-header h1 {
+.header-inner {
+  max-width: 960px;
+
+  margin: auto;
+
+  display: flex;
+
+  align-items: center;
+  justify-content:
+    space-between;
+}
+
+.top-header h1 {
   margin: 0;
+
   font-size: 28px;
 }
 
-header p {
-  margin-top: 5px;
-  opacity: 0.7;
+.top-header p {
+  margin:
+    7px 0 0;
+
+  opacity: 0.9;
+
+  font-size: 14px;
 }
 
-main {
-  max-width: 600px;
-  margin: auto;
-  padding: 16px;
+.header-badge {
+  width: 58px;
+  height: 58px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.18
+    );
+
+  border:
+    2px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.35
+    );
+
+  border-radius: 50%;
+
+  font-weight: 800;
 }
 
-.card {
+
+/* ===================================
+   DASHBOARD
+=================================== */
+
+.dashboard {
+  max-width: 960px;
+
+  margin:
+    25px auto;
+
+  padding:
+    0 15px;
+}
+
+.panel {
   background: white;
+
+  border-radius: 18px;
+
   padding: 20px;
-  margin-bottom: 15px;
+
+  margin-bottom: 18px;
+
+  box-shadow: var(--shadow);
+
+  border:
+    1px solid
+    rgba(
+      249,
+      115,
+      22,
+      0.10
+    );
+}
+
+.panel-heading {
+  display: flex;
+
+  align-items: center;
+
+  justify-content:
+    space-between;
+
+  gap: 15px;
+
+  margin-bottom: 18px;
+}
+
+.panel-heading h2 {
+  margin:
+    3px 0 0;
+
+  font-size: 21px;
+}
+
+.eyebrow {
+  color: var(--orange);
+
+  font-size: 12px;
+
+  font-weight: 800;
+
+  letter-spacing: 1px;
+}
+
+
+/* ===================================
+   DATE
+=================================== */
+
+.date-badge {
+  padding:
+    8px 12px;
+
+  background:
+    var(--yellow-soft);
+
+  color:
+    var(--red-dark);
+
+  border-radius: 20px;
+
+  font-weight: 800;
+
+  font-size: 13px;
+}
+
+
+/* ===================================
+   RESULT TABLE
+=================================== */
+
+.xsmb-board {
+  border:
+    2px solid
+    var(--red);
+
   border-radius: 14px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+
+  overflow: hidden;
+
+  background: white;
 }
 
-.card h2 {
-  margin-top: 0;
-  font-size: 19px;
+.prize-row {
+  display: grid;
+
+  grid-template-columns:
+    70px 1fr;
+
+  border-bottom:
+    1px solid
+    #fecaca;
+
+  min-height: 58px;
 }
 
-.date {
-  color: #6b7280;
+.prize-row:last-child {
+  border-bottom: 0;
 }
 
-.special {
-  font-size: 35px;
-  font-weight: bold;
-  text-align: center;
-  margin: 20px 0;
+.prize-name {
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  background:
+    #fff1f2;
+
+  color:
+    var(--red-dark);
+
+  font-weight: 800;
+
+  border-right:
+    1px solid
+    #fecaca;
 }
 
-.prediction {
-  text-align: center;
+.prize-values {
+  display: grid;
+
+  align-items: center;
+
+  justify-items: center;
+
+  padding:
+    8px;
+
+  gap:
+    8px;
+
+  font-weight: 700;
 }
 
-.pair {
-  display: block;
-  font-size: 32px;
-  font-weight: bold;
-  margin: 15px;
+.prize-values.cols-1 {
+  grid-template-columns:
+    1fr;
 }
 
-button {
-  width: 100%;
-  border: none;
-  border-radius: 10px;
-  padding: 14px;
-  font-size: 16px;
-  margin: 5px 0;
-  cursor: pointer;
+.prize-values.cols-2 {
+  grid-template-columns:
+    repeat(2, 1fr);
 }
 
-.card button {
-  background: #111827;
+.prize-values.cols-3 {
+  grid-template-columns:
+    repeat(3, 1fr);
+}
+
+.prize-values.cols-4 {
+  grid-template-columns:
+    repeat(4, 1fr);
+}
+
+.prize-values.cols-6 {
+  grid-template-columns:
+    repeat(3, 1fr);
+}
+
+.prize-number {
+  font-size: 18px;
+
+  letter-spacing: 1px;
+}
+
+.special-row {
+  background:
+    linear-gradient(
+      90deg,
+      #fff7ed,
+      #ffedd5
+    );
+}
+
+.special-row .prize-name {
+  background:
+    linear-gradient(
+      135deg,
+      #b91c1c,
+      #ef4444
+    );
+
   color: white;
 }
 
-.menu {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+.special-row .prize-number {
+  color: var(--red);
+
+  font-size: 34px;
+
+  font-weight: 900;
 }
 
-.menu button {
-  background: white;
-  color: #111827;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+.g7-row .prize-number {
+  color: var(--red);
+
+  font-size: 22px;
 }
 
-#result {
-  padding-top: 15px;
-  text-align: center;
+
+/* ===================================
+   PREDICTION
+=================================== */
+
+.prediction-panel {
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #fff7ed
+    );
 }
-.tracking-summary-grid {
+
+.hot-badge {
+  padding:
+    7px 12px;
+
+  border-radius: 20px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #facc15,
+      #f97316
+    );
+
+  color:
+    #7c2d12;
+
+  font-weight: 900;
+}
+
+.prediction-grid {
   display: grid;
+
   grid-template-columns:
     repeat(2, 1fr);
+
+  gap: 14px;
+}
+
+.prediction-card {
+  padding: 16px;
+
+  border-radius: 14px;
+
+  text-align: center;
+
+  background:
+    var(--gray-light);
+}
+
+.prediction-card.highlight {
+  background:
+    linear-gradient(
+      135deg,
+      #dc2626,
+      #f97316
+    );
+
+  color: white;
+
+  box-shadow:
+    0 10px 20px
+    rgba(
+      220,
+      38,
+      38,
+      0.25
+    );
+}
+
+.prediction-card.pair-card {
+  background:
+    linear-gradient(
+      135deg,
+      #fef3c7,
+      #fed7aa
+    );
+
+  border:
+    1px solid
+    #f97316;
+}
+
+.prediction-title {
+  font-size: 12px;
+
+  text-transform:
+    uppercase;
+
+  font-weight: 800;
+
+  opacity: 0.8;
+
+  margin-bottom: 8px;
+}
+
+.big-number {
+  font-size: 42px;
+
+  font-weight: 900;
+
+  line-height: 1;
+}
+
+.big-pair {
+  font-size: 30px;
+
+  font-weight: 900;
+
+  color:
+    var(--red-dark);
+}
+
+.score {
+  margin-top: 8px;
+
+  font-size: 13px;
+}
+
+.secondary-numbers {
+  display: flex;
+
+  justify-content: center;
+
   gap: 10px;
-  margin: 15px 0;
+
+  margin-top: 10px;
+}
+
+.secondary-number {
+  min-width: 48px;
+
+  padding:
+    7px 10px;
+
+  border-radius: 10px;
+
+  background:
+    var(--yellow-soft);
+
+  color:
+    var(--red-dark);
+
+  font-weight: 900;
+}
+
+
+/* ===================================
+   BUTTON
+=================================== */
+
+.primary-button {
+  border: 0;
+
+  background:
+    linear-gradient(
+      135deg,
+      #dc2626,
+      #f97316
+    );
+
+  color: white;
+
+  border-radius: 10px;
+
+  padding:
+    11px 16px;
+
+  font-weight: 800;
+
+  cursor: pointer;
+}
+
+.primary-button:hover {
+  filter:
+    brightness(1.05);
+}
+
+
+/* ===================================
+   STATUS
+=================================== */
+
+.system-status {
+  margin-bottom: 15px;
+
+  padding:
+    10px 12px;
+
+  background:
+    #f9fafb;
+
+  border-radius: 9px;
+
+  font-size: 13px;
+}
+
+.system-status.success {
+  color: var(--green);
+
+  background:
+    #ecfdf5;
+}
+
+.system-status.error {
+  color: var(--red);
+
+  background:
+    #fef2f2;
+}
+
+
+/* ===================================
+   ANALYSIS TABLE
+=================================== */
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.analysis-table,
+.tracking-table {
+  width: 100%;
+
+  border-collapse:
+    collapse;
+
+  margin-top: 12px;
+
+  font-size: 14px;
+}
+
+.analysis-table th,
+.analysis-table td,
+.tracking-table th,
+.tracking-table td {
+  padding:
+    10px 8px;
+
+  border-bottom:
+    1px solid
+    #f3f4f6;
+
+  text-align: center;
+}
+
+.analysis-table th,
+.tracking-table th {
+  background:
+    linear-gradient(
+      180deg,
+      #fff7ed,
+      #ffedd5
+    );
+
+  color:
+    var(--red-dark);
+}
+
+.analysis-table tbody tr:nth-child(1),
+.analysis-table tbody tr:nth-child(2),
+.analysis-table tbody tr:nth-child(3) {
+  background:
+    #fff7ed;
+}
+
+.number-cell {
+  color: var(--red);
+
+  font-weight: 900;
+
+  font-size: 17px;
+}
+
+
+/* ===================================
+   MENU
+=================================== */
+
+.menu-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, 1fr);
+
+  gap: 12px;
+
+  margin-bottom: 18px;
+}
+
+.menu-grid button {
+  border: 0;
+
+  background: white;
+
+  box-shadow: var(--shadow);
+
+  border-radius: 14px;
+
+  padding:
+    15px 10px;
+
+  font-weight: 700;
+
+  cursor: pointer;
+
+  color:
+    var(--dark);
+}
+
+.menu-grid button:hover {
+  background:
+    #fff7ed;
+}
+
+.menu-icon {
+  display: block;
+
+  font-size: 22px;
+
+  margin-bottom: 6px;
+}
+
+.tracking-menu {
+  grid-column:
+    1 / -1;
+
+  background:
+    linear-gradient(
+      135deg,
+      #f97316,
+      #facc15
+    ) !important;
+
+  color:
+    #7c2d12 !important;
+}
+
+
+/* ===================================
+   TRACKING SUMMARY
+=================================== */
+
+.tracking-summary-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(5, 1fr);
+
+  gap: 10px;
+
+  margin:
+    15px 0;
 }
 
 .tracking-summary-grid > div {
-  background: #f3f4f6;
-  border-radius: 10px;
-  padding: 12px;
+  padding: 13px;
+
+  background:
+    #fff7ed;
+
+  border-radius: 12px;
+
   text-align: center;
+
+  border:
+    1px solid
+    #fed7aa;
 }
 
 .tracking-summary-grid small {
   display: block;
+
+  color: var(--gray);
+
   margin-bottom: 5px;
-  color: #6b7280;
 }
 
 .tracking-summary-grid strong {
-  font-size: 18px;
-}
-
-.table-wrapper {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.tracking-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 15px;
-}
-
-.tracking-table th,
-.tracking-table td {
-  border-bottom:
-    1px solid #e5e7eb;
-  padding: 10px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.tracking-table th {
-  background: #f9fafb;
+  font-size: 17px;
 }
 
 .profit {
-  color: #059669;
-  font-weight: bold;
+  color: var(--green);
+
+  font-weight: 900;
 }
 
 .loss {
-  color: #dc2626;
-  font-weight: bold;
+  color: var(--red);
+
+  font-weight: 900;
+}
+
+
+/* ===================================
+   WARNING
+=================================== */
+
+.warning-box {
+  margin-top: 15px;
+
+  padding:
+    10px;
+
+  background:
+    #fff7ed;
+
+  border-left:
+    4px solid
+    var(--orange);
+
+  border-radius: 8px;
+
+  font-size: 13px;
+}
+
+
+/* ===================================
+   LOADING
+=================================== */
+
+.loading-box {
+  text-align: center;
+
+  color: var(--gray);
+
+  padding: 25px;
+}
+
+
+/* ===================================
+   FOOTER
+=================================== */
+
+footer {
+  text-align: center;
+
+  color: var(--gray);
+
+  font-size: 12px;
+
+  padding:
+    25px 15px;
+}
+
+
+/* ===================================
+   MOBILE
+=================================== */
+
+@media
+(max-width: 700px) {
+
+  .top-header h1 {
+    font-size: 23px;
+  }
+
+  .dashboard {
+    padding:
+      0 10px;
+  }
+
+  .panel {
+    padding: 15px;
+
+    border-radius: 14px;
+  }
+
+  .prediction-grid {
+    grid-template-columns:
+      1fr;
+  }
+
+  .tracking-summary-grid {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .prize-row {
+    grid-template-columns:
+      55px 1fr;
+  }
+
+  .prize-values.cols-4 {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .prize-values.cols-6 {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .prize-number {
+    font-size: 16px;
+  }
+
+  .special-row .prize-number {
+    font-size: 30px;
+  }
+
+}
+
+
+/* ===================================
+   DESKTOP
+=================================== */
+
+@media
+(min-width: 900px) {
+
+  .dashboard {
+    max-width: 760px;
+  }
+
 }
