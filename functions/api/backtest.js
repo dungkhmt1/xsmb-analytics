@@ -8,31 +8,257 @@ function reverseNumber(n) {
 
 function normalize(value, max) {
   if (!max || max <= 0) return 0;
-  return Math.min(Math.max(value / max, 0), 1);
+
+  return Math.min(
+    Math.max(value / max, 0),
+    1
+  );
 }
 
-function buildModel(historyDates, dateMap) {
+/*
+ * =====================================================
+ * NORMAL CDF
+ * Dùng để tính p-value xấp xỉ
+ * =====================================================
+ */
+
+function erf(x) {
+  const sign = x >= 0 ? 1 : -1;
+  x = Math.abs(x);
+
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+
+  const t =
+    1 / (1 + p * x);
+
+  const y =
+    1 -
+    (
+      (
+        (
+          (
+            (
+              a5 * t + a4
+            ) * t + a3
+          ) * t + a2
+        ) * t + a1
+      ) *
+      t *
+      Math.exp(-x * x)
+    );
+
+  return sign * y;
+}
+
+function normalCDF(z) {
+  return 0.5 *
+    (
+      1 +
+      erf(
+        z / Math.sqrt(2)
+      )
+    );
+}
+
+/*
+ * =====================================================
+ * COMBINATION RATIO
+ *
+ * C(a,k) / C(b,k)
+ *
+ * Không tính factorial trực tiếp
+ * để tránh overflow.
+ * =====================================================
+ */
+
+function combinationRatio(a, b, k) {
+  if (k < 0) return 0;
+
+  if (a < k) return 0;
+
+  if (b < k) return 0;
+
+  let ratio = 1;
+
+  for (let i = 0; i < k; i++) {
+    ratio *=
+      (a - i) /
+      (b - i);
+  }
+
+  return ratio;
+}
+
+/*
+ * =====================================================
+ * RANDOM BASELINE
+ *
+ * Có U số thực tế xuất hiện trong 100 số.
+ *
+ * Chọn ngẫu nhiên K số.
+ *
+ * Xác suất ít nhất một số trúng:
+ *
+ * 1 - C(100-U,K) / C(100,K)
+ * =====================================================
+ */
+
+function randomHitProbability(
+  uniqueActual,
+  selectedCount
+) {
+  if (uniqueActual <= 0) {
+    return 0;
+  }
+
+  if (selectedCount >= 100) {
+    return 1;
+  }
+
+  const missAvailable =
+    100 - uniqueActual;
+
+  const missProbability =
+    combinationRatio(
+      missAvailable,
+      100,
+      selectedCount
+    );
+
+  return 1 - missProbability;
+}
+
+/*
+ * =====================================================
+ * WILSON 95% CONFIDENCE INTERVAL
+ * =====================================================
+ */
+
+function wilsonInterval(
+  hits,
+  total
+) {
+  if (!total) {
+    return {
+      low: 0,
+      high: 0
+    };
+  }
+
+  const z = 1.96;
+
+  const p =
+    hits / total;
+
+  const denominator =
+    1 +
+    (z * z) / total;
+
+  const center =
+    (
+      p +
+      (z * z) /
+        (2 * total)
+    ) /
+    denominator;
+
+  const margin =
+    (
+      z *
+      Math.sqrt(
+        (
+          p * (1 - p) /
+          total
+        ) +
+        (
+          z * z /
+          (
+            4 *
+            total *
+            total
+          )
+        )
+      )
+    ) /
+    denominator;
+
+  return {
+    low:
+      Math.max(
+        0,
+        center - margin
+      ) * 100,
+
+    high:
+      Math.min(
+        1,
+        center + margin
+      ) * 100
+  };
+}
+
+/*
+ * =====================================================
+ * BUILD MODEL
+ *
+ * QUAN TRỌNG:
+ * historyDates phải theo:
+ *
+ * mới nhất -> cũ nhất
+ *
+ * =====================================================
+ */
+
+function buildModel(
+  historyDates,
+  dateMap
+) {
   const features = [];
 
-  for (let n = 0; n <= 99; n++) {
-    const number = padNumber(n);
+  for (
+    let n = 0;
+    n <= 99;
+    n++
+  ) {
+    const number =
+      padNumber(n);
 
     let gan = 0;
+
     let freq7 = 0;
     let freq30 = 0;
+
     let found = false;
 
     const appearances = [];
 
-    for (let i = 0; i < historyDates.length; i++) {
-      const date = historyDates[i];
+    for (
+      let i = 0;
+      i < historyDates.length;
+      i++
+    ) {
+      const date =
+        historyDates[i];
 
       const count =
-        dateMap[date]?.[number] || 0;
+        dateMap[date]?.[number]
+        || 0;
 
       if (count > 0) {
         appearances.push(i);
       }
+
+      /*
+       * Gan tính theo SỐ KỲ,
+       * không phải số ngày.
+       *
+       * Vì vậy nghỉ Tết không ảnh hưởng.
+       */
 
       if (!found) {
         if (count > 0) {
@@ -51,142 +277,220 @@ function buildModel(historyDates, dateMap) {
       }
     }
 
+    /*
+     * Chu kỳ trung bình
+     * tính theo kỳ xổ thực tế
+     */
+
     let averageCycle = 0;
 
-    if (appearances.length >= 2) {
-      let total = 0;
+    if (
+      appearances.length >= 2
+    ) {
+      let totalCycle = 0;
 
       for (
         let i = 0;
-        i < appearances.length - 1;
+        i <
+        appearances.length - 1;
         i++
       ) {
-        total +=
+        totalCycle +=
           appearances[i + 1] -
           appearances[i];
       }
 
       averageCycle =
-        total /
-        (appearances.length - 1);
+        totalCycle /
+        (
+          appearances.length - 1
+        );
     }
 
     let cycleSignal = 0;
 
     if (averageCycle > 0) {
+      const difference =
+        Math.abs(
+          gan - averageCycle
+        );
+
       cycleSignal =
         1 -
         Math.min(
-          Math.abs(
-            gan - averageCycle
-          ) / averageCycle,
+          difference /
+          averageCycle,
           1
         );
     }
 
+    /*
+     * Heuristic hồi
+     */
+
     let returnSignal = 0;
 
-    if (gan >= 2 && gan <= 10) {
+    if (
+      gan >= 2 &&
+      gan <= 10
+    ) {
       returnSignal =
-        Math.min(freq30 / 8, 1);
+        Math.min(
+          freq30 / 8,
+          1
+        );
     }
 
     features.push({
       number,
+
       gan,
+
       freq7,
+
       freq30,
+
       averageCycle,
+
       cycleSignal,
+
       returnSignal
     });
   }
 
   /*
-   * Cặp đảo
+   * ===================================================
+   * CẶP ĐẢO
+   * ===================================================
    */
 
   const featureMap = {};
 
-  for (const item of features) {
-    featureMap[item.number] = item;
+  for (
+    const item of features
+  ) {
+    featureMap[item.number] =
+      item;
   }
 
-  for (const item of features) {
+  for (
+    const item of features
+  ) {
     const reverse =
-      reverseNumber(item.number);
+      reverseNumber(
+        item.number
+      );
 
     const reverseItem =
       featureMap[reverse];
 
-    item.reverse = reverse;
+    item.reverse =
+      reverse;
 
     item.reverseGan =
-      reverseItem?.gan || 0;
+      reverseItem
+        ? reverseItem.gan
+        : 0;
 
     item.reverseFreq30 =
-      reverseItem?.freq30 || 0;
+      reverseItem
+        ? reverseItem.freq30
+        : 0;
   }
 
   /*
-   * Đầu / đuôi 30 kỳ
+   * ===================================================
+   * ĐẦU / ĐUÔI 30 KỲ
+   * ===================================================
    */
 
   const head30 = {};
   const tail30 = {};
 
-  for (let i = 0; i <= 9; i++) {
+  for (
+    let i = 0;
+    i <= 9;
+    i++
+  ) {
     head30[String(i)] = 0;
     tail30[String(i)] = 0;
   }
 
-  for (
-    let i = 0;
-    i < Math.min(
+  const limit =
+    Math.min(
       30,
       historyDates.length
     );
+
+  for (
+    let i = 0;
+    i < limit;
     i++
   ) {
+    const date =
+      historyDates[i];
+
     const numbers =
-      dateMap[historyDates[i]] || {};
+      dateMap[date] || {};
 
     for (
-      const [number, count]
-      of Object.entries(numbers)
+      const [
+        number,
+        count
+      ]
+      of Object.entries(
+        numbers
+      )
     ) {
-      head30[number[0]] += count;
-      tail30[number[1]] += count;
+      head30[number[0]] +=
+        count;
+
+      tail30[number[1]] +=
+        count;
     }
   }
 
-  for (const item of features) {
+  for (
+    const item of features
+  ) {
     item.headFreq30 =
-      head30[item.number[0]] || 0;
+      head30[
+        item.number[0]
+      ] || 0;
 
     item.tailFreq30 =
-      tail30[item.number[1]] || 0;
+      tail30[
+        item.number[1]
+      ] || 0;
   }
 
   /*
-   * Normalize
+   * ===================================================
+   * NORMALIZATION
+   * ===================================================
    */
 
   const maxGan =
     Math.max(
-      ...features.map(x => x.gan),
+      ...features.map(
+        x => x.gan
+      ),
       1
     );
 
   const maxFreq7 =
     Math.max(
-      ...features.map(x => x.freq7),
+      ...features.map(
+        x => x.freq7
+      ),
       1
     );
 
   const maxFreq30 =
     Math.max(
-      ...features.map(x => x.freq30),
+      ...features.map(
+        x => x.freq30
+      ),
       1
     );
 
@@ -198,129 +502,278 @@ function buildModel(historyDates, dateMap) {
       1
     );
 
-  const maxReverse30 =
+  const maxReverseFreq30 =
     Math.max(
       ...features.map(
-        x => x.reverseFreq30
+        x =>
+          x.reverseFreq30
       ),
       1
     );
 
   const maxHead =
     Math.max(
-      ...Object.values(head30),
+      ...Object.values(
+        head30
+      ),
       1
     );
 
   const maxTail =
     Math.max(
-      ...Object.values(tail30),
+      ...Object.values(
+        tail30
+      ),
       1
     );
 
   /*
-   * PHẢI GIỐNG predict.js
+   * ===================================================
+   * MODEL V1 WEIGHTS
+   *
+   * Giữ đúng weights của predict.js
+   * để backtest đúng model đang chạy.
+   * ===================================================
    */
 
   const weights = {
     gan: 0.18,
+
     freq7: 0.12,
+
     freq30: 0.18,
 
     reverseGan: 0.12,
+
     reverseFreq30: 0.10,
 
     cycle: 0.12,
+
     returnSignal: 0.08,
 
     head: 0.05,
+
     tail: 0.05
   };
 
   const predictions = [];
 
-  for (const item of features) {
+  for (
+    const item of features
+  ) {
     const score =
+
       normalize(
         item.gan,
         maxGan
-      ) * weights.gan +
+      ) *
+      weights.gan +
 
       normalize(
         item.freq7,
         maxFreq7
-      ) * weights.freq7 +
+      ) *
+      weights.freq7 +
 
       normalize(
         item.freq30,
         maxFreq30
-      ) * weights.freq30 +
+      ) *
+      weights.freq30 +
 
       normalize(
         item.reverseGan,
         maxReverseGan
-      ) * weights.reverseGan +
+      ) *
+      weights.reverseGan +
 
       normalize(
         item.reverseFreq30,
-        maxReverse30
-      ) * weights.reverseFreq30 +
+        maxReverseFreq30
+      ) *
+      weights.reverseFreq30 +
 
       item.cycleSignal *
-        weights.cycle +
+      weights.cycle +
 
       item.returnSignal *
-        weights.returnSignal +
+      weights.returnSignal +
 
       normalize(
         item.headFreq30,
         maxHead
-      ) * weights.head +
+      ) *
+      weights.head +
 
       normalize(
         item.tailFreq30,
         maxTail
-      ) * weights.tail;
+      ) *
+      weights.tail;
 
     predictions.push({
-      number: item.number,
+      number:
+        item.number,
 
       reverse:
         item.reverse,
 
       score:
         Number(
-          (score * 100).toFixed(3)
+          (
+            score * 100
+          ).toFixed(4)
         )
     });
   }
 
   predictions.sort(
     (a, b) =>
-      b.score - a.score
+      b.score -
+      a.score
   );
 
   return predictions;
 }
 
+/*
+ * =====================================================
+ * TẠO DANH SÁCH CẶP ĐẢO
+ * =====================================================
+ */
 
-export async function onRequestGet(context) {
+function buildPairs(
+  predictions
+) {
+  const predictionMap =
+    {};
+
+  for (
+    const item
+    of predictions
+  ) {
+    predictionMap[
+      item.number
+    ] = item;
+  }
+
+  const used =
+    new Set();
+
+  const pairs = [];
+
+  for (
+    const item
+    of predictions
+  ) {
+    if (
+      item.number ===
+      item.reverse
+    ) {
+      continue;
+    }
+
+    const sorted =
+      [
+        item.number,
+        item.reverse
+      ].sort();
+
+    const key =
+      sorted.join("-");
+
+    if (
+      used.has(key)
+    ) {
+      continue;
+    }
+
+    used.add(key);
+
+    const first =
+      predictionMap[
+        sorted[0]
+      ];
+
+    const second =
+      predictionMap[
+        sorted[1]
+      ];
+
+    if (
+      !first ||
+      !second
+    ) {
+      continue;
+    }
+
+    const high =
+      Math.max(
+        first.score,
+        second.score
+      );
+
+    const low =
+      Math.min(
+        first.score,
+        second.score
+      );
+
+    pairs.push({
+      pair: key,
+
+      number1:
+        sorted[0],
+
+      number2:
+        sorted[1],
+
+      score:
+        high * 0.60 +
+        low * 0.40
+    });
+  }
+
+  pairs.sort(
+    (a, b) =>
+      b.score -
+      a.score
+  );
+
+  return pairs;
+}
+
+/*
+ * =====================================================
+ * MAIN
+ * =====================================================
+ */
+
+export async function onRequestGet(
+  context
+) {
   try {
-    const db = context.env.DB;
+    const db =
+      context.env.DB;
 
     const url =
-      new URL(context.request.url);
-
-    /*
-     * Số kỳ muốn test.
-     *
-     * /api/backtest?days=100
-     */
+      new URL(
+        context.request.url
+      );
 
     let testDays =
       parseInt(
-        url.searchParams.get("days")
-          || "100",
+        url.searchParams.get(
+          "days"
+        ) || "100",
+        10
+      );
+
+    let minimumHistory =
+      parseInt(
+        url.searchParams.get(
+          "history"
+        ) || "60",
         10
       );
 
@@ -331,19 +784,30 @@ export async function onRequestGet(context) {
       testDays = 100;
     }
 
-    /*
-     * Giới hạn để tránh request quá nặng
-     */
+    if (
+      isNaN(
+        minimumHistory
+      ) ||
+      minimumHistory < 30
+    ) {
+      minimumHistory = 60;
+    }
 
     testDays =
-      Math.min(testDays, 500);
+      Math.min(
+        testDays,
+        500
+      );
 
     /*
-     * Lấy database theo thứ tự
-     * mới -> cũ
+     * =================================================
+     * LOAD D1
+     * =================================================
      */
 
-    const { results: rows } =
+    const {
+      results: rows
+    } =
       await db
         .prepare(`
           SELECT
@@ -351,134 +815,217 @@ export async function onRequestGet(context) {
             number,
             count
           FROM loto
-          ORDER BY draw_date DESC
+          ORDER BY draw_date ASC
         `)
         .all();
 
-    if (!rows || rows.length === 0) {
-      return Response.json({
-        success: false,
-        message:
-          "Database chưa có dữ liệu"
-      });
+    if (
+      !rows ||
+      rows.length === 0
+    ) {
+      return Response.json(
+        {
+          success: false,
+          message:
+            "Database chưa có dữ liệu loto"
+        },
+        {
+          status: 400
+        }
+      );
     }
 
     /*
-     * date -> loto
+     * =================================================
+     * MAP
+     * =================================================
      */
 
     const dateMap = {};
 
-    for (const row of rows) {
-      if (!dateMap[row.draw_date]) {
-        dateMap[row.draw_date] = {};
+    for (
+      const row
+      of rows
+    ) {
+      if (
+        !dateMap[
+          row.draw_date
+        ]
+      ) {
+        dateMap[
+          row.draw_date
+        ] = {};
       }
 
-      dateMap[row.draw_date][row.number] =
-        Number(row.count);
+      dateMap[
+        row.draw_date
+      ][
+        String(
+          row.number
+        ).padStart(
+          2,
+          "0"
+        )
+      ] =
+        Number(
+          row.count
+        );
     }
 
     /*
-     * Chuyển thành cũ -> mới
+     * allDates =
+     * CHỈ NHỮNG NGÀY CÓ KỲ XỔ.
+     *
+     * Nghỉ Tết không xuất hiện ở đây.
      */
 
     const allDates =
-      [
-        ...new Set(
-          rows.map(
-            row => row.draw_date
-          )
-        )
-      ].sort();
-
-    /*
-     * Cần tối thiểu 30 kỳ history.
-     * 60 tốt hơn cho model hiện tại.
-     */
-
-    const minimumHistory = 60;
+      Object.keys(
+        dateMap
+      ).sort();
 
     if (
       allDates.length <=
       minimumHistory
     ) {
-      return Response.json({
-        success: false,
+      return Response.json(
+        {
+          success: false,
 
-        message:
-          "Cần nhiều hơn 60 kỳ dữ liệu để backtest",
+          message:
+            `Cần nhiều hơn ${minimumHistory} kỳ dữ liệu`,
 
-        totalDraws:
-          allDates.length
-      });
+          totalDraws:
+            allDates.length
+        },
+        {
+          status: 400
+        }
+      );
     }
 
     /*
-     * Chỉ test N kỳ cuối
+     * =================================================
+     * CHỌN KHOẢNG TEST
+     * =================================================
      */
 
-    const firstPossible =
-      minimumHistory;
-
     const requestedStart =
-      allDates.length - testDays;
+      allDates.length -
+      testDays;
 
     const startIndex =
       Math.max(
-        firstPossible,
+        minimumHistory,
         requestedStart
       );
 
     /*
-     * Metrics
+     * =================================================
+     * METRIC CONFIG
+     * =================================================
      */
+
+    const topSizes =
+      [
+        1,
+        2,
+        3,
+        5,
+        10,
+        15,
+        20
+      ];
+
+    const pairSizes =
+      [
+        1,
+        3,
+        5
+      ];
+
+    const numberStats = {};
+
+    for (
+      const size
+      of topSizes
+    ) {
+      numberStats[size] = {
+        hits: 0,
+
+        baselineExpected:
+          0,
+
+        baselineVariance:
+          0
+      };
+    }
+
+    const pairStats = {};
+
+    for (
+      const size
+      of pairSizes
+    ) {
+      pairStats[size] = {
+        hits: 0,
+
+        baselineExpected:
+          0,
+
+        baselineVariance:
+          0
+      };
+    }
 
     let tested = 0;
 
-    let hit1 = 0;
-    let hit2 = 0;
-    let hit3 = 0;
-    let hit5 = 0;
-    let hit10 = 0;
-    let hit15 = 0;
-    let hit20 = 0;
-
-    let pairHit1 = 0;
-    let pairHit3 = 0;
-    let pairHit5 = 0;
+    let totalUniqueActual =
+      0;
 
     const daily = [];
 
     /*
-     * =========================================
+     * =================================================
      * WALK FORWARD
-     * =========================================
+     * =================================================
      */
 
     for (
-      let targetIndex = startIndex;
-      targetIndex < allDates.length;
+      let targetIndex =
+        startIndex;
+
+      targetIndex <
+        allDates.length;
+
       targetIndex++
     ) {
       const targetDate =
-        allDates[targetIndex];
+        allDates[
+          targetIndex
+        ];
 
       /*
-       * Chỉ lấy ngày TRƯỚC targetDate.
-       *
-       * buildModel yêu cầu:
-       * mới -> cũ
+       * Chỉ lấy các kỳ TRƯỚC target.
        */
 
       const historyDates =
         allDates
-          .slice(0, targetIndex)
+          .slice(
+            0,
+            targetIndex
+          )
           .reverse();
 
       const predictions =
         buildModel(
           historyDates,
           dateMap
+        );
+
+      const pairs =
+        buildPairs(
+          predictions
         );
 
       /*
@@ -488,11 +1035,15 @@ export async function onRequestGet(context) {
       const actualNumbers =
         new Set(
           Object.entries(
-            dateMap[targetDate] || {}
+            dateMap[
+              targetDate
+            ] || {}
           )
             .filter(
               ([, count]) =>
-                count > 0
+                Number(
+                  count
+                ) > 0
             )
             .map(
               ([number]) =>
@@ -500,133 +1051,100 @@ export async function onRequestGet(context) {
             )
         );
 
+      const uniqueCount =
+        actualNumbers.size;
+
+      totalUniqueActual +=
+        uniqueCount;
+
       /*
-       * Kiểm tra Top N
+       * ===============================================
+       * TOP NUMBER
+       * ===============================================
        */
 
-      function hasHit(n) {
-        return predictions
-          .slice(0, n)
-          .some(
+      const dayNumberHits =
+        {};
+
+      for (
+        const size
+        of topSizes
+      ) {
+        const selected =
+          predictions.slice(
+            0,
+            size
+          );
+
+        const hit =
+          selected.some(
             item =>
               actualNumbers.has(
                 item.number
               )
           );
+
+        if (hit) {
+          numberStats[
+            size
+          ].hits++;
+        }
+
+        dayNumberHits[
+          `top${size}`
+        ] = hit;
+
+        /*
+         * Exact random baseline
+         */
+
+        const randomP =
+          randomHitProbability(
+            uniqueCount,
+            size
+          );
+
+        numberStats[
+          size
+        ].baselineExpected +=
+          randomP;
+
+        numberStats[
+          size
+        ].baselineVariance +=
+          randomP *
+          (
+            1 - randomP
+          );
       }
-
-      const h1 =
-        hasHit(1);
-
-      const h2 =
-        hasHit(2);
-
-      const h3 =
-        hasHit(3);
-
-      const h5 =
-        hasHit(5);
-
-      const h10 =
-        hasHit(10);
-
-      const h15 =
-        hasHit(15);
-
-      const h20 =
-        hasHit(20);
-
-      if (h1) hit1++;
-      if (h2) hit2++;
-      if (h3) hit3++;
-      if (h5) hit5++;
-      if (h10) hit10++;
-      if (h15) hit15++;
-      if (h20) hit20++;
 
       /*
-       * =========================================
-       * CẶP ĐẢO
-       * =========================================
+       * ===============================================
+       * PAIR
+       *
+       * 1 pair = 2 số.
+       * 3 pairs = 6 số.
+       * 5 pairs = 10 số.
+       *
+       * Các cặp đảo của chúng ta không trùng nhau.
+       * ===============================================
        */
 
-      const pairs = [];
-      const usedPairs = new Set();
+      const dayPairHits =
+        {};
 
       for (
-        const item
-        of predictions
+        const size
+        of pairSizes
       ) {
-        if (
-          item.number ===
-          item.reverse
-        ) {
-          continue;
-        }
-
-        const key =
-          [
-            item.number,
-            item.reverse
-          ]
-            .sort()
-            .join("-");
-
-        if (
-          usedPairs.has(key)
-        ) {
-          continue;
-        }
-
-        usedPairs.add(key);
-
-        const reverseItem =
-          predictions.find(
-            p =>
-              p.number ===
-              item.reverse
+        const selectedPairs =
+          pairs.slice(
+            0,
+            size
           );
 
-        if (!reverseItem) {
-          continue;
-        }
-
-        const high =
-          Math.max(
-            item.score,
-            reverseItem.score
-          );
-
-        const low =
-          Math.min(
-            item.score,
-            reverseItem.score
-          );
-
-        pairs.push({
-          pair: key,
-
-          number1:
-            item.number,
-
-          number2:
-            item.reverse,
-
-          score:
-            high * 0.6 +
-            low * 0.4
-        });
-      }
-
-      pairs.sort(
-        (a, b) =>
-          b.score - a.score
-      );
-
-      function pairHit(n) {
-        return pairs
-          .slice(0, n)
-          .some(
+        const pairHit =
+          selectedPairs.some(
             pair =>
               actualNumbers.has(
                 pair.number1
@@ -635,101 +1153,305 @@ export async function onRequestGet(context) {
                 pair.number2
               )
           );
+
+        if (pairHit) {
+          pairStats[
+            size
+          ].hits++;
+        }
+
+        dayPairHits[
+          `top${size}Pairs`
+        ] = pairHit;
+
+        /*
+         * size cặp =
+         * size * 2 số.
+         */
+
+        const selectedNumbers =
+          size * 2;
+
+        const randomP =
+          randomHitProbability(
+            uniqueCount,
+            selectedNumbers
+          );
+
+        pairStats[
+          size
+        ].baselineExpected +=
+          randomP;
+
+        pairStats[
+          size
+        ].baselineVariance +=
+          randomP *
+          (
+            1 - randomP
+          );
       }
 
-      const p1 =
-        pairHit(1);
-
-      const p3 =
-        pairHit(3);
-
-      const p5 =
-        pairHit(5);
-
-      if (p1) pairHit1++;
-      if (p3) pairHit3++;
-      if (p5) pairHit5++;
-
       tested++;
-
-      /*
-       * Chỉ giữ thông tin cần thiết.
-       * Không trả toàn bộ 100 số mỗi ngày.
-       */
 
       daily.push({
         date:
           targetDate,
 
+        historyDraws:
+          historyDates.length,
+
+        actualUnique:
+          uniqueCount,
+
         top5:
           predictions
-            .slice(0, 5)
+            .slice(
+              0,
+              5
+            )
             .map(
-              item =>
-                item.number
+              x => x.number
             ),
 
-        actual:
-          [...actualNumbers],
-
-        hit: {
-          top1: h1,
-          top2: h2,
-          top3: h3,
-          top5: h5,
-          top10: h10
-        },
-
         topPair:
-          pairs[0]?.pair
+          pairs[0]
+            ?.pair
           || null,
 
+        hit:
+          dayNumberHits,
+
         pairHit:
-          p1
+          dayPairHits
       });
     }
 
-    function rate(hits) {
-      if (!tested) return 0;
+    /*
+     * =================================================
+     * BUILD METRIC
+     * =================================================
+     */
 
-      return Number(
-        (
-          hits /
-          tested *
-          100
-        ).toFixed(2)
-      );
+    function buildMetric(
+      stat
+    ) {
+      const modelRate =
+        tested > 0
+          ?
+          stat.hits /
+          tested
+          :
+          0;
+
+      const baselineRate =
+        tested > 0
+          ?
+          stat.baselineExpected /
+          tested
+          :
+          0;
+
+      /*
+       * Lift
+       */
+
+      const lift =
+        baselineRate > 0
+          ?
+          modelRate /
+          baselineRate
+          :
+          0;
+
+      /*
+       * Z-test so với random expectation
+       */
+
+      let zScore = 0;
+      let pValue = 1;
+
+      if (
+        stat.baselineVariance >
+        0
+      ) {
+        zScore =
+          (
+            stat.hits -
+            stat.baselineExpected
+          ) /
+          Math.sqrt(
+            stat.baselineVariance
+          );
+
+        /*
+         * one-sided:
+         *
+         * H1 =
+         * model tốt hơn random
+         */
+
+        pValue =
+          1 -
+          normalCDF(
+            zScore
+          );
+      }
+
+      const ci =
+        wilsonInterval(
+          stat.hits,
+          tested
+        );
+
+      return {
+        hits:
+          stat.hits,
+
+        tested,
+
+        modelRate:
+          Number(
+            (
+              modelRate *
+              100
+            ).toFixed(2)
+          ),
+
+        randomBaseline:
+          Number(
+            (
+              baselineRate *
+              100
+            ).toFixed(2)
+          ),
+
+        lift:
+          Number(
+            lift.toFixed(3)
+          ),
+
+        liftPercent:
+          Number(
+            (
+              (
+                lift - 1
+              ) *
+              100
+            ).toFixed(2)
+          ),
+
+        confidence95: {
+          low:
+            Number(
+              ci.low.toFixed(
+                2
+              )
+            ),
+
+          high:
+            Number(
+              ci.high.toFixed(
+                2
+              )
+            )
+        },
+
+        zScore:
+          Number(
+            zScore.toFixed(
+              3
+            )
+          ),
+
+        pValue:
+          Number(
+            pValue.toFixed(
+              5
+            )
+          ),
+
+        significant:
+          (
+            pValue < 0.05 &&
+            modelRate >
+            baselineRate
+          )
+      };
+    }
+
+    const numberPerformance =
+      {};
+
+    for (
+      const size
+      of topSizes
+    ) {
+      numberPerformance[
+        `top${size}`
+      ] =
+        buildMetric(
+          numberStats[
+            size
+          ]
+        );
+    }
+
+    const reversePairPerformance =
+      {};
+
+    for (
+      const size
+      of pairSizes
+    ) {
+      reversePairPerformance[
+        `top${size}Pairs`
+      ] =
+        buildMetric(
+          pairStats[
+            size
+          ]
+        );
     }
 
     /*
-     * =========================================
-     * BASELINE
-     *
-     * Một kỳ XSMB có 27 lượt loto nhưng số
-     * khác nhau thực tế thường <27.
-     *
-     * Baseline chính xác hơn sẽ được tính
-     * ở bước optimizer.
-     * =========================================
+     * =================================================
+     * ĐÁNH GIÁ TỔNG QUÁT
+     * =================================================
      */
 
-    const averageUnique =
-      allDates
-        .slice(startIndex)
-        .reduce(
-          (sum, date) =>
-            sum +
-            Object.keys(
-              dateMap[date] || {}
-            ).length,
-          0
-        ) / tested;
+    const top1 =
+      numberPerformance
+        .top1;
 
-    const approximateRandomTop1 =
-      averageUnique;
+    let verdict =
+      "NO_EDGE";
+
+    if (
+      top1.significant &&
+      top1.lift > 1
+    ) {
+      verdict =
+        "POSITIVE_EDGE";
+    } else if (
+      top1.lift >= 1 &&
+      top1.pValue >= 0.05
+    ) {
+      verdict =
+        "INCONCLUSIVE";
+    }
+
+    /*
+     * =================================================
+     * RESPONSE
+     * =================================================
+     */
 
     return Response.json({
       success: true,
+
+      version:
+        "2.0",
 
       model:
         "XSMB-MultiFactor-v1",
@@ -737,12 +1459,38 @@ export async function onRequestGet(context) {
       method:
         "walk-forward",
 
-      testedDraws:
-        tested,
+      drawUnit:
+        "actual-draw",
 
-      period: {
+      note:
+        "Gan, frequency và cycle được tính theo kỳ mở thưởng thực tế; ngày nghỉ Tết hoặc ngày không mở thưởng không được tính là một kỳ.",
+
+      database: {
+        totalDraws:
+          allDates.length,
+
+        firstDraw:
+          allDates[0],
+
+        lastDraw:
+          allDates[
+            allDates.length - 1
+          ]
+      },
+
+      test: {
+        minimumHistory,
+
+        requestedDraws:
+          testDays,
+
+        testedDraws:
+          tested,
+
         from:
-          allDates[startIndex],
+          allDates[
+            startIndex
+          ],
 
         to:
           allDates[
@@ -750,97 +1498,50 @@ export async function onRequestGet(context) {
           ]
       },
 
-      numberPerformance: {
-        top1: {
-          hits: hit1,
-          rate: rate(hit1)
-        },
-
-        top2: {
-          hits: hit2,
-          rate: rate(hit2)
-        },
-
-        top3: {
-          hits: hit3,
-          rate: rate(hit3)
-        },
-
-        top5: {
-          hits: hit5,
-          rate: rate(hit5)
-        },
-
-        top10: {
-          hits: hit10,
-          rate: rate(hit10)
-        },
-
-        top15: {
-          hits: hit15,
-          rate: rate(hit15)
-        },
-
-        top20: {
-          hits: hit20,
-          rate: rate(hit20)
-        }
-      },
-
-      reversePairPerformance: {
-        top1Pair: {
-          hits:
-            pairHit1,
-
-          rate:
-            rate(pairHit1)
-        },
-
-        top3Pairs: {
-          hits:
-            pairHit3,
-
-          rate:
-            rate(pairHit3)
-        },
-
-        top5Pairs: {
-          hits:
-            pairHit5,
-
-          rate:
-            rate(pairHit5)
-        }
-      },
-
-      baseline: {
-        averageUniqueNumbersPerDraw:
+      actualResults: {
+        averageUniqueNumbers:
           Number(
-            averageUnique.toFixed(2)
-          ),
-
-        approximateRandomTop1Rate:
-          Number(
-            approximateRandomTop1
-              .toFixed(2)
+            (
+              totalUniqueActual /
+              tested
+            ).toFixed(
+              2
+            )
           )
       },
 
-      /*
-       * 30 ngày gần nhất để response
-       * không quá lớn.
-       */
+      numberPerformance,
+
+      reversePairPerformance,
+
+      verdict,
+
+      interpretation: {
+        lift:
+          "lift > 1 nghĩa là model tốt hơn baseline ngẫu nhiên; lift < 1 nghĩa là kém baseline.",
+
+        pValue:
+          "pValue < 0.05 và modelRate > randomBaseline là tín hiệu thống kê đáng chú ý, nhưng không chứng minh khả năng dự đoán tương lai.",
+
+        score:
+          "Backtest đánh giá khả năng xếp hạng của model; score trong predict không phải xác suất trúng."
+      },
 
       recentTests:
         daily.slice(-30)
+
     });
 
   } catch (error) {
     return Response.json(
       {
         success: false,
+
         message:
-          error.message
+          error.message,
+
+        stack:
+          error.stack
       },
       {
         status: 500
