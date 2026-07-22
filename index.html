@@ -20,64 +20,75 @@
 
 <main>
 
+  <!-- KẾT QUẢ MỚI NHẤT -->
   <section class="card">
+
     <h2>Kết quả mới nhất</h2>
 
-    <p class="date">Chưa có dữ liệu</p>
-
-    <div class="special">
-      -----
+    <div id="latest-result">
+      Đang tải dữ liệu...
     </div>
+
   </section>
 
 
+  <!-- CẦU HÔM NAY -->
   <section class="card">
 
     <h2>Cầu hôm nay</h2>
 
-    <div class="prediction">
-
-      <span class="pair">
-        -- - --
-      </span>
-
-      <p>
-        Chưa có dữ liệu phân tích
-      </p>
-
+    <div id="today-prediction">
+      Đang phân tích...
     </div>
 
   </section>
 
 
+  <!-- PHÂN TÍCH -->
   <section class="card">
 
     <h2>Phân tích</h2>
 
-    <button onclick="analyze()">
+    <button
+      id="analyze-button"
+      onclick="refreshAnalysis()"
+    >
       Phân tích hôm nay
     </button>
 
-    <div id="result"></div>
+    <div id="system-status">
+      Đang kết nối cơ sở dữ liệu...
+    </div>
+
+    <div id="analysis-detail"></div>
 
   </section>
 
 
+  <!-- MENU -->
   <section class="menu">
 
-    <button>Thống kê</button>
+    <button onclick="showStatistics()">
+      Thống kê
+    </button>
 
-    <button>Cầu hôm nay</button>
+    <button onclick="showPrediction()">
+      Cầu hôm nay
+    </button>
 
-    <button>Backtest</button>
+    <button onclick="showBacktest()">
+      Backtest
+    </button>
 
-    <button>Lịch sử</button>
+    <button onclick="showHistory()">
+      Lịch sử
+    </button>
 
   </section>
 
 </main>
 
-<script src="app.js"></script>
+<script src="/app.js"></script>
 
 </body>
 </html>
