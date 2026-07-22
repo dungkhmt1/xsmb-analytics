@@ -2,14 +2,28 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
+
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
   >
 
   <meta name="theme-color" content="#b91c1c">
 
   <title>XSMB Analytics</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet"
+  >
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,500,1,0"
+    rel="stylesheet"
+  >
 
   <link rel="stylesheet" href="/style.css">
   <link rel="manifest" href="/manifest.json">
@@ -17,14 +31,11 @@
 
 <body>
 
-<header class="top-header">
+<header class="app-header">
 
-  <div class="header-decoration decoration-1"></div>
-  <div class="header-decoration decoration-2"></div>
+  <div class="header-main">
 
-  <div class="header-inner">
-
-    <div class="brand-area">
+    <div class="brand">
 
       <div class="brand-icon">
         <span class="material-symbols-rounded">
@@ -32,87 +43,26 @@
         </span>
       </div>
 
-      <div class="brand-text">
-
-        <div class="brand-title-row">
-
-          <h1>
-            XSMB
-            <span>Analytics</span>
-          </h1>
-
-          <div class="live-badge">
-            <span class="live-dot"></span>
-            LIVE
-          </div>
-
+      <div>
+        <div class="brand-title">
+          XSMB <span>Analytics</span>
         </div>
 
-        <p>
-          Phân tích dữ liệu & thống kê Xổ số Miền Bắc
-        </p>
-
-      </div>
-
-    </div>
-
-
-    <div class="header-actions">
-
-      <div class="header-stat">
-
-        <span class="material-symbols-rounded">
-          database
-        </span>
-
-        <div>
-          <small>Dữ liệu</small>
-
-          <strong id="header-total-draws">
-            -- kỳ
-          </strong>
+        <div class="brand-subtitle">
+          Phân tích dữ liệu miền Bắc
         </div>
-
-      </div>
-
-
-      <div class="header-logo">
-
-        <span class="material-symbols-rounded">
-          query_stats
-        </span>
-
       </div>
 
     </div>
 
-  </div>
+    <div class="header-status">
 
+      <span class="status-dot"></span>
 
-  <div class="header-bottom">
-
-    <div class="header-bottom-item">
-      <span class="material-symbols-rounded">
-        verified
+      <span id="header-total-draws">
+        -- kỳ
       </span>
 
-      Dữ liệu tự động
-    </div>
-
-    <div class="header-bottom-item">
-      <span class="material-symbols-rounded">
-        analytics
-      </span>
-
-      Phân tích đa yếu tố
-    </div>
-
-    <div class="header-bottom-item">
-      <span class="material-symbols-rounded">
-        history
-      </span>
-
-      Backtest lịch sử
     </div>
 
   </div>
@@ -120,29 +70,27 @@
 </header>
 
 
-<main class="dashboard">
+<main class="app-container">
 
-  <!-- ===================================
-       KẾT QUẢ MỚI NHẤT
-  ==================================== -->
+  <!-- KẾT QUẢ -->
 
-  <section class="panel result-panel">
+  <section class="card">
 
-    <div class="panel-heading">
+    <div class="card-header">
 
       <div>
-        <span class="eyebrow">
-          KẾT QUẢ MỚI NHẤT
-        </span>
+        <div class="section-label">
+          KẾT QUẢ
+        </div>
 
         <h2>
-          Xổ số miền Bắc
+          XSMB mới nhất
         </h2>
       </div>
 
       <div
         id="latest-date-badge"
-        class="date-badge"
+        class="date-chip"
       >
         --/--/----
       </div>
@@ -150,59 +98,59 @@
     </div>
 
     <div id="latest-result">
-      <div class="loading-box">
+
+      <div class="skeleton-box">
         Đang tải kết quả...
       </div>
+
     </div>
 
   </section>
 
 
-  <!-- ===================================
-       DỰ ĐOÁN
-  ==================================== -->
+  <!-- DỰ ĐOÁN -->
 
-  <section class="panel prediction-panel">
+  <section class="card hot-card">
 
-    <div class="panel-heading">
+    <div class="card-header">
 
       <div>
-        <span class="eyebrow">
-          PHÂN TÍCH MODEL
-        </span>
+        <div class="section-label">
+          PHÂN TÍCH HÔM NAY
+        </div>
 
         <h2>
           Dàn số gợi ý
         </h2>
       </div>
 
-      <div class="hot-badge">
+      <span class="hot-chip">
         HOT
-      </div>
+      </span>
 
     </div>
 
     <div id="today-prediction">
-      <div class="loading-box">
+
+      <div class="skeleton-box">
         Đang phân tích...
       </div>
+
     </div>
 
   </section>
 
 
-  <!-- ===================================
-       PHÂN TÍCH TOP
-  ==================================== -->
+  <!-- TOP MODEL -->
 
-  <section class="panel">
+  <section class="card">
 
-    <div class="panel-heading">
+    <div class="card-header">
 
       <div>
-        <span class="eyebrow">
-          THỐNG KÊ
-        </span>
+        <div class="section-label">
+          XẾP HẠNG
+        </div>
 
         <h2>
           Top số theo mô hình
@@ -211,10 +159,13 @@
 
       <button
         id="analyze-button"
-        class="primary-button"
+        class="icon-button"
         onclick="refreshAnalysis()"
+        aria-label="Làm mới"
       >
-        Phân tích hôm nay
+        <span class="material-symbols-rounded">
+          refresh
+        </span>
       </button>
 
     </div>
@@ -223,7 +174,7 @@
       id="system-status"
       class="system-status"
     >
-      Đang kết nối cơ sở dữ liệu...
+      Đang kết nối dữ liệu...
     </div>
 
     <div id="analysis-detail"></div>
@@ -231,91 +182,33 @@
   </section>
 
 
-  <!-- ===================================
-       MENU
-  ==================================== -->
+  <!-- TRACKING -->
 
-  <section class="menu-grid">
+  <section
+    class="card"
+    id="tracking-section"
+    style="display:none;"
+  >
 
-    <button onclick="showStatistics()">
-      <span class="menu-icon">
-        📊
-      </span>
-      <span>
-        Thống kê
-      </span>
-    </button>
-
-    <button onclick="showPrediction()">
-      <span class="menu-icon">
-        🔥
-      </span>
-      <span>
-        Cầu hôm nay
-      </span>
-    </button>
-
-    <button onclick="showBacktest()">
-      <span class="menu-icon">
-        🧪
-      </span>
-      <span>
-        Backtest
-      </span>
-    </button>
-
-    <button onclick="showHistory()">
-      <span class="menu-icon">
-        🗂
-      </span>
-      <span>
-        Lịch sử
-      </span>
-    </button>
-
-    <button
-      class="tracking-menu"
-      onclick="showTracking()"
-    >
-      <span class="menu-icon">
-        💰
-      </span>
-
-      <span>
-        Theo dõi dự đoán
-      </span>
-    </button>
-
-  </section>
-
-
-  <!-- ===================================
-       THEO DÕI DỰ ĐOÁN
-  ==================================== -->
-
- <section
-  class="panel"
-  id="tracking-section"
-  style="display:none;"
->
-
-    <div class="panel-heading">
+    <div class="card-header">
 
       <div>
-        <span class="eyebrow">
+        <div class="section-label">
           HIỆU QUẢ
-        </span>
+        </div>
 
         <h2>
           Theo dõi dự đoán
         </h2>
       </div>
 
+      <span class="material-symbols-rounded tracking-icon">
+        payments
+      </span>
+
     </div>
 
-    <div id="tracking-summary">
-      Đang tải...
-    </div>
+    <div id="tracking-summary"></div>
 
     <div id="tracking-table"></div>
 
@@ -324,9 +217,64 @@
 </main>
 
 
-<footer>
-  XSMB Analytics • Điểm mô hình chỉ dùng để xếp hạng
-</footer>
+<nav class="bottom-nav">
+
+  <button
+    class="nav-item active"
+    onclick="showPrediction()"
+  >
+    <span class="material-symbols-rounded">
+      home
+    </span>
+
+    <span>
+      Hôm nay
+    </span>
+  </button>
+
+
+  <button
+    class="nav-item"
+    onclick="showStatistics()"
+  >
+    <span class="material-symbols-rounded">
+      query_stats
+    </span>
+
+    <span>
+      Thống kê
+    </span>
+  </button>
+
+
+  <button
+    class="nav-item"
+    onclick="showTracking()"
+  >
+    <span class="material-symbols-rounded">
+      paid
+    </span>
+
+    <span>
+      Theo dõi
+    </span>
+  </button>
+
+
+  <button
+    class="nav-item"
+    onclick="showBacktest()"
+  >
+    <span class="material-symbols-rounded">
+      experiment
+    </span>
+
+    <span>
+      Backtest
+    </span>
+  </button>
+
+</nav>
 
 
 <script src="/app.js"></script>

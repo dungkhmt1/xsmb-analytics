@@ -900,3 +900,86 @@ function money(value) {
     Number(value || 0)
   ) + "đ";
 }
+function setActiveNav(index) {
+  const items =
+    document.querySelectorAll(
+      ".bottom-nav .nav-item"
+    );
+
+  items.forEach(
+    (item, i) => {
+      item.classList.toggle(
+        "active",
+        i === index
+      );
+    }
+  );
+}
+
+
+window.showPrediction =
+  function () {
+
+    setActiveNav(0);
+
+    document
+      .getElementById(
+        "today-prediction"
+      )
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+  };
+
+
+window.showStatistics =
+  function () {
+
+    setActiveNav(1);
+
+    document
+      .getElementById(
+        "analysis-detail"
+      )
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+  };
+
+
+window.showTracking =
+  async function () {
+
+    setActiveNav(2);
+
+    const section =
+      document.getElementById(
+        "tracking-section"
+      );
+
+    if (!section) return;
+
+    section.style.display =
+      "block";
+
+    await loadPredictionHistory();
+
+    section.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  };
+
+
+window.showBacktest =
+  function () {
+
+    setActiveNav(3);
+
+    window.open(
+      "/api/backtest?days=100",
+      "_blank"
+    );
+  };
