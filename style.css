@@ -56,168 +56,441 @@ body {
    HEADER
 =================================== */
 
+body {
+  font-family:
+    "Be Vietnam Pro",
+    Arial,
+    sans-serif;
+}
+
+
 .top-header {
+  position: relative;
+  overflow: hidden;
+
   background:
     linear-gradient(
-      135deg,
-      #7f1d1d,
-      #dc2626,
-      #f97316
+      125deg,
+      #7f1d1d 0%,
+      #b91c1c 35%,
+      #dc2626 68%,
+      #f97316 100%
     );
 
   color: white;
 
-  padding:
-    22px 20px;
-
   box-shadow:
-    0 5px 18px
-    rgba(127, 29, 29, 0.25);
+    0 8px 28px
+    rgba(127, 29, 29, 0.28);
 }
 
+
+/* ánh sáng trang trí */
+
+.header-decoration {
+  position: absolute;
+
+  border-radius: 50%;
+
+  background:
+    rgba(255, 255, 255, 0.07);
+
+  pointer-events: none;
+}
+
+.decoration-1 {
+  width: 230px;
+  height: 230px;
+
+  right: -70px;
+  top: -110px;
+}
+
+.decoration-2 {
+  width: 150px;
+  height: 150px;
+
+  left: 30%;
+  bottom: -110px;
+}
+
+
+/* Header chính */
+
 .header-inner {
+  position: relative;
+
   max-width: 960px;
 
   margin: auto;
 
+  padding: 25px 20px 20px;
+
   display: flex;
 
   align-items: center;
-  justify-content:
-    space-between;
+
+  justify-content: space-between;
+
+  gap: 25px;
+
+  z-index: 2;
 }
 
-.top-header h1 {
-  margin: 0;
 
-  font-size: 28px;
+/* Logo + tên */
+
+.brand-area {
+  display: flex;
+
+  align-items: center;
+
+  gap: 15px;
 }
 
-.top-header p {
-  margin:
-    7px 0 0;
 
-  opacity: 0.9;
-
-  font-size: 14px;
-}
-
-.header-badge {
+.brand-icon {
   width: 58px;
   height: 58px;
 
+  flex-shrink: 0;
+
   display: flex;
+
   align-items: center;
   justify-content: center;
 
+  border-radius: 17px;
+
   background:
-    rgba(
-      255,
-      255,
-      255,
-      0.18
+    linear-gradient(
+      145deg,
+      #facc15,
+      #f97316
     );
 
-  border:
-    2px solid
-    rgba(
-      255,
-      255,
-      255,
-      0.35
-    );
+  color: #7f1d1d;
 
-  border-radius: 50%;
-
-  font-weight: 800;
-}
-
-
-/* ===================================
-   DASHBOARD
-=================================== */
-
-.dashboard {
-  max-width: 960px;
-
-  margin:
-    25px auto;
-
-  padding:
-    0 15px;
-}
-
-.panel {
-  background: white;
-
-  border-radius: 18px;
-
-  padding: 20px;
-
-  margin-bottom: 18px;
-
-  box-shadow: var(--shadow);
+  box-shadow:
+    0 8px 20px
+    rgba(0, 0, 0, 0.18);
 
   border:
     1px solid
-    rgba(
-      249,
-      115,
-      22,
-      0.10
-    );
+    rgba(255, 255, 255, 0.4);
 }
 
-.panel-heading {
+
+.brand-icon
+.material-symbols-rounded {
+  font-size: 34px;
+
+  font-variation-settings:
+    'FILL' 1,
+    'wght' 600;
+}
+
+
+.brand-title-row {
   display: flex;
 
   align-items: center;
 
-  justify-content:
-    space-between;
-
-  gap: 15px;
-
-  margin-bottom: 18px;
+  gap: 11px;
 }
 
-.panel-heading h2 {
-  margin:
-    3px 0 0;
 
-  font-size: 21px;
+.brand-text h1 {
+  margin: 0;
+
+  font-size: 29px;
+
+  font-weight: 900;
+
+  letter-spacing: -1px;
+
+  line-height: 1.2;
 }
 
-.eyebrow {
-  color: var(--orange);
 
-  font-size: 12px;
+.brand-text h1 span {
+  color: #fde68a;
+}
+
+
+.brand-text p {
+  margin: 7px 0 0;
+
+  color:
+    rgba(255, 255, 255, 0.82);
+
+  font-size: 13px;
+
+  font-weight: 400;
+}
+
+
+/* LIVE */
+
+.live-badge {
+  display: flex;
+
+  align-items: center;
+
+  gap: 5px;
+
+  padding:
+    4px 8px;
+
+  border-radius: 20px;
+
+  background:
+    rgba(255, 255, 255, 0.15);
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.22);
+
+  font-size: 9px;
 
   font-weight: 800;
 
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
+}
+
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #fde047;
+
+  box-shadow:
+    0 0 0 3px
+    rgba(253, 224, 71, 0.2);
+}
+
+
+/* bên phải */
+
+.header-actions {
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+}
+
+
+.header-stat {
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+
+  padding:
+    9px 13px;
+
+  border-radius: 13px;
+
+  background:
+    rgba(255, 255, 255, 0.11);
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.16);
+
+  backdrop-filter:
+    blur(5px);
+}
+
+
+.header-stat
+.material-symbols-rounded {
+  color: #fde68a;
+
+  font-size: 22px;
+}
+
+
+.header-stat small {
+  display: block;
+
+  font-size: 9px;
+
+  color:
+    rgba(255, 255, 255, 0.7);
+
+  margin-bottom: 2px;
+}
+
+
+.header-stat strong {
+  display: block;
+
+  font-size: 12px;
+
+  white-space: nowrap;
+}
+
+
+.header-logo {
+  width: 45px;
+  height: 45px;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 13px;
+
+  background:
+    rgba(255, 255, 255, 0.13);
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.2);
+}
+
+
+.header-logo
+.material-symbols-rounded {
+  font-size: 27px;
+}
+
+
+/* thanh dưới */
+
+.header-bottom {
+  position: relative;
+
+  z-index: 2;
+
+  display: flex;
+
+  justify-content: center;
+
+  gap: 35px;
+
+  padding:
+    9px 20px;
+
+  background:
+    rgba(69, 10, 10, 0.24);
+
+  border-top:
+    1px solid
+    rgba(255, 255, 255, 0.09);
+}
+
+
+.header-bottom-item {
+  display: flex;
+
+  align-items: center;
+
+  gap: 5px;
+
+  font-size: 10px;
+
+  color:
+    rgba(255, 255, 255, 0.75);
+}
+
+
+.header-bottom-item
+.material-symbols-rounded {
+  font-size: 15px;
+
+  color: #fde68a;
 }
 
 
 /* ===================================
-   DATE
+   MOBILE HEADER
 =================================== */
 
-.date-badge {
-  padding:
-    8px 12px;
+@media (max-width: 700px) {
 
-  background:
-    var(--yellow-soft);
+  .header-inner {
+    padding:
+      18px 15px 15px;
+  }
 
-  color:
-    var(--red-dark);
 
-  border-radius: 20px;
+  .brand-icon {
+    width: 48px;
+    height: 48px;
 
-  font-weight: 800;
+    border-radius: 14px;
+  }
 
-  font-size: 13px;
+
+  .brand-icon
+  .material-symbols-rounded {
+    font-size: 29px;
+  }
+
+
+  .brand-text h1 {
+    font-size: 22px;
+
+    letter-spacing: -0.6px;
+  }
+
+
+  .brand-text p {
+    font-size: 10px;
+
+    max-width: 220px;
+
+    line-height: 1.5;
+  }
+
+
+  .live-badge {
+    font-size: 8px;
+
+    padding:
+      3px 6px;
+  }
+
+
+  .header-stat {
+    display: none;
+  }
+
+
+  .header-logo {
+    display: none;
+  }
+
+
+  .header-bottom {
+    justify-content:
+      space-around;
+
+    gap: 5px;
+
+    padding:
+      8px 5px;
+  }
+
+
+  .header-bottom-item {
+    font-size: 8px;
+  }
+
+
+  .header-bottom-item
+  .material-symbols-rounded {
+    font-size: 13px;
+  }
+
 }
 
 
@@ -874,3 +1147,17 @@ footer {
   }
 
 }
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<link
+  href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap"
+  rel="stylesheet"
+>
+
+<link
+  href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0"
+  rel="stylesheet"
+>
+
+<link rel="stylesheet" href="/style.css">

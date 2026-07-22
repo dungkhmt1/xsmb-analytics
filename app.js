@@ -60,6 +60,18 @@ async function loadDashboard() {
   }
 }
 function renderPrediction(data) {
+  const headerDraws =
+  document.getElementById(
+    "header-total-draws"
+  );
+
+if (
+  headerDraws &&
+  data.data?.totalDraws
+) {
+  headerDraws.textContent =
+    `${data.data.totalDraws} kỳ`;
+}
 
   const container =
     document.getElementById(
