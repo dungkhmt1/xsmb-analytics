@@ -98,3 +98,61 @@ button {
   padding-top: 15px;
   text-align: center;
 }
+.tracking-summary-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, 1fr);
+  gap: 10px;
+  margin: 15px 0;
+}
+
+.tracking-summary-grid > div {
+  background: #f3f4f6;
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+
+.tracking-summary-grid small {
+  display: block;
+  margin-bottom: 5px;
+  color: #6b7280;
+}
+
+.tracking-summary-grid strong {
+  font-size: 18px;
+}
+
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.tracking-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.tracking-table th,
+.tracking-table td {
+  border-bottom:
+    1px solid #e5e7eb;
+  padding: 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.tracking-table th {
+  background: #f9fafb;
+}
+
+.profit {
+  color: #059669;
+  font-weight: bold;
+}
+
+.loss {
+  color: #dc2626;
+  font-weight: bold;
+}

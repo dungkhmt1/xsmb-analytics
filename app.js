@@ -375,3 +375,298 @@ window.showHistory =
       "Trang lịch sử sẽ được tạo ở bước tiếp theo."
     );
   };
+  window.showTracking =
+  async function () {
+
+    const section =
+      document.getElementById(
+        "tracking-section"
+      );
+
+    if (!section) {
+      return;
+    }
+
+    section.style.display =
+      "block";
+
+    section.scrollIntoView({
+      behavior: "smooth"
+    });
+
+    await loadPredictionHistory();
+  };
+
+
+async function loadPredictionHistory() {
+  const summary =
+    document.getElementById(
+      "tracking-summary"
+    );
+
+  const table =
+    document.getElementById(
+      "tracking-table"
+    );
+
+  try {
+    const response =
+      await fetch(
+        "/api/prediction-history",
+        {
+          cache: "no-store"
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (!data.success) {
+      throw new Error(
+        data.message
+      );
+    }
+
+    /*
+     * Tổng kết
+     */
+
+    const s =
+      data.summary;
+
+    summary.innerHTML = `
+      <div class="tracking-summary-grid">
+
+        <div>
+          <small>Tổng kỳ</small>
+          <strong>
+            ${s.completed}
+          </strong>
+        </div>
+
+        <div>
+          <small>Tổng lần về</small>
+          <strong>
+            ${s.totalHits}
+          </strong>
+        </div>
+
+        <div>
+          <small>Tổng tiền đánh</small>
+          <strong>
+            ${money(s.totalCost)}
+          </strong>
+        </div>
+
+        <div>
+          <small>Tổng tiền nhận</small>
+          <strong>
+            ${money(s.totalPayout)}
+          </strong>
+        </div>
+
+        <div>
+          <small>Lãi / Lỗ</small>
+
+          <strong
+            class="${
+              s.totalProfit >= 0
+                ? "profit"
+                : "loss"
+            }"
+          >
+            ${
+              s.totalProfit >= 0
+                ? "+"
+                : ""
+            }
+
+            ${money(
+              s.totalProfit
+            )}
+          </strong>
+        </div>
+
+      </div>
+    `;
+
+    /*
+     * Bảng từng ngày
+     */
+
+    let html = `
+      <div class="table-wrapper">
+
+      <table class="tracking-table">
+
+        <thead>
+          <tr>
+            <th>Ngày</th>
+            <th>Dàn số</th>
+            <th>Kết quả</th>
+            <th>Lần về</th>
+            <th>Tiền đánh</th>
+            <th>Tiền nhận</th>
+            <th>Lãi/Lỗ</th>
+          </tr>
+        </thead>
+
+        <tbody>
+    `;
+
+    for (
+      const row
+      of data.history
+    ) {
+      let resultText = "";
+
+      for (
+        const number
+        of row.numbers
+      ) {
+        const hits =
+          row.hitsByNumber?.[
+            number
+          ] || 0;
+
+        resultText += `
+          <div>
+            ${number}:
+            <strong>
+              ${hits}
+            </strong>
+            lần
+          </div>
+        `;
+      }
+
+      if (
+        row.status ===
+        "pending"
+      ) {
+        html += `
+          <tr>
+
+            <td>
+              ${formatDate(
+                row.date
+              )}
+            </td>
+
+            <td>
+              <strong>
+                ${row.numbers.join(
+                  " - "
+                )}
+              </strong>
+            </td>
+
+            <td>
+              Chưa xổ
+            </td>
+
+            <td>-</td>
+
+            <td>
+              ${money(
+                row.cost
+              )}
+            </td>
+
+            <td>-</td>
+
+            <td>-</td>
+
+          </tr>
+        `;
+
+        continue;
+      }
+
+      html += `
+        <tr>
+
+          <td>
+            ${formatDate(
+              row.date
+            )}
+          </td>
+
+          <td>
+            <strong>
+              ${row.numbers.join(
+                " - "
+              )}
+            </strong>
+          </td>
+
+          <td>
+            ${resultText}
+          </td>
+
+          <td>
+            <strong>
+              ${row.totalHits}
+            </strong>
+          </td>
+
+          <td>
+            ${money(
+              row.cost
+            )}
+          </td>
+
+          <td>
+            ${money(
+              row.payout
+            )}
+          </td>
+
+          <td
+            class="${
+              row.profit >= 0
+                ? "profit"
+                : "loss"
+            }"
+          >
+
+            ${
+              row.profit >= 0
+                ? "+"
+                : ""
+            }
+
+            ${money(
+              row.profit
+            )}
+
+          </td>
+
+        </tr>
+      `;
+    }
+
+    html += `
+        </tbody>
+      </table>
+      </div>
+    `;
+
+    table.innerHTML =
+      html;
+
+  } catch (error) {
+    summary.innerHTML =
+      "Không tải được dữ liệu: " +
+      error.message;
+  }
+}
+
+
+function money(value) {
+  return new Intl.NumberFormat(
+    "vi-VN"
+  ).format(
+    Number(value || 0)
+  ) + "đ";
+}
