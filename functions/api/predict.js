@@ -1,3 +1,39 @@
+/*
+====================================================
+XSMB PREDICT - BRIDGE V2.2
+====================================================
+
+NGUYÊN TẮC:
+
+1. Ghép 1 chữ số ở vị trí A
+   với 1 chữ số ở vị trí B.
+
+2. Hai vị trí phải thuộc hai giải khác nhau.
+
+3. Số được tạo ở ngày N phải xuất hiện
+   trong loto ngày N+1.
+
+4. Cầu phải chạy LIÊN TỤC tới kỳ mới nhất.
+
+5. Chỉ giữ:
+   streak = 2
+   streak = 3
+
+6. streak >= 4:
+   LOẠI.
+
+7. Nếu lần gần nhất bị gãy:
+   streak = 0
+   => LOẠI.
+
+8. Cầu 3 ngày ưu tiên hơn cầu 2 ngày.
+
+9. API chỉ READ database.
+   Không INSERT / UPDATE dữ liệu.
+====================================================
+*/
+
+
 const PRIZES = [
   "special",
   "g1",
@@ -8,6 +44,7 @@ const PRIZES = [
   "g6",
   "g7"
 ];
+
 
 const LABELS = {
   special: "ĐB",
@@ -21,35 +58,70 @@ const LABELS = {
 };
 
 
-/* =========================================
-   TÁCH GIẢI
-========================================= */
+/*
+====================================================
+TÁCH CÁC SỐ TRONG GIẢI
+====================================================
+*/
 
 function splitPrize(value) {
-  if (!value) return [];
+
+  if (!value) {
+    return [];
+  }
+
 
   return String(value)
     .trim()
     .split(/\s+/)
-    .filter(value => /^\d+$/.test(value));
+    .filter(
+      value =>
+        /^\d+$/.test(value)
+    );
 }
 
 
-/* =========================================
-   KIỂM TRA KỲ HỢP LỆ
-========================================= */
+/*
+====================================================
+KIỂM TRA KỲ XỔ HỢP LỆ
+====================================================
+*/
 
 function validRow(row) {
-  if (!row) return false;
 
-  const special = splitPrize(row.special);
-  const g1 = splitPrize(row.g1);
-  const g2 = splitPrize(row.g2);
-  const g3 = splitPrize(row.g3);
-  const g4 = splitPrize(row.g4);
-  const g5 = splitPrize(row.g5);
-  const g6 = splitPrize(row.g6);
-  const g7 = splitPrize(row.g7);
+  if (!row) {
+    return false;
+  }
+
+
+  const special =
+    splitPrize(row.special);
+
+  const g1 =
+    splitPrize(row.g1);
+
+  const g2 =
+    splitPrize(row.g2);
+
+  const g3 =
+    splitPrize(row.g3);
+
+  const g4 =
+    splitPrize(row.g4);
+
+  const g5 =
+    splitPrize(row.g5);
+
+  const g6 =
+    splitPrize(row.g6);
+
+  const g7 =
+    splitPrize(row.g7);
+
+
+  /*
+  Kiểm tra số lượng giải.
+  */
 
   if (
     special.length !== 1 ||
@@ -64,101 +136,242 @@ function validRow(row) {
     return false;
   }
 
-  return (
-    /^\d{5}$/.test(special[0]) &&
-    g1.every(x => /^\d{5}$/.test(x)) &&
-    g2.every(x => /^\d{5}$/.test(x)) &&
-    g3.every(x => /^\d{5}$/.test(x)) &&
-    g4.every(x => /^\d{4}$/.test(x)) &&
-    g5.every(x => /^\d{4}$/.test(x)) &&
-    g6.every(x => /^\d{3}$/.test(x)) &&
-    g7.every(x => /^\d{2}$/.test(x))
-  );
+
+  /*
+  Kiểm tra số chữ số.
+  */
+
+  if (
+    !special.every(
+      x => /^\d{5}$/.test(x)
+    )
+  ) {
+    return false;
+  }
+
+
+  if (
+    !g1.every(
+      x => /^\d{5}$/.test(x)
+    )
+  ) {
+    return false;
+  }
+
+
+  if (
+    !g2.every(
+      x => /^\d{5}$/.test(x)
+    )
+  ) {
+    return false;
+  }
+
+
+  if (
+    !g3.every(
+      x => /^\d{5}$/.test(x)
+    )
+  ) {
+    return false;
+  }
+
+
+  if (
+    !g4.every(
+      x => /^\d{4}$/.test(x)
+    )
+  ) {
+    return false;
+  }
+
+
+  if (
+    !g5.every(
+      x => /^\d{4}$/.test(x)
+    )
+  ) {
+    return false;
+  }
+
+
+  if (
+    !g6.every(
+      x => /^\d{3}$/.test(x)
+    )
+  ) {
+    return false;
+  }
+
+
+  if (
+    !g7.every(
+      x => /^\d{2}$/.test(x)
+    )
+  ) {
+    return false;
+  }
+
+
+  return true;
 }
 
 
-/* =========================================
-   LOTO CỦA MỘT KỲ
-========================================= */
+/*
+====================================================
+LẤY TOÀN BỘ LOTO CỦA MỘT NGÀY
+====================================================
+*/
 
 function getLotoSet(row) {
-  const result = new Set();
+
+  const result =
+    new Set();
+
 
   for (const prize of PRIZES) {
-    const numbers = splitPrize(row[prize]);
+
+    const numbers =
+      splitPrize(
+        row[prize]
+      );
+
 
     for (const number of numbers) {
-      result.add(
+
+      if (!number) {
+        continue;
+      }
+
+
+      const loto =
         number
           .slice(-2)
-          .padStart(2, "0")
-      );
+          .padStart(2, "0");
+
+
+      result.add(loto);
     }
   }
 
+
   return result;
 }
 
 
-/* =========================================
-   DANH SÁCH VỊ TRÍ
-========================================= */
+/*
+====================================================
+TẠO DANH SÁCH TẤT CẢ VỊ TRÍ CHỮ SỐ
+====================================================
+*/
 
 function getPositions(row) {
+
   const result = [];
 
+
   for (const prize of PRIZES) {
-    const numbers = splitPrize(row[prize]);
 
-    numbers.forEach((number, numberIndex) => {
-      for (
-        let digitIndex = 0;
-        digitIndex < number.length;
-        digitIndex++
-      ) {
-        result.push({
-          prize,
-          numberIndex,
-          digitIndex,
+    const numbers =
+      splitPrize(
+        row[prize]
+      );
 
-          key:
-            `${prize}:${numberIndex}:${digitIndex}`
-        });
+
+    numbers.forEach(
+      (
+        number,
+        numberIndex
+      ) => {
+
+        for (
+          let digitIndex = 0;
+          digitIndex < number.length;
+          digitIndex++
+        ) {
+
+          result.push({
+
+            prize,
+
+            numberIndex,
+
+            digitIndex,
+
+            key:
+              `${prize}:` +
+              `${numberIndex}:` +
+              `${digitIndex}`
+
+          });
+
+        }
+
       }
-    });
+    );
   }
+
 
   return result;
 }
 
 
-/* =========================================
-   LẤY CHỮ SỐ
-========================================= */
+/*
+====================================================
+LẤY CHỮ SỐ TẠI MỘT VỊ TRÍ
+====================================================
+*/
 
-function getDigit(row, position) {
-  if (!row) return null;
+function getDigit(
+  row,
+  position
+) {
+
+  if (!row) {
+    return null;
+  }
+
 
   const numbers =
-    splitPrize(row[position.prize]);
+    splitPrize(
+      row[position.prize]
+    );
+
 
   const number =
-    numbers[position.numberIndex];
+    numbers[
+      position.numberIndex
+    ];
+
 
   if (!number) {
     return null;
   }
 
-  return (
-    number[position.digitIndex] ??
-    null
-  );
+
+  const digit =
+    number[
+      position.digitIndex
+    ];
+
+
+  if (
+    digit === undefined ||
+    digit === null
+  ) {
+    return null;
+  }
+
+
+  return digit;
 }
 
 
-/* =========================================
-   GHÉP SỐ
-========================================= */
+/*
+====================================================
+GHÉP HAI VỊ TRÍ THÀNH SỐ 2 CHỮ SỐ
+====================================================
+*/
 
 function makeNumber(
   row,
@@ -166,11 +379,20 @@ function makeNumber(
   positionB,
   reverse = false
 ) {
+
   const digitA =
-    getDigit(row, positionA);
+    getDigit(
+      row,
+      positionA
+    );
+
 
   const digitB =
-    getDigit(row, positionB);
+    getDigit(
+      row,
+      positionB
+    );
+
 
   if (
     digitA === null ||
@@ -179,38 +401,62 @@ function makeNumber(
     return null;
   }
 
-  return reverse
-    ? `${digitB}${digitA}`
-    : `${digitA}${digitB}`;
+
+  if (reverse) {
+
+    return (
+      `${digitB}${digitA}`
+    );
+  }
+
+
+  return (
+    `${digitA}${digitB}`
+  );
 }
 
 
-/* =========================================
-   HIỂN THỊ VỊ TRÍ
-========================================= */
+/*
+====================================================
+TÊN VỊ TRÍ
+====================================================
+*/
 
 function positionName(position) {
+
+  const label =
+    LABELS[position.prize] ||
+    position.prize;
+
+
   return (
-    `${LABELS[position.prize]}` +
+    `${label}` +
     `[${position.numberIndex + 1}]` +
     `.D${position.digitIndex + 1}`
   );
 }
 
 
-/* =========================================
-   NGÀY TIẾP THEO
-========================================= */
+/*
+====================================================
+NGÀY + 1
+====================================================
+*/
 
-function nextDate(dateString) {
+function nextDate(
+  dateString
+) {
+
   const date =
     new Date(
       `${dateString}T00:00:00Z`
     );
 
+
   date.setUTCDate(
     date.getUTCDate() + 1
   );
+
 
   return date
     .toISOString()
@@ -218,37 +464,212 @@ function nextDate(dateString) {
 }
 
 
+/*
+====================================================
+KIỂM TRA 2 NGÀY LIÊN TIẾP
+====================================================
+*/
+
 function isNextDay(
-  previous,
-  current
+  previousDate,
+  currentDate
 ) {
+
   return (
-    nextDate(previous) ===
-    current
+    nextDate(previousDate) ===
+    currentDate
   );
 }
 
 
-/* =========================================
-   API
-========================================= */
+/*
+====================================================
+TÍNH STREAK HIỆN TẠI
 
-export async function onRequestGet(context) {
-  try {
-    const db =
-      context.env.DB;
+QUAN TRỌNG:
+
+Bắt đầu từ kỳ mới nhất và đi ngược.
+
+Nếu lần gần nhất gãy:
+=> streak = 0.
+
+Không được bỏ qua ngày gãy để tìm
+một streak cũ hơn.
+====================================================
+*/
+
+function calculateCurrentStreak(
+  rows,
+  lotoSets,
+  positionA,
+  positionB,
+  reverse
+) {
+
+  let streak = 0;
+
+
+  /*
+  Ví dụ:
+
+  rows:
+  20
+  21
+  22
+  23
+
+  bắt đầu:
+
+  22 -> 23
+  rồi
+  21 -> 22
+  rồi
+  20 -> 21
+  */
+
+
+  for (
+    let i =
+      rows.length - 2;
+
+    i >= 0;
+
+    i--
+  ) {
+
+    const sourceRow =
+      rows[i];
+
+
+    const targetRow =
+      rows[i + 1];
+
 
     /*
-      Chỉ cần một số kỳ gần nhất
-      để xác định streak hiện tại.
+    Hai ngày phải liên tục.
+    */
 
-      Không quét toàn bộ 199 kỳ.
+    if (
+      !isNextDay(
+        sourceRow.draw_date,
+        targetRow.draw_date
+      )
+    ) {
+
+      break;
+    }
+
+
+    /*
+    Số được tạo tại ngày nguồn.
+    */
+
+    const predicted =
+      makeNumber(
+        sourceRow,
+        positionA,
+        positionB,
+        reverse
+      );
+
+
+    if (!predicted) {
+      break;
+    }
+
+
+    /*
+    Kiểm tra ngày kế tiếp.
+    */
+
+    const hit =
+      lotoSets[i + 1]
+        .has(predicted);
+
+
+    /*
+    GÃY CẦU.
+
+    Dừng ngay.
+
+    Không tìm cầu cũ.
+    */
+
+    if (!hit) {
+      break;
+    }
+
+
+    streak++;
+
+
+    /*
+    Chỉ cần biết tới 4.
+
+    Vì >=4 sẽ bị loại.
+    */
+
+    if (streak >= 4) {
+      break;
+    }
+  }
+
+
+  return streak;
+}
+
+
+/*
+====================================================
+API
+====================================================
+*/
+
+export async function onRequestGet(
+  context
+) {
+
+  try {
+
+    const DB =
+      context.env.DB;
+
+
+    if (!DB) {
+
+      return Response.json(
+        {
+          success: false,
+
+          version:
+            "bridge-v2.2",
+
+          message:
+            "Không tìm thấy binding DB."
+        },
+        {
+          status: 500
+        }
+      );
+    }
+
+
+    /*
+    ==================================================
+    CHỈ LẤY 10 KỲ
+
+    Để xác định cầu 2/3/4 ngày
+    không cần quét 199 kỳ.
+
+    Giảm CPU Worker.
+    ==================================================
     */
 
     const HISTORY_LIMIT = 10;
 
-    const { results } =
-      await db
+
+    const query =
+      await DB
         .prepare(`
           SELECT
             draw_date,
@@ -267,54 +688,79 @@ export async function onRequestGet(context) {
 
           LIMIT ?
         `)
-        .bind(HISTORY_LIMIT)
+        .bind(
+          HISTORY_LIMIT
+        )
         .all();
 
 
     /*
-      Loại dữ liệu chưa xổ / "..."
+    ==================================================
+    LỌC KỲ HỢP LỆ
+    ==================================================
     */
 
     let rows =
-      (results || [])
+      (query.results || [])
         .filter(validRow)
         .reverse();
 
 
-    if (rows.length < 4) {
+    if (
+      rows.length < 4
+    ) {
+
       return Response.json({
+
         success: false,
 
+        version:
+          "bridge-v2.2",
+
         message:
-          "Cần ít nhất 4 kỳ hợp lệ để phân tích cầu V2.",
+          "Không đủ ít nhất 4 kỳ hợp lệ.",
 
         validDraws:
           rows.length
+
       });
     }
 
 
     /*
-      =========================================
-      CHỈ GIỮ CHUỖI NGÀY LIÊN TỤC
-      =========================================
+    ==================================================
+    CHỈ GIỮ CHUỖI NGÀY LIÊN TỤC
+    SÁT KỲ HIỆN TẠI
+    ==================================================
     */
 
-    const continuous = [
-      rows[rows.length - 1]
+    const latestRow =
+      rows[
+        rows.length - 1
+      ];
+
+
+    const continuousRows = [
+      latestRow
     ];
 
 
     for (
-      let i = rows.length - 2;
+      let i =
+        rows.length - 2;
+
       i >= 0;
+
       i--
     ) {
+
       const older =
         rows[i];
 
+
       const newer =
-        continuous[0];
+        continuousRows[0];
+
 
       if (
         !isNextDay(
@@ -322,174 +768,187 @@ export async function onRequestGet(context) {
           newer.draw_date
         )
       ) {
+
         break;
       }
 
-      continuous.unshift(
+
+      continuousRows.unshift(
         older
       );
     }
 
 
-    rows = continuous;
+    rows =
+      continuousRows;
 
 
-    if (rows.length < 4) {
+    /*
+    Phải có ít nhất 4 ngày:
+
+    để xác định cầu chạy 3 ngày.
+    */
+
+    if (
+      rows.length < 4
+    ) {
+
       return Response.json({
+
         success: false,
 
+        version:
+          "bridge-v2.2",
+
         message:
-          "Không đủ chuỗi kỳ liên tục để xác định cầu 2-3 ngày.",
+          "Không đủ chuỗi ngày liên tục để phân tích cầu.",
 
         continuousDraws:
-          rows.length
+          rows.length,
+
+        latestDate:
+          latestRow.draw_date
+
       });
     }
 
 
     const latest =
-      rows[rows.length - 1];
-
-
-    const positions =
-      getPositions(latest);
-
-
-    const lotoSets =
-      rows.map(getLotoSet);
-
-
-    const candidates = [];
+      rows[
+        rows.length - 1
+      ];
 
 
     /*
-      =========================================
-      QUÉT CẦU VỊ TRÍ
-      =========================================
+    ==================================================
+    TẠO LOTO SET
+    ==================================================
     */
+
+    const lotoSets =
+      rows.map(
+        row =>
+          getLotoSet(row)
+      );
+
+
+    /*
+    ==================================================
+    DANH SÁCH VỊ TRÍ
+    ==================================================
+    */
+
+    const positions =
+      getPositions(
+        latest
+      );
+
+
+    /*
+    ==================================================
+    QUÉT CẦU
+    ==================================================
+    */
+
+    const candidates = [];
+
 
     for (
       let a = 0;
       a < positions.length;
       a++
     ) {
+
       const positionA =
         positions[a];
 
 
       for (
-        let b = a + 1;
+        let b =
+          a + 1;
+
         b < positions.length;
+
         b++
       ) {
+
         const positionB =
           positions[b];
 
 
         /*
-          Không ghép hai chữ số
-          trong cùng một giải.
+        ================================================
+        CHỈ GHÉP HAI GIẢI KHÁC NHAU
+        ================================================
         */
 
         if (
           positionA.prize ===
           positionB.prize
         ) {
+
           continue;
         }
 
 
         /*
-          Kiểm tra cả:
-          A+B
-          B+A
+        ================================================
+        KIỂM TRA 2 HƯỚNG:
+
+        A+B
+        B+A
+        ================================================
         */
 
         for (
           const reverse
           of [false, true]
         ) {
-          let streak = 0;
-
 
           /*
-            Đi từ kỳ mới nhất
-            ngược về quá khứ.
+          ==============================================
+          STREAK HIỆN TẠI
+          ==============================================
           */
 
-          for (
-            let i =
-              rows.length - 2;
-
-            i >= 0;
-
-            i--
-          ) {
-            const predicted =
-              makeNumber(
-                rows[i],
-                positionA,
-                positionB,
-                reverse
-              );
-
-
-            if (!predicted) {
-              break;
-            }
-
-
-            const hit =
-              lotoSets[i + 1]
-                .has(predicted);
-
-
-            if (!hit) {
-              break;
-            }
-
-
-            streak++;
-
-
-            /*
-              Đây là thay đổi quan trọng.
-
-              Khi phát hiện cầu đã
-              chạy tới 4 ngày thì
-              không cần kiểm tra thêm.
-
-              Vì cầu này sẽ bị loại.
-            */
-
-            if (streak >= 4) {
-              break;
-            }
-          }
+          const streak =
+            calculateCurrentStreak(
+              rows,
+              lotoSets,
+              positionA,
+              positionB,
+              reverse
+            );
 
 
           /*
-            ===================================
-            LOGIC V2 MỚI
-            ===================================
+          ==============================================
+          BỘ LỌC QUAN TRỌNG NHẤT V2.2
 
-            0-1 ngày: loại
-            2 ngày: giữ
-            3 ngày: giữ
-            >=4 ngày: loại
+          CHỈ:
+          2
+          3
+
+          KHÔNG:
+          0
+          1
+          >=4
+          ==============================================
           */
 
           if (
-            streak < 2 ||
-            streak >= 4
+            streak !== 2 &&
+            streak !== 3
           ) {
+
             continue;
           }
 
 
           /*
-            Số sinh từ kỳ mới nhất
-            để dự đoán kỳ kế tiếp.
+          ==============================================
+          TẠO SỐ CHO KỲ TIẾP THEO
+          ==============================================
           */
 
           const prediction =
@@ -507,15 +966,10 @@ export async function onRequestGet(context) {
 
 
           /*
-            Cầu 3 ngày được ưu tiên
-            hơn cầu 2 ngày.
+          ==============================================
+          CẦU HỢP LỆ
+          ==============================================
           */
-
-          const priority =
-            streak === 3
-              ? 2
-              : 1;
-
 
           candidates.push({
 
@@ -523,43 +977,59 @@ export async function onRequestGet(context) {
 
             streak,
 
-            priority,
+
+            /*
+            3 ngày ưu tiên hơn 2.
+            */
+
+            priority:
+              streak === 3
+                ? 2
+                : 1,
+
 
             level:
               streak === 3
-                ? "priority"
-                : "running",
+                ? "priority-3"
+                : "running-2",
+
 
             direction:
               reverse
                 ? "B+A"
                 : "A+B",
 
+
             positionA:
               positionName(
                 positionA
               ),
+
 
             positionB:
               positionName(
                 positionB
               ),
 
+
             positionAKey:
               positionA.key,
 
+
             positionBKey:
               positionB.key
+
           });
+
         }
       }
     }
 
 
     /*
-      =========================================
-      GOM THEO SỐ DỰ ĐOÁN
-      =========================================
+    ==================================================
+    GOM THEO SỐ DỰ ĐOÁN
+    ==================================================
     */
 
     const predictionMap =
@@ -570,16 +1040,21 @@ export async function onRequestGet(context) {
       const bridge
       of candidates
     ) {
+
       const number =
         bridge.prediction;
 
 
       if (
-        !predictionMap.has(number)
+        !predictionMap.has(
+          number
+        )
       ) {
+
         predictionMap.set(
           number,
           {
+
             number,
 
             bridgeCount: 0,
@@ -594,27 +1069,48 @@ export async function onRequestGet(context) {
               new Set(),
 
             bridges: []
+
           }
         );
       }
 
 
       const item =
-        predictionMap.get(number);
+        predictionMap.get(
+          number
+        );
 
 
       item.bridgeCount++;
 
 
-      if (bridge.streak === 2) {
+      /*
+      Đếm cầu 2 ngày.
+      */
+
+      if (
+        bridge.streak === 2
+      ) {
+
         item.streak2Count++;
       }
 
 
-      if (bridge.streak === 3) {
+      /*
+      Đếm cầu 3 ngày.
+      */
+
+      if (
+        bridge.streak === 3
+      ) {
+
         item.streak3Count++;
       }
 
+
+      /*
+      Streak tốt nhất.
+      */
 
       item.bestStreak =
         Math.max(
@@ -623,18 +1119,30 @@ export async function onRequestGet(context) {
         );
 
 
+      /*
+      Số vị trí độc lập.
+      */
+
       item.positionKeys.add(
         bridge.positionAKey
       );
+
 
       item.positionKeys.add(
         bridge.positionBKey
       );
 
 
+      /*
+      Không trả quá nhiều chi tiết.
+
+      Giảm JSON và CPU.
+      */
+
       if (
         item.bridges.length < 10
       ) {
+
         item.bridges.push(
           bridge
         );
@@ -643,234 +1151,355 @@ export async function onRequestGet(context) {
 
 
     /*
-      =========================================
-      XẾP HẠNG
-
-      Không còn:
-      streak 4 > streak 3 > streak 2
-
-      Mà:
-      streak 3 > streak 2
-      streak >=4 không tồn tại.
-      =========================================
+    ==================================================
+    TẠO DANH SÁCH GỢI Ý
+    ==================================================
     */
 
-    const suggestions =
+    let suggestions =
       Array.from(
         predictionMap.values()
       )
-        .map(item => {
+        .map(
+          item => {
 
-          const independentPositions =
-            item.positionKeys.size;
+            const independentPositions =
+              item.positionKeys.size;
 
 
-          /*
-            Trọng số:
+            /*
+            ============================================
+            SCORE V2.2
 
-            cầu 3 ngày:
-            mạnh hơn rõ rệt.
+            Cầu 3 ngày:
+            trọng số cao nhất.
 
-            cầu 2 ngày:
-            vẫn là tín hiệu chính.
+            Cầu 2 ngày:
+            trọng số thấp hơn.
 
-            nhiều cầu cùng chỉ:
+            Nhiều cầu độc lập cùng chỉ một số:
             cộng thêm điểm.
-          */
 
-          const score =
-            (
-              item.streak3Count * 100
-            )
-            +
-            (
-              item.streak2Count * 40
-            )
-            +
-            (
+            SCORE KHÔNG PHẢI XÁC SUẤT.
+            ============================================
+            */
+
+            const score =
+              (
+                item.streak3Count *
+                100
+              )
+              +
+              (
+                item.streak2Count *
+                40
+              )
+              +
+              (
+                Math.min(
+                  item.bridgeCount,
+                  20
+                ) *
+                5
+              )
+              +
               Math.min(
-                item.bridgeCount,
+                independentPositions,
                 20
-              ) * 5
-            )
-            +
-            Math.min(
+              );
+
+
+            return {
+
+              number:
+                item.number,
+
+
+              bridgeCount:
+                item.bridgeCount,
+
+
+              streak2Count:
+                item.streak2Count,
+
+
+              streak3Count:
+                item.streak3Count,
+
+
+              bestStreak:
+                item.bestStreak,
+
+
               independentPositions,
-              20
-            );
 
 
-          return {
-            number:
-              item.number,
-
-            bridgeCount:
-              item.bridgeCount,
-
-            streak2Count:
-              item.streak2Count,
-
-            streak3Count:
-              item.streak3Count,
-
-            bestStreak:
-              item.bestStreak,
-
-            independentPositions,
-
-            score,
-
-            bridges:
-              item.bridges
-          };
-        })
-
-        .sort(
-          (a, b) => {
-
-            /*
-              Ưu tiên số có
-              nhiều cầu 3 ngày.
-            */
-
-            if (
-              b.streak3Count !==
-              a.streak3Count
-            ) {
-              return (
-                b.streak3Count -
-                a.streak3Count
-              );
-            }
+              score,
 
 
-            /*
-              Sau đó số có
-              nhiều cầu 2 ngày.
-            */
+              bridges:
+                item.bridges
 
-            if (
-              b.streak2Count !==
-              a.streak2Count
-            ) {
-              return (
-                b.streak2Count -
-                a.streak2Count
-              );
-            }
+            };
 
-
-            return (
-              b.score -
-              a.score
-            );
           }
         );
 
 
     /*
-      =========================================
-      PHÂN NHÓM
-      =========================================
+    ==================================================
+    XẾP HẠNG
+
+    Ưu tiên:
+
+    1. Có nhiều cầu 3 ngày.
+    2. Có nhiều cầu 2 ngày.
+    3. Nhiều cầu độc lập.
+    4. Score.
+    ==================================================
     */
 
-    const streak3 =
+    suggestions.sort(
+      (a, b) => {
+
+        if (
+          b.streak3Count !==
+          a.streak3Count
+        ) {
+
+          return (
+            b.streak3Count -
+            a.streak3Count
+          );
+        }
+
+
+        if (
+          b.streak2Count !==
+          a.streak2Count
+        ) {
+
+          return (
+            b.streak2Count -
+            a.streak2Count
+          );
+        }
+
+
+        if (
+          b.independentPositions !==
+          a.independentPositions
+        ) {
+
+          return (
+            b.independentPositions -
+            a.independentPositions
+          );
+        }
+
+
+        return (
+          b.score -
+          a.score
+        );
+      }
+    );
+
+
+    /*
+    ==================================================
+    NHÓM CẦU 3 NGÀY
+    ==================================================
+    */
+
+    const priority3 =
       suggestions
         .filter(
           item =>
             item.streak3Count > 0
         )
-        .slice(0, 20);
+        .slice(
+          0,
+          20
+        );
 
 
-    const streak2 =
+    /*
+    ==================================================
+    NHÓM CHỈ CÓ CẦU 2 NGÀY
+
+    Nếu một số đã có cầu 3 ngày
+    thì không lặp lại ở đây.
+    ==================================================
+    */
+
+    const running2 =
       suggestions
         .filter(
           item =>
             item.streak3Count === 0 &&
             item.streak2Count > 0
         )
-        .slice(0, 30);
+        .slice(
+          0,
+          30
+        );
 
+
+    /*
+    ==================================================
+    TOP GỢI Ý
+
+    Giới hạn 20 số.
+    ==================================================
+    */
+
+    suggestions =
+      suggestions.slice(
+        0,
+        20
+      );
+
+
+    /*
+    ==================================================
+    RESPONSE
+    ==================================================
+    */
 
     return Response.json({
 
       success: true,
 
+
+      module:
+        "bridge-predict",
+
+
       version:
-        "bridge-v2.1",
+        "bridge-v2.2",
+
 
       sourceDate:
         latest.draw_date,
+
 
       predictionDate:
         nextDate(
           latest.draw_date
         ),
 
+
+      /*
+      Số kỳ liên tục thực sự
+      được sử dụng.
+      */
+
       analyzedDraws:
         rows.length,
 
+
+      /*
+      Tổng số cầu còn sống
+      sát ngày hiện tại.
+      */
+
       activeBridgeCount:
         candidates.length,
+
+
+      /*
+      Số lượng số gợi ý.
+      */
 
       suggestionCount:
         suggestions.length,
 
 
       /*
-        Logic hiện tại
+      ================================================
+      QUY TẮC V2.2
+      ================================================
       */
 
       rule: {
-        minStreak: 2,
-        preferredStreak: 3,
-        maxAcceptedStreak: 3,
-        rejectFromStreak: 4
+
+        requireCurrent:
+          true,
+
+        requireContinuous:
+          true,
+
+        acceptedStreaks: [
+          2,
+          3
+        ],
+
+        preferredStreak:
+          3,
+
+        rejectBroken:
+          true,
+
+        rejectFromStreak:
+          4
+
       },
 
 
       /*
-        TOP chung
+      ================================================
+      TOP CHUNG
+      ================================================
       */
 
-      suggestions:
-        suggestions.slice(0, 20),
+      suggestions,
 
 
       /*
-        Nhóm riêng
+      ================================================
+      PHÂN NHÓM
+      ================================================
       */
 
       groups: {
 
-        priority3:
-          streak3,
+        priority3,
 
-        running2:
-          streak2
+        running2
 
       },
 
 
       note:
-        "Chỉ giữ cầu đang chạy 2 hoặc 3 ngày. Cầu từ 4 ngày trở lên bị loại."
+        "Chỉ gợi ý cầu đang chạy liên tục tới kỳ mới nhất và có streak 2 hoặc 3. Cầu gãy hoặc streak từ 4 trở lên bị loại."
 
     });
 
 
   } catch (error) {
 
+    console.error(
+      "Predict V2.2:",
+      error
+    );
+
+
     return Response.json(
       {
+
         success: false,
 
+        module:
+          "bridge-predict",
+
         version:
-          "bridge-v2.1",
+          "bridge-v2.2",
 
         message:
           error?.message ||
-          "Lỗi phân tích cầu V2."
+          "Lỗi phân tích cầu."
+
       },
       {
         status: 500
