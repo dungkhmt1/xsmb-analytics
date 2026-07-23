@@ -1,15 +1,9 @@
 const PRIZES = [
-  "special",
-  "g1",
-  "g2",
-  "g3",
-  "g4",
-  "g5",
-  "g6",
-  "g7"
+  "special", "g1", "g2", "g3",
+  "g4", "g5", "g6", "g7"
 ];
 
-const PRIZE_LABELS = {
+const LABELS = {
   special: "ĐB",
   g1: "G1",
   g2: "G2",
@@ -20,792 +14,321 @@ const PRIZE_LABELS = {
   g7: "G7"
 };
 
-
-/* =========================
-   HÀM CƠ BẢN
-========================= */
-
 function splitPrize(value) {
   if (!value) return [];
 
   return String(value)
     .trim()
     .split(/\s+/)
-    .filter(Boolean);
+    .filter(x => /^\d+$/.test(x));
 }
 
+function validRow(row) {
+  return (
+    splitPrize(row.special).length === 1 &&
+    splitPrize(row.g1).length === 1 &&
+    splitPrize(row.g2).length === 2 &&
+    splitPrize(row.g3).length === 6 &&
+    splitPrize(row.g4).length === 4 &&
+    splitPrize(row.g5).length === 6 &&
+    splitPrize(row.g6).length === 3 &&
+    splitPrize(row.g7).length === 4
+  );
+}
 
 function getLotoSet(row) {
-  const set = new Set();
+  const result = new Set();
 
   for (const prize of PRIZES) {
-    const numbers = splitPrize(row[prize]);
-
-    for (const value of numbers) {
-      set.add(
-        String(value)
-          .slice(-2)
-          .padStart(2, "0")
-      );
+    for (const number of splitPrize(row[prize])) {
+      result.add(number.slice(-2).padStart(2, "0"));
     }
   }
 
-  return set;
+  return result;
 }
 
-
-/*
- Ví dụ position:
-
- {
-   prize: "g3",
-   numberIndex: 1,
-   digitIndex: 2,
-   key: "g3:1:2"
- }
-*/
-
-function getAllPositions(row) {
-  const positions = [];
+function getPositions(row) {
+  const result = [];
 
   for (const prize of PRIZES) {
     const numbers = splitPrize(row[prize]);
 
     numbers.forEach((number, numberIndex) => {
-      const digits = String(number)
-        .replace(/\D/g, "")
-        .split("");
-
-      digits.forEach((digit, digitIndex) => {
-        positions.push({
+      [...number].forEach((digit, digitIndex) => {
+        result.push({
           prize,
           numberIndex,
           digitIndex,
-          key:
-            `${prize}:${numberIndex}:${digitIndex}`
+          digit,
+          key: `${prize}:${numberIndex}:${digitIndex}`
         });
       });
     });
   }
 
-  return positions;
+  return result;
 }
 
+function getDigit(row, pos) {
+  const numbers = splitPrize(row[pos.prize]);
 
-function getDigit(row, position) {
-  if (!row) return null;
+  const number = numbers[pos.numberIndex];
 
-  const numbers =
-    splitPrize(row[position.prize]);
+  if (!number) return null;
 
-  const number =
-    numbers[position.numberIndex];
+  return number[pos.digitIndex] ?? null;
+}
 
-  if (number === undefined) {
+function makeNumber(row, a, b, reverse = false) {
+  const da = getDigit(row, a);
+  const db = getDigit(row, b);
+
+  if (da === null || db === null) {
     return null;
   }
 
-  const digits =
-    String(number)
-      .replace(/\D/g, "")
-      .split("");
+  return reverse
+    ? db + da
+    : da + db;
+}
 
+function positionName(p) {
   return (
-    digits[position.digitIndex]
-    ?? null
+    `${LABELS[p.prize]}` +
+    `[${p.numberIndex + 1}]` +
+    `.D${p.digitIndex + 1}`
   );
 }
 
+function nextDate(dateString) {
+  const d = new Date(dateString + "T00:00:00Z");
 
-function formatPosition(position) {
-  return {
-    prize:
-      PRIZE_LABELS[position.prize],
-
-    number:
-      position.numberIndex + 1,
-
-    digit:
-      position.digitIndex + 1,
-
-    key:
-      position.key
-  };
-}
-
-
-function addOneDay(dateString) {
-  const date =
-    new Date(`${dateString}T00:00:00Z`);
-
-  date.setUTCDate(
-    date.getUTCDate() + 1
+  d.setUTCDate(
+    d.getUTCDate() + 1
   );
 
-  return date
+  return d
     .toISOString()
     .slice(0, 10);
 }
 
-
-/* =========================
-   KIỂM TRA 1 CẦU
-========================= */
-
-function testBridge(
-  sourceRow,
-  targetLoto,
-  posA,
-  posB,
-  reverse
-) {
-  const digitA =
-    getDigit(sourceRow, posA);
-
-  const digitB =
-    getDigit(sourceRow, posB);
-
-  if (
-    digitA === null ||
-    digitB === null
-  ) {
-    return {
-      valid: false,
-      hit: false,
-      number: null
-    };
-  }
-
-  const number =
-    reverse
-      ? `${digitB}${digitA}`
-      : `${digitA}${digitB}`;
-
-  return {
-    valid: true,
-    number,
-    hit:
-      targetLoto.has(number)
-  };
-}
-
-
-/* =========================
-   API
-========================= */
-
 export async function onRequestGet(context) {
-
   try {
-
-    const db =
-      context.env.DB;
+    const db = context.env.DB;
 
     const url =
       new URL(context.request.url);
 
+    const minStreak = Math.max(
+      2,
+      Math.min(
+        Number(
+          url.searchParams.get("minStreak") || 2
+        ),
+        5
+      )
+    );
 
     /*
-      days:
-      số ngày lịch sử dùng để đánh giá
+      Không cần 199 ngày để tìm cầu đang chạy.
 
-      minStreak:
-      cầu tối thiểu bao nhiêu ngày
+      minStreak=2:
+      cần tối thiểu:
+      N-2 -> N-1
+      N-1 -> N
+      và N tạo dự đoán ngày mai.
+
+      Lấy dư vài kỳ để xác định streak dài hơn.
     */
 
-    const days =
-      Math.max(
-        10,
-        Math.min(
-          Number(
-            url.searchParams.get("days")
-            || 300
-          ),
-          1000
-        )
-      );
+    const historyLimit = Math.max(
+      8,
+      minStreak + 6
+    );
 
-
-    const minStreak =
-      Math.max(
-        2,
-        Math.min(
-          Number(
-            url.searchParams.get("minStreak")
-            || 2
-          ),
-          20
-        )
-      );
-
+    const { results } = await db
+      .prepare(`
+        SELECT
+          draw_date,
+          special,
+          g1,
+          g2,
+          g3,
+          g4,
+          g5,
+          g6,
+          g7
+        FROM results
+        ORDER BY draw_date DESC
+        LIMIT ?
+      `)
+      .bind(historyLimit)
+      .all();
 
     /*
-      Mặc định:
-      không ghép 2 vị trí
-      cùng một giải.
-
-      ?samePrize=1
-      sẽ cho phép.
+      Loại kỳ rác như "..."
     */
 
-    const allowSamePrize =
-      url.searchParams.get("samePrize")
-      === "1";
+    const rows = (results || [])
+      .filter(validRow)
+      .reverse();
 
-
-    /*
-      Lấy dữ liệu
-    */
-
-    const { results: rows } =
-      await db
-        .prepare(`
-          SELECT
-            draw_date,
-            special,
-            g1,
-            g2,
-            g3,
-            g4,
-            g5,
-            g6,
-            g7
-
-          FROM results
-
-          ORDER BY draw_date DESC
-
-          LIMIT ?
-        `)
-        .bind(days + 1)
-        .all();
-
-
-    if (
-      !rows ||
-      rows.length <
-        minStreak + 1
-    ) {
-
+    if (rows.length < minStreak + 1) {
       return Response.json({
         success: false,
-
         message:
-          "Không đủ dữ liệu lịch sử để dò cầu."
+          "Không đủ kỳ hợp lệ để phân tích cầu.",
+        validDraws: rows.length
       });
     }
 
-
-    /*
-      Chuyển thành:
-      cũ -> mới
-    */
-
-    rows.reverse();
-
-
-    /*
-      Tạo sẵn loto Set
-      để kiểm tra nhanh.
-    */
-
-    const lotoSets =
-      rows.map(
-        row =>
-          getLotoSet(row)
-      );
-
-
-    const latestIndex =
-      rows.length - 1;
-
-    const latestRow =
-      rows[latestIndex];
-
-
-    /*
-      Danh sách vị trí cố định.
-
-      XSMB bình thường có khoảng
-      107 vị trí chữ số.
-    */
+    const latest =
+      rows[rows.length - 1];
 
     const positions =
-      getAllPositions(latestRow);
+      getPositions(latest);
 
-
-    /*
-      ==========================
-      GIAI ĐOẠN 1
-
-      Lọc cầu bằng minStreak
-      kỳ gần nhất.
-
-      Chỉ những cầu đang sống
-      mới được giữ lại.
-      ==========================
-    */
+    const lotoSets =
+      rows.map(getLotoSet);
 
     const candidates = [];
 
+    /*
+      =========================
+      TÌM CẦU ĐANG SỐNG
+      =========================
+    */
 
     for (
       let a = 0;
       a < positions.length;
       a++
     ) {
-
-      const posA =
-        positions[a];
-
-
       for (
         let b = a + 1;
         b < positions.length;
         b++
       ) {
-
-        const posB =
-          positions[b];
-
+        const posA = positions[a];
+        const posB = positions[b];
 
         /*
-          Mặc định không ghép
-          2 vị trí cùng giải.
+          Hiện tại chỉ ghép
+          hai giải khác nhau.
         */
 
-        if (
-          !allowSamePrize &&
-          posA.prize === posB.prize
-        ) {
+        if (posA.prize === posB.prize) {
           continue;
         }
 
-
         /*
-          Kiểm tra cả:
-
-          A+B
-          B+A
+          Kiểm tra A+B và B+A.
         */
 
-        for (
-          const reverse
-          of [false, true]
-        ) {
-
-          let alive = true;
-
+        for (const reverse of [false, true]) {
+          let streak = 0;
 
           /*
-            Kiểm tra minStreak
-            chuyển tiếp gần nhất.
+            Đi ngược từ kỳ mới nhất.
 
-            Ngày N tạo số
-            kiểm tra kết quả N+1.
+            rows[i] sinh số
+            rows[i+1] kiểm tra.
           */
 
           for (
-            let offset = 1;
-            offset <= minStreak;
-            offset++
+            let i = rows.length - 2;
+            i >= 0;
+            i--
           ) {
-
-            const sourceIndex =
-              latestIndex - offset;
-
-            const targetIndex =
-              sourceIndex + 1;
-
-
-            if (sourceIndex < 0) {
-              alive = false;
-              break;
-            }
-
-
-            const test =
-              testBridge(
-                rows[sourceIndex],
-                lotoSets[targetIndex],
+            const number =
+              makeNumber(
+                rows[i],
                 posA,
                 posB,
                 reverse
               );
 
-
             if (
-              !test.valid ||
-              !test.hit
+              !number ||
+              !lotoSets[i + 1].has(number)
             ) {
-
-              alive = false;
               break;
-
             }
 
+            streak++;
           }
 
-
-          if (!alive) {
+          if (streak < minStreak) {
             continue;
           }
 
+          /*
+            Dùng kỳ mới nhất
+            sinh số ngày tiếp theo.
+          */
+
+          const prediction =
+            makeNumber(
+              latest,
+              posA,
+              posB,
+              reverse
+            );
+
+          if (!prediction) continue;
 
           candidates.push({
-            posA,
-            posB,
-            reverse
+            prediction,
+            streak,
+
+            direction:
+              reverse
+                ? "B+A"
+                : "A+B",
+
+            positionA:
+              positionName(posA),
+
+            positionB:
+              positionName(posB),
+
+            positionAKey:
+              posA.key,
+
+            positionBKey:
+              posB.key
           });
-
         }
-
       }
-
     }
 
-
     /*
-      ==========================
-      GIAI ĐOẠN 2
-
-      Với cầu đang sống:
-      truy ngược để xác định
-      streak thực tế.
-      ==========================
+      =========================
+      GOM THEO 00-99
+      =========================
     */
 
-    const activeBridges = [];
+    const map = new Map();
 
-
-    for (
-      const candidate
-      of candidates
-    ) {
-
-      const {
-        posA,
-        posB,
-        reverse
-      } = candidate;
-
-
-      let streak = 0;
-
-
-      /*
-        Đếm streak hiện tại.
-      */
-
-      for (
-        let sourceIndex =
-          latestIndex - 1;
-
-        sourceIndex >= 0;
-
-        sourceIndex--
-      ) {
-
-        const targetIndex =
-          sourceIndex + 1;
-
-
-        const test =
-          testBridge(
-            rows[sourceIndex],
-            lotoSets[targetIndex],
-            posA,
-            posB,
-            reverse
-          );
-
-
-        if (
-          !test.valid ||
-          !test.hit
-        ) {
-          break;
-        }
-
-
-        streak++;
-
-      }
-
-
-      if (
-        streak < minStreak
-      ) {
-        continue;
-      }
-
-
-      /*
-        ========================
-        ĐÁNH GIÁ TOÀN LỊCH SỬ
-        ========================
-      */
-
-      let totalTests = 0;
-      let totalHits = 0;
-
-      let maxStreak = 0;
-      let historicalStreak = 0;
-
-
-      for (
-        let i = 0;
-        i < latestIndex;
-        i++
-      ) {
-
-        const test =
-          testBridge(
-            rows[i],
-            lotoSets[i + 1],
-            posA,
-            posB,
-            reverse
-          );
-
-
-        if (!test.valid) {
-          historicalStreak = 0;
-          continue;
-        }
-
-
-        totalTests++;
-
-
-        if (test.hit) {
-
-          totalHits++;
-
-          historicalStreak++;
-
-
-          if (
-            historicalStreak >
-            maxStreak
-          ) {
-
-            maxStreak =
-              historicalStreak;
-
-          }
-
-        } else {
-
-          historicalStreak = 0;
-
-        }
-
-      }
-
-
-      /*
-        Dùng kết quả ngày mới nhất
-        để tạo dự đoán ngày mai.
-      */
-
-      const digitA =
-        getDigit(
-          latestRow,
-          posA
-        );
-
-
-      const digitB =
-        getDigit(
-          latestRow,
-          posB
-        );
-
-
-      if (
-        digitA === null ||
-        digitB === null
-      ) {
-        continue;
-      }
-
-
-      const prediction =
-        reverse
-          ? `${digitB}${digitA}`
-          : `${digitA}${digitB}`;
-
-
-      const hitRate =
-        totalTests > 0
-          ? Number(
-              (
-                totalHits /
-                totalTests *
-                100
-              ).toFixed(2)
-            )
-          : 0;
-
-
-      /*
-        Điểm cầu.
-
-        Streak là yếu tố
-        quan trọng nhất.
-      */
-
-      const score =
-        Number(
-          (
-            streak * 100 +
-
-            Math.min(
-              hitRate,
-              100
-            ) +
-
-            Math.min(
-              maxStreak * 5,
-              50
-            )
-          ).toFixed(2)
-        );
-
-
-      activeBridges.push({
-
-        prediction,
-
-        streak,
-
-        maxStreak,
-
-        totalHits,
-
-        totalTests,
-
-        hitRate,
-
-        score,
-
-        direction:
-          reverse
-            ? "B+A"
-            : "A+B",
-
-        positionA:
-          formatPosition(posA),
-
-        positionB:
-          formatPosition(posB),
-
-        latestDigits: {
-          A: digitA,
-          B: digitB
-        }
-
-      });
-
-    }
-
-
-    /*
-      ==========================
-      XẾP HẠNG CẦU
-      ==========================
-    */
-
-    activeBridges.sort(
-      (a, b) => {
-
-        if (
-          b.streak !==
-          a.streak
-        ) {
-          return (
-            b.streak -
-            a.streak
-          );
-        }
-
-
-        if (
-          b.score !==
-          a.score
-        ) {
-          return (
-            b.score -
-            a.score
-          );
-        }
-
-
-        return (
-          b.hitRate -
-          a.hitRate
-        );
-
-      }
-    );
-
-
-    /*
-      ==========================
-      GOM THEO SỐ DỰ ĐOÁN
-
-      Một số được nhiều cầu
-      độc lập cùng chỉ ra
-      sẽ được ưu tiên.
-      ==========================
-    */
-
-    const predictionMap =
-      new Map();
-
-
-    for (
-      const bridge
-      of activeBridges
-    ) {
-
+    for (const bridge of candidates) {
       const number =
         bridge.prediction;
 
-
-      if (
-        !predictionMap.has(number)
-      ) {
-
-        predictionMap.set(
+      if (!map.has(number)) {
+        map.set(number, {
           number,
-          {
-            number,
-
-            bridgeCount: 0,
-
-            bestStreak: 0,
-
-            maxHistoricalStreak: 0,
-
-            bestHitRate: 0,
-
-            totalScore: 0,
-
-            bridges: []
-          }
-        );
-
+          bridgeCount: 0,
+          bestStreak: 0,
+          independentBridgeCount: 0,
+          bridges: []
+        });
       }
 
-
       const item =
-        predictionMap.get(number);
-
+        map.get(number);
 
       item.bridgeCount++;
-
 
       item.bestStreak =
         Math.max(
@@ -813,198 +336,159 @@ export async function onRequestGet(context) {
           bridge.streak
         );
 
-
-      item.maxHistoricalStreak =
-        Math.max(
-          item.maxHistoricalStreak,
-          bridge.maxStreak
-        );
-
-
-      item.bestHitRate =
-        Math.max(
-          item.bestHitRate,
-          bridge.hitRate
-        );
-
-
-      item.totalScore +=
-        bridge.score;
-
-
       /*
-        Không cần nhồi quá nhiều
-        cầu giống nhau vào JSON.
+        Giữ tối đa 10 cầu chi tiết.
       */
 
-      if (
-        item.bridges.length < 10
-      ) {
-        item.bridges.push(
-          bridge
+      if (item.bridges.length < 10) {
+        item.bridges.push(bridge);
+      }
+    }
+
+    /*
+      =========================
+      ĐỘ ĐỘC LẬP SƠ BỘ
+
+      Không tính nhiều cầu dùng
+      đúng cùng một cặp vị trí
+      là nhiều tín hiệu độc lập.
+      =========================
+    */
+
+    for (const item of map.values()) {
+      const independent =
+        new Set();
+
+      for (const bridge of item.bridges) {
+        const keys = [
+          bridge.positionAKey,
+          bridge.positionBKey
+        ].sort();
+
+        independent.add(
+          keys.join("|")
         );
       }
 
+      item.independentBridgeCount =
+        independent.size;
     }
 
-
     /*
-      Điểm gợi ý cuối cùng.
+      Score hiện chỉ dùng để
+      sắp xếp cầu đang chạy.
 
-      Ưu tiên:
-      1. streak
-      2. nhiều cầu cùng chỉ
-      3. chất lượng lịch sử
+      Chưa gọi đây là xác suất.
     */
 
     const suggestions =
-      Array.from(
-        predictionMap.values()
-      )
-      .map(item => {
-
-        const suggestionScore =
-          Number(
-            (
-              item.bestStreak * 1000 +
-
-              item.bridgeCount * 50 +
-
-              item.bestHitRate +
-
-              Math.min(
-                item.maxHistoricalStreak * 10,
-                100
-              )
-            ).toFixed(2)
-          );
-
-
-        return {
+      [...map.values()]
+        .map(item => ({
           ...item,
 
-          totalScore:
-            Number(
-              item.totalScore
-                .toFixed(2)
-            ),
+          score:
+            item.bestStreak * 100 +
+            Math.min(
+              item.independentBridgeCount,
+              10
+            ) * 10 +
+            Math.min(
+              item.bridgeCount,
+              20
+            )
+        }))
+        .sort((a, b) => {
+          if (
+            b.bestStreak !==
+            a.bestStreak
+          ) {
+            return (
+              b.bestStreak -
+              a.bestStreak
+            );
+          }
 
-          suggestionScore
-        };
+          if (
+            b.independentBridgeCount !==
+            a.independentBridgeCount
+          ) {
+            return (
+              b.independentBridgeCount -
+              a.independentBridgeCount
+            );
+          }
 
-      })
-      .sort(
-        (a, b) =>
-          b.suggestionScore -
-          a.suggestionScore
-      );
-
-
-    /*
-      Phân nhóm cầu
-    */
-
-    const veryStrong =
-      suggestions.filter(
-        x =>
-          x.bestStreak >= 4
-      );
-
-
-    const strong =
-      suggestions.filter(
-        x =>
-          x.bestStreak === 3
-      );
-
-
-    const running =
-      suggestions.filter(
-        x =>
-          x.bestStreak === 2
-      );
-
+          return (
+            b.bridgeCount -
+            a.bridgeCount
+          );
+        });
 
     return Response.json({
-
       success: true,
 
       sourceDate:
-        latestRow.draw_date,
+        latest.draw_date,
 
       predictionDate:
-        addOneDay(
-          latestRow.draw_date
-        ),
-
-      analyzedDraws:
-        rows.length,
+        nextDate(latest.draw_date),
 
       minStreak,
 
-      allowSamePrize,
+      analyzedDraws:
+        rows.length,
 
       totalPositions:
         positions.length,
 
       activeBridgeCount:
-        activeBridges.length,
+        candidates.length,
 
       suggestionCount:
         suggestions.length,
 
-
       /*
-        Gợi ý chính
+        TOP 20
       */
 
       suggestions:
-        suggestions.slice(0, 30),
-
-
-      /*
-        Phân loại nhanh
-      */
+        suggestions.slice(0, 20),
 
       groups: {
+        streak4Plus:
+          suggestions
+            .filter(
+              x => x.bestStreak >= 4
+            )
+            .slice(0, 10),
 
-        veryStrong:
-          veryStrong.slice(0, 20),
+        streak3:
+          suggestions
+            .filter(
+              x => x.bestStreak === 3
+            )
+            .slice(0, 10),
 
-        strong:
-          strong.slice(0, 20),
-
-        running:
-          running.slice(0, 30)
-
-      },
-
-
-      /*
-        Chi tiết từng cầu
-      */
-
-      activeBridges:
-        activeBridges.slice(0, 200)
-
+        streak2:
+          suggestions
+            .filter(
+              x => x.bestStreak === 2
+            )
+            .slice(0, 20)
+      }
     });
 
-
   } catch (error) {
-
     return Response.json(
       {
         success: false,
-
         message:
           error?.message ||
-          "Lỗi không xác định"
+          "Lỗi predict"
       },
       {
         status: 500
       }
     );
-
   }
-
 }
