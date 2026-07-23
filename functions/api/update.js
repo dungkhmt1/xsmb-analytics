@@ -184,15 +184,38 @@ export async function onRequestGet(context) {
       Kiểm tra cấu trúc chuẩn XSMB
     */
 
-    const valid =
-      special.length === 1 &&
-      g1.length === 1 &&
-      g2.length === 2 &&
-      g3.length === 6 &&
-      g4.length === 4 &&
-      g5.length === 6 &&
-      g6.length === 3 &&
-      g7.length === 4;
+function isValidNumber(value, length) {
+  const text = String(value).trim();
+
+  return (
+    new RegExp(`^\\d{${length}}$`)
+  ).test(text);
+}
+
+const valid =
+  special.length === 1 &&
+  special.every(x => isValidNumber(x, 5)) &&
+
+  g1.length === 1 &&
+  g1.every(x => isValidNumber(x, 5)) &&
+
+  g2.length === 2 &&
+  g2.every(x => isValidNumber(x, 5)) &&
+
+  g3.length === 6 &&
+  g3.every(x => isValidNumber(x, 5)) &&
+
+  g4.length === 4 &&
+  g4.every(x => isValidNumber(x, 4)) &&
+
+  g5.length === 6 &&
+  g5.every(x => isValidNumber(x, 4)) &&
+
+  g6.length === 3 &&
+  g6.every(x => isValidNumber(x, 3)) &&
+
+  g7.length === 4 &&
+  g7.every(x => isValidNumber(x, 2));
 
 
     const totalNumbers =
