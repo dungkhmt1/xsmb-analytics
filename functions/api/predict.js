@@ -9,7 +9,6 @@ const PRIZES = [
   "g7"
 ];
 
-
 const LABELS = {
   special: "ĐB",
   g1: "G1",
@@ -27,18 +26,12 @@ const LABELS = {
 ========================================= */
 
 function splitPrize(value) {
-  if (!value) {
-    return [];
-  }
-
+  if (!value) return [];
 
   return String(value)
     .trim()
     .split(/\s+/)
-    .filter(
-      value =>
-        /^\d+$/.test(value)
-    );
+    .filter(value => /^\d+$/.test(value));
 }
 
 
@@ -47,35 +40,16 @@ function splitPrize(value) {
 ========================================= */
 
 function validRow(row) {
-  if (!row) {
-    return false;
-  }
+  if (!row) return false;
 
-
-  const special =
-    splitPrize(row.special);
-
-  const g1 =
-    splitPrize(row.g1);
-
-  const g2 =
-    splitPrize(row.g2);
-
-  const g3 =
-    splitPrize(row.g3);
-
-  const g4 =
-    splitPrize(row.g4);
-
-  const g5 =
-    splitPrize(row.g5);
-
-  const g6 =
-    splitPrize(row.g6);
-
-  const g7 =
-    splitPrize(row.g7);
-
+  const special = splitPrize(row.special);
+  const g1 = splitPrize(row.g1);
+  const g2 = splitPrize(row.g2);
+  const g3 = splitPrize(row.g3);
+  const g4 = splitPrize(row.g4);
+  const g5 = splitPrize(row.g5);
+  const g6 = splitPrize(row.g6);
+  const g7 = splitPrize(row.g7);
 
   if (
     special.length !== 1 ||
@@ -90,122 +64,69 @@ function validRow(row) {
     return false;
   }
 
-
-  /*
-    Kiểm tra đúng số chữ số.
-
-    Giữ được cả số có số 0 đầu.
-  */
-
   return (
     /^\d{5}$/.test(special[0]) &&
-
-    g1.every(
-      x => /^\d{5}$/.test(x)
-    ) &&
-
-    g2.every(
-      x => /^\d{5}$/.test(x)
-    ) &&
-
-    g3.every(
-      x => /^\d{5}$/.test(x)
-    ) &&
-
-    g4.every(
-      x => /^\d{4}$/.test(x)
-    ) &&
-
-    g5.every(
-      x => /^\d{4}$/.test(x)
-    ) &&
-
-    g6.every(
-      x => /^\d{3}$/.test(x)
-    ) &&
-
-    g7.every(
-      x => /^\d{2}$/.test(x)
-    )
+    g1.every(x => /^\d{5}$/.test(x)) &&
+    g2.every(x => /^\d{5}$/.test(x)) &&
+    g3.every(x => /^\d{5}$/.test(x)) &&
+    g4.every(x => /^\d{4}$/.test(x)) &&
+    g5.every(x => /^\d{4}$/.test(x)) &&
+    g6.every(x => /^\d{3}$/.test(x)) &&
+    g7.every(x => /^\d{2}$/.test(x))
   );
 }
 
 
 /* =========================================
-   LOTO 2 SỐ
+   LOTO CỦA MỘT KỲ
 ========================================= */
 
 function getLotoSet(row) {
-  const result =
-    new Set();
-
+  const result = new Set();
 
   for (const prize of PRIZES) {
-    const numbers =
-      splitPrize(
-        row[prize]
-      );
-
+    const numbers = splitPrize(row[prize]);
 
     for (const number of numbers) {
       result.add(
-        String(number)
+        number
           .slice(-2)
-          .padStart(
-            2,
-            "0"
-          )
+          .padStart(2, "0")
       );
     }
   }
-
 
   return result;
 }
 
 
 /* =========================================
-   TẤT CẢ VỊ TRÍ CHỮ SỐ
+   DANH SÁCH VỊ TRÍ
 ========================================= */
 
 function getPositions(row) {
   const result = [];
 
-
   for (const prize of PRIZES) {
-    const numbers =
-      splitPrize(
-        row[prize]
-      );
+    const numbers = splitPrize(row[prize]);
 
+    numbers.forEach((number, numberIndex) => {
+      for (
+        let digitIndex = 0;
+        digitIndex < number.length;
+        digitIndex++
+      ) {
+        result.push({
+          prize,
+          numberIndex,
+          digitIndex,
 
-    numbers.forEach(
-      (
-        number,
-        numberIndex
-      ) => {
-
-        for (
-          let digitIndex = 0;
-          digitIndex < number.length;
-          digitIndex++
-        ) {
-
-          result.push({
-            prize,
-            numberIndex,
-            digitIndex,
-
-            key:
-              `${prize}:${numberIndex}:${digitIndex}`
-          });
-
-        }
-
+          key:
+            `${prize}:${numberIndex}:${digitIndex}`
+        });
       }
-    );
+    });
   }
-
 
   return result;
 }
@@ -215,44 +136,28 @@ function getPositions(row) {
    LẤY CHỮ SỐ
 ========================================= */
 
-function getDigit(
-  row,
-  position
-) {
-  if (!row) {
-    return null;
-  }
-
+function getDigit(row, position) {
+  if (!row) return null;
 
   const numbers =
-    splitPrize(
-      row[
-        position.prize
-      ]
-    );
-
+    splitPrize(row[position.prize]);
 
   const number =
-    numbers[
-      position.numberIndex
-    ];
-
+    numbers[position.numberIndex];
 
   if (!number) {
     return null;
   }
 
-
   return (
-    number[
-      position.digitIndex
-    ] ?? null
+    number[position.digitIndex] ??
+    null
   );
 }
 
 
 /* =========================================
-   GHÉP 2 CHỮ SỐ
+   GHÉP SỐ
 ========================================= */
 
 function makeNumber(
@@ -262,18 +167,10 @@ function makeNumber(
   reverse = false
 ) {
   const digitA =
-    getDigit(
-      row,
-      positionA
-    );
-
+    getDigit(row, positionA);
 
   const digitB =
-    getDigit(
-      row,
-      positionB
-    );
-
+    getDigit(row, positionB);
 
   if (
     digitA === null ||
@@ -282,36 +179,20 @@ function makeNumber(
     return null;
   }
 
-
-  if (reverse) {
-    return (
-      digitB +
-      digitA
-    );
-  }
-
-
-  return (
-    digitA +
-    digitB
-  );
+  return reverse
+    ? `${digitB}${digitA}`
+    : `${digitA}${digitB}`;
 }
 
 
 /* =========================================
-   TÊN VỊ TRÍ
+   HIỂN THỊ VỊ TRÍ
 ========================================= */
 
-function positionName(
-  position
-) {
+function positionName(position) {
   return (
-    `${LABELS[
-      position.prize
-    ]}` +
-
+    `${LABELS[position.prize]}` +
     `[${position.numberIndex + 1}]` +
-
     `.D${position.digitIndex + 1}`
   );
 }
@@ -321,33 +202,21 @@ function positionName(
    NGÀY TIẾP THEO
 ========================================= */
 
-function nextDate(
-  dateString
-) {
+function nextDate(dateString) {
   const date =
     new Date(
-      dateString +
-      "T00:00:00Z"
+      `${dateString}T00:00:00Z`
     );
-
 
   date.setUTCDate(
     date.getUTCDate() + 1
   );
 
-
   return date
     .toISOString()
-    .slice(
-      0,
-      10
-    );
+    .slice(0, 10);
 }
 
-
-/* =========================================
-   KIỂM TRA NGÀY LIÊN TIẾP
-========================================= */
 
 function isNextDay(
   previous,
@@ -364,47 +233,19 @@ function isNextDay(
    API
 ========================================= */
 
-export async function onRequestGet(
-  context
-) {
+export async function onRequestGet(context) {
   try {
     const db =
       context.env.DB;
 
-
-    const url =
-      new URL(
-        context.request.url
-      );
-
-
-    const minStreak =
-      Math.max(
-        2,
-        Math.min(
-          Number(
-            url.searchParams.get(
-              "minStreak"
-            ) || 2
-          ),
-          5
-        )
-      );
-
-
     /*
-      Chỉ cần lịch sử ngắn
-      để tìm cầu ĐANG CHẠY.
+      Chỉ cần một số kỳ gần nhất
+      để xác định streak hiện tại.
 
-      Không cần quét 199 kỳ.
+      Không quét toàn bộ 199 kỳ.
     */
 
-    const historyLimit =
-      Math.max(
-        10,
-        minStreak + 8
-      );
-
+    const HISTORY_LIMIT = 10;
 
     const { results } =
       await db
@@ -426,35 +267,26 @@ export async function onRequestGet(
 
           LIMIT ?
         `)
-
-        .bind(
-          historyLimit
-        )
-
+        .bind(HISTORY_LIMIT)
         .all();
 
 
     /*
-      Loại kỳ chưa xổ / dữ liệu rác.
+      Loại dữ liệu chưa xổ / "..."
     */
 
     let rows =
       (results || [])
-        .filter(
-          validRow
-        )
+        .filter(validRow)
         .reverse();
 
 
-    if (
-      rows.length <
-      minStreak + 1
-    ) {
+    if (rows.length < 4) {
       return Response.json({
         success: false,
 
         message:
-          "Không đủ kỳ hợp lệ để dò cầu.",
+          "Cần ít nhất 4 kỳ hợp lệ để phân tích cầu V2.",
 
         validDraws:
           rows.length
@@ -463,36 +295,26 @@ export async function onRequestGet(
 
 
     /*
-      Chỉ giữ chuỗi ngày liên tục
-      tính ngược từ ngày mới nhất.
-
-      Ví dụ nếu thiếu 21/07 thì
-      không được coi 20 -> 22
-      là ngày kế tiếp.
+      =========================================
+      CHỈ GIỮ CHUỖI NGÀY LIÊN TỤC
+      =========================================
     */
 
     const continuous = [
-      rows[
-        rows.length - 1
-      ]
+      rows[rows.length - 1]
     ];
 
 
     for (
-      let i =
-        rows.length - 2;
-
+      let i = rows.length - 2;
       i >= 0;
-
       i--
     ) {
-      const newer =
-        continuous[0];
-
-
       const older =
         rows[i];
 
+      const newer =
+        continuous[0];
 
       if (
         !isNextDay(
@@ -503,26 +325,21 @@ export async function onRequestGet(
         break;
       }
 
-
       continuous.unshift(
         older
       );
     }
 
 
-    rows =
-      continuous;
+    rows = continuous;
 
 
-    if (
-      rows.length <
-      minStreak + 1
-    ) {
+    if (rows.length < 4) {
       return Response.json({
         success: false,
 
         message:
-          "Dữ liệu gần nhất không đủ chuỗi ngày liên tục để dò cầu.",
+          "Không đủ chuỗi kỳ liên tục để xác định cầu 2-3 ngày.",
 
         continuousDraws:
           rows.length
@@ -531,30 +348,24 @@ export async function onRequestGet(
 
 
     const latest =
-      rows[
-        rows.length - 1
-      ];
+      rows[rows.length - 1];
 
 
     const positions =
-      getPositions(
-        latest
-      );
+      getPositions(latest);
 
 
     const lotoSets =
-      rows.map(
-        getLotoSet
-      );
+      rows.map(getLotoSet);
 
 
     const candidates = [];
 
 
     /*
-      =================================
-      DÒ TỪNG CẶP VỊ TRÍ
-      =================================
+      =========================================
+      QUÉT CẦU VỊ TRÍ
+      =========================================
     */
 
     for (
@@ -562,7 +373,6 @@ export async function onRequestGet(
       a < positions.length;
       a++
     ) {
-
       const positionA =
         positions[a];
 
@@ -572,17 +382,13 @@ export async function onRequestGet(
         b < positions.length;
         b++
       ) {
-
         const positionB =
           positions[b];
 
 
         /*
-          Hiện tại chỉ ghép
-          hai giải khác nhau.
-
-          Tránh số lượng cầu
-          tăng quá lớn.
+          Không ghép hai chữ số
+          trong cùng một giải.
         */
 
         if (
@@ -594,8 +400,8 @@ export async function onRequestGet(
 
 
         /*
+          Kiểm tra cả:
           A+B
-          và
           B+A
         */
 
@@ -603,17 +409,12 @@ export async function onRequestGet(
           const reverse
           of [false, true]
         ) {
-
           let streak = 0;
 
 
           /*
-            Đi ngược từ kỳ mới nhất.
-
-            Ngày i tạo số.
-
-            Kết quả được kiểm tra
-            ở ngày i + 1.
+            Đi từ kỳ mới nhất
+            ngược về quá khứ.
           */
 
           for (
@@ -624,7 +425,6 @@ export async function onRequestGet(
 
             i--
           ) {
-
             const predicted =
               makeNumber(
                 rows[i],
@@ -640,11 +440,8 @@ export async function onRequestGet(
 
 
             const hit =
-              lotoSets[
-                i + 1
-              ].has(
-                predicted
-              );
+              lotoSets[i + 1]
+                .has(predicted);
 
 
             if (!hit) {
@@ -653,25 +450,46 @@ export async function onRequestGet(
 
 
             streak++;
+
+
+            /*
+              Đây là thay đổi quan trọng.
+
+              Khi phát hiện cầu đã
+              chạy tới 4 ngày thì
+              không cần kiểm tra thêm.
+
+              Vì cầu này sẽ bị loại.
+            */
+
+            if (streak >= 4) {
+              break;
+            }
           }
 
 
           /*
-            Chỉ giữ cầu
-            đang chạy >=2 ngày.
+            ===================================
+            LOGIC V2 MỚI
+            ===================================
+
+            0-1 ngày: loại
+            2 ngày: giữ
+            3 ngày: giữ
+            >=4 ngày: loại
           */
 
           if (
-            streak <
-            minStreak
+            streak < 2 ||
+            streak >= 4
           ) {
             continue;
           }
 
 
           /*
-            Dùng ngày mới nhất
-            sinh số cho ngày sau.
+            Số sinh từ kỳ mới nhất
+            để dự đoán kỳ kế tiếp.
           */
 
           const prediction =
@@ -688,11 +506,29 @@ export async function onRequestGet(
           }
 
 
+          /*
+            Cầu 3 ngày được ưu tiên
+            hơn cầu 2 ngày.
+          */
+
+          const priority =
+            streak === 3
+              ? 2
+              : 1;
+
+
           candidates.push({
 
             prediction,
 
             streak,
+
+            priority,
+
+            level:
+              streak === 3
+                ? "priority"
+                : "running",
 
             direction:
               reverse
@@ -714,20 +550,16 @@ export async function onRequestGet(
 
             positionBKey:
               positionB.key
-
           });
-
         }
-
       }
-
     }
 
 
     /*
-      =================================
-      GOM CẦU THEO SỐ 00-99
-      =================================
+      =========================================
+      GOM THEO SỐ DỰ ĐOÁN
+      =========================================
     */
 
     const predictionMap =
@@ -738,17 +570,13 @@ export async function onRequestGet(
       const bridge
       of candidates
     ) {
-
       const number =
         bridge.prediction;
 
 
       if (
-        !predictionMap.has(
-          number
-        )
+        !predictionMap.has(number)
       ) {
-
         predictionMap.set(
           number,
           {
@@ -756,25 +584,36 @@ export async function onRequestGet(
 
             bridgeCount: 0,
 
+            streak2Count: 0,
+
+            streak3Count: 0,
+
             bestStreak: 0,
 
-            bridges: [],
-
             positionKeys:
-              new Set()
+              new Set(),
+
+            bridges: []
           }
         );
-
       }
 
 
       const item =
-        predictionMap.get(
-          number
-        );
+        predictionMap.get(number);
 
 
       item.bridgeCount++;
+
+
+      if (bridge.streak === 2) {
+        item.streak2Count++;
+      }
+
+
+      if (bridge.streak === 3) {
+        item.streak3Count++;
+      }
 
 
       item.bestStreak =
@@ -784,181 +623,182 @@ export async function onRequestGet(
         );
 
 
-      /*
-        Mỗi vị trí được dùng
-        để đánh giá độ độc lập.
-      */
-
       item.positionKeys.add(
         bridge.positionAKey
       );
-
 
       item.positionKeys.add(
         bridge.positionBKey
       );
 
 
-      /*
-        Chỉ gửi tối đa 10 cầu
-        cho mỗi số để JSON nhẹ.
-      */
-
       if (
-        item.bridges.length <
-        10
+        item.bridges.length < 10
       ) {
         item.bridges.push(
           bridge
         );
       }
-
     }
 
 
     /*
-      =================================
+      =========================================
       XẾP HẠNG
-      =================================
+
+      Không còn:
+      streak 4 > streak 3 > streak 2
+
+      Mà:
+      streak 3 > streak 2
+      streak >=4 không tồn tại.
+      =========================================
     */
 
     const suggestions =
-      Array
-        .from(
-          predictionMap.values()
-        )
+      Array.from(
+        predictionMap.values()
+      )
+        .map(item => {
 
-        .map(
-          item => {
-
-            const independentPositions =
-              item.positionKeys.size;
+          const independentPositions =
+            item.positionKeys.size;
 
 
-            /*
-              Điểm chỉ dùng xếp hạng.
+          /*
+            Trọng số:
 
-              Không coi là xác suất.
-            */
+            cầu 3 ngày:
+            mạnh hơn rõ rệt.
 
-            const score =
-              (
-                item.bestStreak *
-                100
-              )
-              +
-              (
-                Math.min(
-                  item.bridgeCount,
-                  20
-                ) *
-                5
-              )
-              +
+            cầu 2 ngày:
+            vẫn là tín hiệu chính.
+
+            nhiều cầu cùng chỉ:
+            cộng thêm điểm.
+          */
+
+          const score =
+            (
+              item.streak3Count * 100
+            )
+            +
+            (
+              item.streak2Count * 40
+            )
+            +
+            (
               Math.min(
-                independentPositions,
-                20
-              );
-
-
-            return {
-              number:
-                item.number,
-
-              bridgeCount:
                 item.bridgeCount,
-
-              bestStreak:
-                item.bestStreak,
-
+                20
+              ) * 5
+            )
+            +
+            Math.min(
               independentPositions,
+              20
+            );
 
-              score,
 
-              bridges:
-                item.bridges
-            };
-          }
-        )
+          return {
+            number:
+              item.number,
+
+            bridgeCount:
+              item.bridgeCount,
+
+            streak2Count:
+              item.streak2Count,
+
+            streak3Count:
+              item.streak3Count,
+
+            bestStreak:
+              item.bestStreak,
+
+            independentPositions,
+
+            score,
+
+            bridges:
+              item.bridges
+          };
+        })
 
         .sort(
           (a, b) => {
 
+            /*
+              Ưu tiên số có
+              nhiều cầu 3 ngày.
+            */
+
             if (
-              b.bestStreak !==
-              a.bestStreak
+              b.streak3Count !==
+              a.streak3Count
             ) {
               return (
-                b.bestStreak -
-                a.bestStreak
+                b.streak3Count -
+                a.streak3Count
               );
             }
 
 
+            /*
+              Sau đó số có
+              nhiều cầu 2 ngày.
+            */
+
             if (
-              b.bridgeCount !==
-              a.bridgeCount
+              b.streak2Count !==
+              a.streak2Count
             ) {
               return (
-                b.bridgeCount -
-                a.bridgeCount
+                b.streak2Count -
+                a.streak2Count
               );
             }
 
 
             return (
-              b.independentPositions -
-              a.independentPositions
+              b.score -
+              a.score
             );
           }
         );
 
 
     /*
-      =================================
+      =========================================
       PHÂN NHÓM
-      =================================
+      =========================================
     */
-
-    const streak4Plus =
-      suggestions
-        .filter(
-          x =>
-            x.bestStreak >= 4
-        )
-        .slice(
-          0,
-          20
-        );
-
 
     const streak3 =
       suggestions
         .filter(
-          x =>
-            x.bestStreak === 3
+          item =>
+            item.streak3Count > 0
         )
-        .slice(
-          0,
-          20
-        );
+        .slice(0, 20);
 
 
     const streak2 =
       suggestions
         .filter(
-          x =>
-            x.bestStreak === 2
+          item =>
+            item.streak3Count === 0 &&
+            item.streak2Count > 0
         )
-        .slice(
-          0,
-          30
-        );
+        .slice(0, 30);
 
 
     return Response.json({
 
       success: true,
+
+      version:
+        "bridge-v2.1",
 
       sourceDate:
         latest.draw_date,
@@ -968,13 +808,8 @@ export async function onRequestGet(
           latest.draw_date
         ),
 
-      minStreak,
-
       analyzedDraws:
         rows.length,
-
-      totalPositions:
-        positions.length,
 
       activeBridgeCount:
         candidates.length,
@@ -982,17 +817,44 @@ export async function onRequestGet(
       suggestionCount:
         suggestions.length,
 
+
+      /*
+        Logic hiện tại
+      */
+
+      rule: {
+        minStreak: 2,
+        preferredStreak: 3,
+        maxAcceptedStreak: 3,
+        rejectFromStreak: 4
+      },
+
+
+      /*
+        TOP chung
+      */
+
       suggestions:
-        suggestions.slice(
-          0,
-          20
-        ),
+        suggestions.slice(0, 20),
+
+
+      /*
+        Nhóm riêng
+      */
 
       groups: {
-        streak4Plus,
-        streak3,
-        streak2
-      }
+
+        priority3:
+          streak3,
+
+        running2:
+          streak2
+
+      },
+
+
+      note:
+        "Chỉ giữ cầu đang chạy 2 hoặc 3 ngày. Cầu từ 4 ngày trở lên bị loại."
 
     });
 
@@ -1003,14 +865,16 @@ export async function onRequestGet(
       {
         success: false,
 
+        version:
+          "bridge-v2.1",
+
         message:
           error?.message ||
-          "Lỗi Predict"
+          "Lỗi phân tích cầu V2."
       },
       {
         status: 500
       }
     );
-
   }
 }
