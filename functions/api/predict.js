@@ -1,820 +1,1010 @@
-function padNumber(n) {
-  return String(n).padStart(2, "0");
+const PRIZES = [
+  "special",
+  "g1",
+  "g2",
+  "g3",
+  "g4",
+  "g5",
+  "g6",
+  "g7"
+];
+
+const PRIZE_LABELS = {
+  special: "ĐB",
+  g1: "G1",
+  g2: "G2",
+  g3: "G3",
+  g4: "G4",
+  g5: "G5",
+  g6: "G6",
+  g7: "G7"
+};
+
+
+/* =========================
+   HÀM CƠ BẢN
+========================= */
+
+function splitPrize(value) {
+  if (!value) return [];
+
+  return String(value)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
 }
 
-function reverseNumber(n) {
-  return n.split("").reverse().join("");
+
+function getLotoSet(row) {
+  const set = new Set();
+
+  for (const prize of PRIZES) {
+    const numbers = splitPrize(row[prize]);
+
+    for (const value of numbers) {
+      set.add(
+        String(value)
+          .slice(-2)
+          .padStart(2, "0")
+      );
+    }
+  }
+
+  return set;
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+
+/*
+ Ví dụ position:
+
+ {
+   prize: "g3",
+   numberIndex: 1,
+   digitIndex: 2,
+   key: "g3:1:2"
+ }
+*/
+
+function getAllPositions(row) {
+  const positions = [];
+
+  for (const prize of PRIZES) {
+    const numbers = splitPrize(row[prize]);
+
+    numbers.forEach((number, numberIndex) => {
+      const digits = String(number)
+        .replace(/\D/g, "")
+        .split("");
+
+      digits.forEach((digit, digitIndex) => {
+        positions.push({
+          prize,
+          numberIndex,
+          digitIndex,
+          key:
+            `${prize}:${numberIndex}:${digitIndex}`
+        });
+      });
+    });
+  }
+
+  return positions;
 }
 
-function normalize(value, max) {
-  if (!max || max <= 0) return 0;
-  return clamp(value / max, 0, 1);
+
+function getDigit(row, position) {
+  if (!row) return null;
+
+  const numbers =
+    splitPrize(row[position.prize]);
+
+  const number =
+    numbers[position.numberIndex];
+
+  if (number === undefined) {
+    return null;
+  }
+
+  const digits =
+    String(number)
+      .replace(/\D/g, "")
+      .split("");
+
+  return (
+    digits[position.digitIndex]
+    ?? null
+  );
 }
 
-function nextDate(dateString) {
-  const date = new Date(dateString + "T00:00:00Z");
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
+
+function formatPosition(position) {
+  return {
+    prize:
+      PRIZE_LABELS[position.prize],
+
+    number:
+      position.numberIndex + 1,
+
+    digit:
+      position.digitIndex + 1,
+
+    key:
+      position.key
+  };
 }
+
+
+function addOneDay(dateString) {
+  const date =
+    new Date(`${dateString}T00:00:00Z`);
+
+  date.setUTCDate(
+    date.getUTCDate() + 1
+  );
+
+  return date
+    .toISOString()
+    .slice(0, 10);
+}
+
+
+/* =========================
+   KIỂM TRA 1 CẦU
+========================= */
+
+function testBridge(
+  sourceRow,
+  targetLoto,
+  posA,
+  posB,
+  reverse
+) {
+  const digitA =
+    getDigit(sourceRow, posA);
+
+  const digitB =
+    getDigit(sourceRow, posB);
+
+  if (
+    digitA === null ||
+    digitB === null
+  ) {
+    return {
+      valid: false,
+      hit: false,
+      number: null
+    };
+  }
+
+  const number =
+    reverse
+      ? `${digitB}${digitA}`
+      : `${digitA}${digitB}`;
+
+  return {
+    valid: true,
+    number,
+    hit:
+      targetLoto.has(number)
+  };
+}
+
+
+/* =========================
+   API
+========================= */
 
 export async function onRequestGet(context) {
+
   try {
-    const db = context.env.DB;
+
+    const db =
+      context.env.DB;
+
+    const url =
+      new URL(context.request.url);
+
 
     /*
-     * Có thể dùng:
-     *
-     * /api/predict
-     *
-     * hoặc:
-     *
-     * /api/predict?top=20
-     */
+      days:
+      số ngày lịch sử dùng để đánh giá
 
-    const requestURL = new URL(context.request.url);
+      minStreak:
+      cầu tối thiểu bao nhiêu ngày
+    */
 
-    let top =
-      parseInt(
-        requestURL.searchParams.get("top") || "15",
-        10
+    const days =
+      Math.max(
+        10,
+        Math.min(
+          Number(
+            url.searchParams.get("days")
+            || 300
+          ),
+          1000
+        )
       );
 
-    if (isNaN(top)) {
-      top = 15;
-    }
 
-    top = clamp(top, 5, 100);
-
-    /*
-     * ==================================================
-     * 1. ĐỌC DỮ LIỆU
-     * ==================================================
-     */
-
-    const { results: rows } = await db
-      .prepare(`
-        SELECT
-          draw_date,
-          number,
-          count
-        FROM loto
-        ORDER BY draw_date DESC
-      `)
-      .all();
-
-    if (!rows || rows.length === 0) {
-      return Response.json(
-        {
-          success: false,
-          message: "Database chưa có dữ liệu loto"
-        },
-        { status: 400 }
+    const minStreak =
+      Math.max(
+        2,
+        Math.min(
+          Number(
+            url.searchParams.get("minStreak")
+            || 2
+          ),
+          20
+        )
       );
+
+
+    /*
+      Mặc định:
+      không ghép 2 vị trí
+      cùng một giải.
+
+      ?samePrize=1
+      sẽ cho phép.
+    */
+
+    const allowSamePrize =
+      url.searchParams.get("samePrize")
+      === "1";
+
+
+    /*
+      Lấy dữ liệu
+    */
+
+    const { results: rows } =
+      await db
+        .prepare(`
+          SELECT
+            draw_date,
+            special,
+            g1,
+            g2,
+            g3,
+            g4,
+            g5,
+            g6,
+            g7
+
+          FROM results
+
+          ORDER BY draw_date DESC
+
+          LIMIT ?
+        `)
+        .bind(days + 1)
+        .all();
+
+
+    if (
+      !rows ||
+      rows.length <
+        minStreak + 1
+    ) {
+
+      return Response.json({
+        success: false,
+
+        message:
+          "Không đủ dữ liệu lịch sử để dò cầu."
+      });
     }
 
-    /*
-     * ==================================================
-     * 2. TẠO DANH SÁCH NGÀY
-     * ==================================================
-     */
-
-    const drawDates = [
-      ...new Set(
-        rows.map(row => row.draw_date)
-      )
-    ];
-
-    const latestDate = drawDates[0];
-    const predictionDate = nextDate(latestDate);
 
     /*
-     * ==================================================
-     * 3. MAP DỮ LIỆU
-     *
-     * dateMap[date][number] = count
-     * ==================================================
-     */
+      Chuyển thành:
+      cũ -> mới
+    */
 
-    const dateMap = {};
+    rows.reverse();
 
-    for (const row of rows) {
-      if (!dateMap[row.draw_date]) {
-        dateMap[row.draw_date] = {};
+
+    /*
+      Tạo sẵn loto Set
+      để kiểm tra nhanh.
+    */
+
+    const lotoSets =
+      rows.map(
+        row =>
+          getLotoSet(row)
+      );
+
+
+    const latestIndex =
+      rows.length - 1;
+
+    const latestRow =
+      rows[latestIndex];
+
+
+    /*
+      Danh sách vị trí cố định.
+
+      XSMB bình thường có khoảng
+      107 vị trí chữ số.
+    */
+
+    const positions =
+      getAllPositions(latestRow);
+
+
+    /*
+      ==========================
+      GIAI ĐOẠN 1
+
+      Lọc cầu bằng minStreak
+      kỳ gần nhất.
+
+      Chỉ những cầu đang sống
+      mới được giữ lại.
+      ==========================
+    */
+
+    const candidates = [];
+
+
+    for (
+      let a = 0;
+      a < positions.length;
+      a++
+    ) {
+
+      const posA =
+        positions[a];
+
+
+      for (
+        let b = a + 1;
+        b < positions.length;
+        b++
+      ) {
+
+        const posB =
+          positions[b];
+
+
+        /*
+          Mặc định không ghép
+          2 vị trí cùng giải.
+        */
+
+        if (
+          !allowSamePrize &&
+          posA.prize === posB.prize
+        ) {
+          continue;
+        }
+
+
+        /*
+          Kiểm tra cả:
+
+          A+B
+          B+A
+        */
+
+        for (
+          const reverse
+          of [false, true]
+        ) {
+
+          let alive = true;
+
+
+          /*
+            Kiểm tra minStreak
+            chuyển tiếp gần nhất.
+
+            Ngày N tạo số
+            kiểm tra kết quả N+1.
+          */
+
+          for (
+            let offset = 1;
+            offset <= minStreak;
+            offset++
+          ) {
+
+            const sourceIndex =
+              latestIndex - offset;
+
+            const targetIndex =
+              sourceIndex + 1;
+
+
+            if (sourceIndex < 0) {
+              alive = false;
+              break;
+            }
+
+
+            const test =
+              testBridge(
+                rows[sourceIndex],
+                lotoSets[targetIndex],
+                posA,
+                posB,
+                reverse
+              );
+
+
+            if (
+              !test.valid ||
+              !test.hit
+            ) {
+
+              alive = false;
+              break;
+
+            }
+
+          }
+
+
+          if (!alive) {
+            continue;
+          }
+
+
+          candidates.push({
+            posA,
+            posB,
+            reverse
+          });
+
+        }
+
       }
 
-      dateMap[row.draw_date][row.number] =
-        Number(row.count);
     }
 
+
     /*
-     * ==================================================
-     * 4. TẠO FEATURE 00 -> 99
-     * ==================================================
-     */
+      ==========================
+      GIAI ĐOẠN 2
 
-    const features = [];
+      Với cầu đang sống:
+      truy ngược để xác định
+      streak thực tế.
+      ==========================
+    */
 
-    for (let n = 0; n <= 99; n++) {
-      const number = padNumber(n);
+    const activeBridges = [];
 
-      let gan = 0;
 
-      let freq3 = 0;
-      let freq7 = 0;
-      let freq14 = 0;
-      let freq30 = 0;
-      let freq60 = 0;
-      let freq100 = 0;
+    for (
+      const candidate
+      of candidates
+    ) {
 
-      let draws7 = 0;
-      let draws30 = 0;
+      const {
+        posA,
+        posB,
+        reverse
+      } = candidate;
 
-      let totalCount = 0;
-      let drawsAppeared = 0;
 
-      let foundLatest = false;
+      let streak = 0;
 
-      const appearanceIndexes = [];
 
       /*
-       * Duyệt từ mới -> cũ
-       */
+        Đếm streak hiện tại.
+      */
+
+      for (
+        let sourceIndex =
+          latestIndex - 1;
+
+        sourceIndex >= 0;
+
+        sourceIndex--
+      ) {
+
+        const targetIndex =
+          sourceIndex + 1;
+
+
+        const test =
+          testBridge(
+            rows[sourceIndex],
+            lotoSets[targetIndex],
+            posA,
+            posB,
+            reverse
+          );
+
+
+        if (
+          !test.valid ||
+          !test.hit
+        ) {
+          break;
+        }
+
+
+        streak++;
+
+      }
+
+
+      if (
+        streak < minStreak
+      ) {
+        continue;
+      }
+
+
+      /*
+        ========================
+        ĐÁNH GIÁ TOÀN LỊCH SỬ
+        ========================
+      */
+
+      let totalTests = 0;
+      let totalHits = 0;
+
+      let maxStreak = 0;
+      let historicalStreak = 0;
+
 
       for (
         let i = 0;
-        i < drawDates.length;
+        i < latestIndex;
         i++
       ) {
-        const date = drawDates[i];
 
-        const count =
-          dateMap[date]?.[number] || 0;
-
-        totalCount += count;
-
-        if (count > 0) {
-          drawsAppeared++;
-          appearanceIndexes.push(i);
-        }
-
-        /*
-         * Gan hiện tại
-         */
-
-        if (!foundLatest) {
-          if (count > 0) {
-            foundLatest = true;
-          } else {
-            gan++;
-          }
-        }
-
-        /*
-         * Tần suất
-         */
-
-        if (i < 3) {
-          freq3 += count;
-        }
-
-        if (i < 7) {
-          freq7 += count;
-
-          if (count > 0) {
-            draws7++;
-          }
-        }
-
-        if (i < 14) {
-          freq14 += count;
-        }
-
-        if (i < 30) {
-          freq30 += count;
-
-          if (count > 0) {
-            draws30++;
-          }
-        }
-
-        if (i < 60) {
-          freq60 += count;
-        }
-
-        if (i < 100) {
-          freq100 += count;
-        }
-      }
-
-      /*
-       * ==================================================
-       * 5. CHU KỲ XUẤT HIỆN
-       * ==================================================
-       */
-
-      let averageCycle = 0;
-
-      if (appearanceIndexes.length >= 2) {
-        let cycleTotal = 0;
-
-        for (
-          let i = 0;
-          i < appearanceIndexes.length - 1;
-          i++
-        ) {
-          cycleTotal +=
-            appearanceIndexes[i + 1] -
-            appearanceIndexes[i];
-        }
-
-        averageCycle =
-          cycleTotal /
-          (appearanceIndexes.length - 1);
-      }
-
-      /*
-       * Số hiện tại đang gần chu kỳ trung bình
-       */
-
-      let cycleSignal = 0;
-
-      if (averageCycle > 0) {
-        const difference =
-          Math.abs(gan - averageCycle);
-
-        cycleSignal =
-          1 -
-          Math.min(
-            difference / averageCycle,
-            1
+        const test =
+          testBridge(
+            rows[i],
+            lotoSets[i + 1],
+            posA,
+            posB,
+            reverse
           );
+
+
+        if (!test.valid) {
+          historicalStreak = 0;
+          continue;
+        }
+
+
+        totalTests++;
+
+
+        if (test.hit) {
+
+          totalHits++;
+
+          historicalStreak++;
+
+
+          if (
+            historicalStreak >
+            maxStreak
+          ) {
+
+            maxStreak =
+              historicalStreak;
+
+          }
+
+        } else {
+
+          historicalStreak = 0;
+
+        }
+
       }
+
 
       /*
-       * ==================================================
-       * 6. TÍN HIỆU HỒI
-       *
-       * Số vừa vắng vài kỳ sau khi từng xuất hiện
-       * tương đối thường xuyên.
-       *
-       * Đây chỉ là heuristic.
-       * ==================================================
-       */
+        Dùng kết quả ngày mới nhất
+        để tạo dự đoán ngày mai.
+      */
 
-      let returnSignal = 0;
+      const digitA =
+        getDigit(
+          latestRow,
+          posA
+        );
 
-      if (gan >= 2 && gan <= 10) {
-        returnSignal =
-          Math.min(
-            freq30 / 8,
-            1
-          );
-      }
 
-      features.push({
-        number,
+      const digitB =
+        getDigit(
+          latestRow,
+          posB
+        );
 
-        gan,
 
-        freq3,
-        freq7,
-        freq14,
-        freq30,
-        freq60,
-        freq100,
-
-        draws7,
-        draws30,
-
-        totalCount,
-        drawsAppeared,
-
-        averageCycle:
-          Number(
-            averageCycle.toFixed(2)
-          ),
-
-        cycleSignal,
-
-        returnSignal
-      });
-    }
-
-    /*
-     * ==================================================
-     * 7. THÊM FEATURE CẶP ĐẢO
-     * ==================================================
-     */
-
-    const featureMap = {};
-
-    for (const item of features) {
-      featureMap[item.number] = item;
-    }
-
-    for (const item of features) {
-      const reverse =
-        reverseNumber(item.number);
-
-      const reverseItem =
-        featureMap[reverse];
-
-      item.reverse = reverse;
-
-      item.reverseGan =
-        reverseItem
-          ? reverseItem.gan
-          : 0;
-
-      item.reverseFreq7 =
-        reverseItem
-          ? reverseItem.freq7
-          : 0;
-
-      item.reverseFreq30 =
-        reverseItem
-          ? reverseItem.freq30
-          : 0;
-    }
-
-    /*
-     * ==================================================
-     * 8. TÍNH ĐẦU / ĐUÔI
-     * ==================================================
-     */
-
-    const head30 = {};
-    const tail30 = {};
-
-    for (let i = 0; i <= 9; i++) {
-      head30[String(i)] = 0;
-      tail30[String(i)] = 0;
-    }
-
-    for (
-      let i = 0;
-      i < Math.min(30, drawDates.length);
-      i++
-    ) {
-      const date = drawDates[i];
-      const numbers = dateMap[date] || {};
-
-      for (
-        const [number, count]
-        of Object.entries(numbers)
+      if (
+        digitA === null ||
+        digitB === null
       ) {
-        head30[number[0]] += count;
-        tail30[number[1]] += count;
+        continue;
       }
-    }
 
-    for (const item of features) {
-      item.headFreq30 =
-        head30[item.number[0]] || 0;
 
-      item.tailFreq30 =
-        tail30[item.number[1]] || 0;
-    }
+      const prediction =
+        reverse
+          ? `${digitB}${digitA}`
+          : `${digitA}${digitB}`;
 
-    /*
-     * ==================================================
-     * 9. TÌM MAX ĐỂ NORMALIZE
-     * ==================================================
-     */
 
-    const maxGan =
-      Math.max(
-        ...features.map(x => x.gan),
-        1
-      );
+      const hitRate =
+        totalTests > 0
+          ? Number(
+              (
+                totalHits /
+                totalTests *
+                100
+              ).toFixed(2)
+            )
+          : 0;
 
-    const maxFreq7 =
-      Math.max(
-        ...features.map(x => x.freq7),
-        1
-      );
 
-    const maxFreq30 =
-      Math.max(
-        ...features.map(x => x.freq30),
-        1
-      );
+      /*
+        Điểm cầu.
 
-    const maxReverseGan =
-      Math.max(
-        ...features.map(x => x.reverseGan),
-        1
-      );
-
-    const maxReverse30 =
-      Math.max(
-        ...features.map(x => x.reverseFreq30),
-        1
-      );
-
-    const maxHead =
-      Math.max(
-        ...Object.values(head30),
-        1
-      );
-
-    const maxTail =
-      Math.max(
-        ...Object.values(tail30),
-        1
-      );
-
-    /*
-     * ==================================================
-     * 10. TRỌNG SỐ MODEL V1
-     *
-     * Tổng = 1
-     *
-     * Đây là trọng số khởi đầu.
-     * Chưa phải trọng số được chứng minh bằng backtest.
-     * ==================================================
-     */
-
-    const weights = {
-      gan: 0.18,
-      freq7: 0.12,
-      freq30: 0.18,
-
-      reverseGan: 0.12,
-      reverseFreq30: 0.10,
-
-      cycle: 0.12,
-      returnSignal: 0.08,
-
-      head: 0.05,
-      tail: 0.05
-    };
-
-    /*
-     * ==================================================
-     * 11. CHẤM ĐIỂM
-     * ==================================================
-     */
-
-    const predictions = [];
-
-    for (const item of features) {
-      const normalized = {
-        gan:
-          normalize(
-            item.gan,
-            maxGan
-          ),
-
-        freq7:
-          normalize(
-            item.freq7,
-            maxFreq7
-          ),
-
-        freq30:
-          normalize(
-            item.freq30,
-            maxFreq30
-          ),
-
-        reverseGan:
-          normalize(
-            item.reverseGan,
-            maxReverseGan
-          ),
-
-        reverseFreq30:
-          normalize(
-            item.reverseFreq30,
-            maxReverse30
-          ),
-
-        cycle:
-          item.cycleSignal,
-
-        returnSignal:
-          item.returnSignal,
-
-        head:
-          normalize(
-            item.headFreq30,
-            maxHead
-          ),
-
-        tail:
-          normalize(
-            item.tailFreq30,
-            maxTail
-          )
-      };
-
-      const rawScore =
-        normalized.gan *
-          weights.gan +
-
-        normalized.freq7 *
-          weights.freq7 +
-
-        normalized.freq30 *
-          weights.freq30 +
-
-        normalized.reverseGan *
-          weights.reverseGan +
-
-        normalized.reverseFreq30 *
-          weights.reverseFreq30 +
-
-        normalized.cycle *
-          weights.cycle +
-
-        normalized.returnSignal *
-          weights.returnSignal +
-
-        normalized.head *
-          weights.head +
-
-        normalized.tail *
-          weights.tail;
+        Streak là yếu tố
+        quan trọng nhất.
+      */
 
       const score =
         Number(
-          (rawScore * 100).toFixed(2)
-        );
-
-      predictions.push({
-        number:
-          item.number,
-
-        reverse:
-          item.reverse,
-
-        score,
-
-        signals: {
-          gan:
-            item.gan,
-
-          freq7:
-            item.freq7,
-
-          freq30:
-            item.freq30,
-
-          reverseGan:
-            item.reverseGan,
-
-          reverseFreq30:
-            item.reverseFreq30,
-
-          averageCycle:
-            item.averageCycle,
-
-          cycleSignal:
-            Number(
-              item.cycleSignal
-                .toFixed(3)
-            ),
-
-          returnSignal:
-            Number(
-              item.returnSignal
-                .toFixed(3)
-            ),
-
-          headFreq30:
-            item.headFreq30,
-
-          tailFreq30:
-            item.tailFreq30
-        }
-      });
-    }
-
-    /*
-     * Xếp cao -> thấp
-     */
-
-    predictions.sort(
-      (a, b) =>
-        b.score - a.score
-    );
-
-    /*
-     * ==================================================
-     * 12. TẠO CẶP ĐẢO
-     * ==================================================
-     */
-
-    const pairMap = new Map();
-
-    for (const prediction of predictions) {
-      const a = prediction.number;
-      const b = prediction.reverse;
-
-      /*
-       * Bỏ kép:
-       * 00, 11, 22...
-       */
-
-      if (a === b) {
-        continue;
-      }
-
-      const pairNumbers =
-        [a, b].sort();
-
-      const key =
-        pairNumbers.join("-");
-
-      if (pairMap.has(key)) {
-        continue;
-      }
-
-      const first =
-        predictions.find(
-          x =>
-            x.number === pairNumbers[0]
-        );
-
-      const second =
-        predictions.find(
-          x =>
-            x.number === pairNumbers[1]
-        );
-
-      if (!first || !second) {
-        continue;
-      }
-
-      /*
-       * Điểm cặp:
-       *
-       * 60% số mạnh hơn
-       * 40% số còn lại
-       */
-
-      const high =
-        Math.max(
-          first.score,
-          second.score
-        );
-
-      const low =
-        Math.min(
-          first.score,
-          second.score
-        );
-
-      const pairScore =
-        Number(
           (
-            high * 0.60 +
-            low * 0.40
+            streak * 100 +
+
+            Math.min(
+              hitRate,
+              100
+            ) +
+
+            Math.min(
+              maxStreak * 5,
+              50
+            )
           ).toFixed(2)
         );
 
-      pairMap.set(
-        key,
-        {
-          pair:
-            key,
 
-          number1:
-            pairNumbers[0],
+      activeBridges.push({
 
-          number2:
-            pairNumbers[1],
+        prediction,
 
-          score:
-            pairScore,
+        streak,
 
-          number1Score:
-            first.score,
+        maxStreak,
 
-          number2Score:
-            second.score
+        totalHits,
+
+        totalTests,
+
+        hitRate,
+
+        score,
+
+        direction:
+          reverse
+            ? "B+A"
+            : "A+B",
+
+        positionA:
+          formatPosition(posA),
+
+        positionB:
+          formatPosition(posB),
+
+        latestDigits: {
+          A: digitA,
+          B: digitB
         }
-      );
+
+      });
+
     }
 
-    const pairs =
-      [...pairMap.values()]
-        .sort(
-          (a, b) =>
-            b.score - a.score
-        );
 
     /*
-     * ==================================================
-     * 13. TOP CHẠM
-     * ==================================================
-     */
+      ==========================
+      XẾP HẠNG CẦU
+      ==========================
+    */
 
-    const touchScores = {};
+    activeBridges.sort(
+      (a, b) => {
 
-    for (let digit = 0; digit <= 9; digit++) {
-      const d = String(digit);
+        if (
+          b.streak !==
+          a.streak
+        ) {
+          return (
+            b.streak -
+            a.streak
+          );
+        }
 
-      const related =
-        predictions.filter(
-          item =>
-            item.number.includes(d)
+
+        if (
+          b.score !==
+          a.score
+        ) {
+          return (
+            b.score -
+            a.score
+          );
+        }
+
+
+        return (
+          b.hitRate -
+          a.hitRate
         );
 
-      if (related.length === 0) {
-        continue;
+      }
+    );
+
+
+    /*
+      ==========================
+      GOM THEO SỐ DỰ ĐOÁN
+
+      Một số được nhiều cầu
+      độc lập cùng chỉ ra
+      sẽ được ưu tiên.
+      ==========================
+    */
+
+    const predictionMap =
+      new Map();
+
+
+    for (
+      const bridge
+      of activeBridges
+    ) {
+
+      const number =
+        bridge.prediction;
+
+
+      if (
+        !predictionMap.has(number)
+      ) {
+
+        predictionMap.set(
+          number,
+          {
+            number,
+
+            bridgeCount: 0,
+
+            bestStreak: 0,
+
+            maxHistoricalStreak: 0,
+
+            bestHitRate: 0,
+
+            totalScore: 0,
+
+            bridges: []
+          }
+        );
+
       }
 
-      const average =
-        related.reduce(
-          (sum, item) =>
-            sum + item.score,
-          0
-        ) / related.length;
 
-      touchScores[d] =
-        Number(
-          average.toFixed(2)
-        );
-    }
+      const item =
+        predictionMap.get(number);
 
-    const topTouches =
-      Object.entries(touchScores)
-        .map(
-          ([digit, score]) => ({
-            digit,
-            score
-          })
-        )
-        .sort(
-          (a, b) =>
-            b.score - a.score
+
+      item.bridgeCount++;
+
+
+      item.bestStreak =
+        Math.max(
+          item.bestStreak,
+          bridge.streak
         );
 
-    /*
-     * ==================================================
-     * 14. RESPONSE
-     * ==================================================
-     */
 
-    return Response.json({
-      success: true,
+      item.maxHistoricalStreak =
+        Math.max(
+          item.maxHistoricalStreak,
+          bridge.maxStreak
+        );
 
-      model:
-        "XSMB-MultiFactor-v1",
 
-      data: {
-        latestResult:
-          latestDate,
+      item.bestHitRate =
+        Math.max(
+          item.bestHitRate,
+          bridge.hitRate
+        );
 
-        predictionDate,
 
-        totalDraws:
-          drawDates.length
-      },
+      item.totalScore +=
+        bridge.score;
 
-      weights,
 
       /*
-       * Không gọi đây là probability.
-       */
+        Không cần nhồi quá nhiều
+        cầu giống nhau vào JSON.
+      */
 
-      warning:
-        "score là điểm xếp hạng của mô hình, không phải xác suất trúng.",
+      if (
+        item.bridges.length < 10
+      ) {
+        item.bridges.push(
+          bridge
+        );
+      }
 
-      topNumbers:
-        predictions.slice(
-          0,
-          top
+    }
+
+
+    /*
+      Điểm gợi ý cuối cùng.
+
+      Ưu tiên:
+      1. streak
+      2. nhiều cầu cùng chỉ
+      3. chất lượng lịch sử
+    */
+
+    const suggestions =
+      Array.from(
+        predictionMap.values()
+      )
+      .map(item => {
+
+        const suggestionScore =
+          Number(
+            (
+              item.bestStreak * 1000 +
+
+              item.bridgeCount * 50 +
+
+              item.bestHitRate +
+
+              Math.min(
+                item.maxHistoricalStreak * 10,
+                100
+              )
+            ).toFixed(2)
+          );
+
+
+        return {
+          ...item,
+
+          totalScore:
+            Number(
+              item.totalScore
+                .toFixed(2)
+            ),
+
+          suggestionScore
+        };
+
+      })
+      .sort(
+        (a, b) =>
+          b.suggestionScore -
+          a.suggestionScore
+      );
+
+
+    /*
+      Phân nhóm cầu
+    */
+
+    const veryStrong =
+      suggestions.filter(
+        x =>
+          x.bestStreak >= 4
+      );
+
+
+    const strong =
+      suggestions.filter(
+        x =>
+          x.bestStreak === 3
+      );
+
+
+    const running =
+      suggestions.filter(
+        x =>
+          x.bestStreak === 2
+      );
+
+
+    return Response.json({
+
+      success: true,
+
+      sourceDate:
+        latestRow.draw_date,
+
+      predictionDate:
+        addOneDay(
+          latestRow.draw_date
         ),
 
-      topPairs:
-        pairs.slice(
-          0,
-          10
-        ),
+      analyzedDraws:
+        rows.length,
 
-      topTouches:
-        topTouches.slice(
-          0,
-          5
-        )
+      minStreak,
+
+      allowSamePrize,
+
+      totalPositions:
+        positions.length,
+
+      activeBridgeCount:
+        activeBridges.length,
+
+      suggestionCount:
+        suggestions.length,
+
+
+      /*
+        Gợi ý chính
+      */
+
+      suggestions:
+        suggestions.slice(0, 30),
+
+
+      /*
+        Phân loại nhanh
+      */
+
+      groups: {
+
+        veryStrong:
+          veryStrong.slice(0, 20),
+
+        strong:
+          strong.slice(0, 20),
+
+        running:
+          running.slice(0, 30)
+
+      },
+
+
+      /*
+        Chi tiết từng cầu
+      */
+
+      activeBridges:
+        activeBridges.slice(0, 200)
+
     });
 
+
   } catch (error) {
+
     return Response.json(
       {
         success: false,
-        message: error.message
+
+        message:
+          error?.message ||
+          "Lỗi không xác định"
       },
       {
         status: 500
       }
     );
+
   }
+
 }
