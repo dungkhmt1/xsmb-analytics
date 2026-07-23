@@ -258,12 +258,46 @@ export async function onRequestGet(context) {
       );
 
 
-    const positions =
-      getPositions(
-        rows[
-          rows.length - 1
-        ]
+    const templateRow =
+  [...rows]
+    .reverse()
+    .find(row => {
+
+      const counts = {
+        special: splitPrize(row.special).length,
+        g1: splitPrize(row.g1).length,
+        g2: splitPrize(row.g2).length,
+        g3: splitPrize(row.g3).length,
+        g4: splitPrize(row.g4).length,
+        g5: splitPrize(row.g5).length,
+        g6: splitPrize(row.g6).length,
+        g7: splitPrize(row.g7).length
+      };
+
+      return (
+        counts.special === 1 &&
+        counts.g1 === 1 &&
+        counts.g2 === 2 &&
+        counts.g3 === 6 &&
+        counts.g4 === 4 &&
+        counts.g5 === 6 &&
+        counts.g6 === 3 &&
+        counts.g7 === 4
       );
+    });
+
+
+if (!templateRow) {
+  return Response.json({
+    success: false,
+    message:
+      "Không tìm thấy kỳ XSMB hợp lệ để tạo cấu trúc vị trí."
+  });
+}
+
+
+const positions =
+  getPositions(templateRow);
 
 
     /*
