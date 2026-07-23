@@ -1998,3 +1998,546 @@ function escapeFiveDigit(value) {
       "&#039;"
     );
 }
+/* =================================================
+   CẦU 5 CHỮ SỐ
+   Module độc lập
+================================================= */
+
+
+window.showFiveDigitBridge =
+  async function () {
+
+    const section =
+      document.getElementById(
+        "five-digit-section"
+      );
+
+
+    if (!section) {
+      console.error(
+        "Không tìm thấy five-digit-section"
+      );
+
+      return;
+    }
+
+
+    section.style.display =
+      "block";
+
+
+    await loadFiveDigitBridge();
+
+
+    section.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  };
+
+
+async function loadFiveDigitBridge() {
+
+  const container =
+    document.getElementById(
+      "five-digit-content"
+    );
+
+
+  const dateBadge =
+    document.getElementById(
+      "five-digit-date"
+    );
+
+
+  if (!container) {
+    return;
+  }
+
+
+  container.innerHTML = `
+    <div class="loading-box">
+      Đang phân tích cầu 5 chữ số...
+    </div>
+  `;
+
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/five-digit-bridge",
+        {
+          cache: "no-store"
+        }
+      );
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        `API lỗi ${response.status}`
+      );
+    }
+
+
+    const data =
+      await response.json();
+
+
+    if (!data.success) {
+
+      throw new Error(
+        data.message ||
+        "Không đọc được dữ liệu."
+      );
+    }
+
+
+    if (dateBadge) {
+
+      dateBadge.textContent =
+        formatDate(
+          data.sourceDate
+        );
+    }
+
+
+    renderFiveDigitBridge(
+      data,
+      container
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "Five digit bridge:",
+      error
+    );
+
+
+    container.innerHTML = `
+
+      <div class="loading-box">
+
+        Không tải được cầu 5 chữ số.
+
+        <br><br>
+
+        ${escapeFiveDigit(
+          error.message
+        )}
+
+      </div>
+
+    `;
+  }
+}
+
+
+/* =================================================
+   RENDER
+================================================= */
+
+function renderFiveDigitBridge(
+  data,
+  container
+) {
+
+  const signals =
+    Array.isArray(
+      data.signals
+    )
+      ? data.signals
+      : [];
+
+
+  const suggestions =
+    Array.isArray(
+      data.suggestions
+    )
+      ? data.suggestions
+      : [];
+
+
+  /*
+  Không có tín hiệu.
+  */
+
+  if (!signals.length) {
+
+    container.innerHTML = `
+
+      <div class="warning-box">
+
+        <strong>
+          ${formatDate(
+            data.sourceDate
+          )}
+        </strong>
+
+        không xuất hiện tín hiệu
+        cầu 5 chữ số phù hợp.
+
+        <br><br>
+
+        Đã phân tích
+        ${data.analyzedDraws || 0}
+        kỳ gần nhất.
+
+      </div>
+
+    `;
+
+    return;
+  }
+
+
+  /*
+  ================================================
+  DÀN ƯU TIÊN
+  ================================================
+  */
+
+  const topSuggestions =
+    suggestions.slice(
+      0,
+      10
+    );
+
+
+  const suggestionHTML =
+    topSuggestions
+      .map(
+        item => `
+
+          <span
+            class="secondary-number"
+            title="
+              ${item.signalCount}
+              tín hiệu
+            "
+          >
+
+            ${escapeFiveDigit(
+              item.number
+            )}
+
+          </span>
+
+        `
+      )
+      .join("");
+
+
+  /*
+  ================================================
+  CARD TỪNG CẦU
+  ================================================
+  */
+
+  let cards = "";
+
+
+  signals.forEach(
+    signal => {
+
+      let status =
+        "Cầu mới";
+
+
+      if (
+        signal.streak === 1
+      ) {
+
+        status =
+          "Cầu chạy 1 ngày";
+      }
+
+
+      if (
+        signal.streak >= 2
+      ) {
+
+        status =
+          "Cầu chạy 2 ngày";
+      }
+
+
+      const patternRate =
+        signal.patternStats?.rate;
+
+
+      const positionRate =
+        signal.positionStats?.rate;
+
+
+      cards += `
+
+        <div class="prediction-card">
+
+          <div class="prediction-title">
+
+            ${escapeFiveDigit(
+              signal.prizeLabel
+            )}.${signal.index}
+
+          </div>
+
+
+          <div class="score">
+
+            Nguồn:
+
+            <strong>
+              ${escapeFiveDigit(
+                signal.sourceNumber
+              )}
+            </strong>
+
+          </div>
+
+
+          <div class="big-pair">
+
+            ${escapeFiveDigit(
+              signal.direct
+            )}
+
+            -
+
+            ${escapeFiveDigit(
+              signal.reverse
+            )}
+
+          </div>
+
+
+          <div class="score">
+
+            Pattern:
+
+            <strong>
+              ${escapeFiveDigit(
+                signal.pattern
+              )}
+            </strong>
+
+          </div>
+
+
+          <div class="score">
+
+            ${status}
+
+          </div>
+
+
+          <div class="score">
+
+            Pattern lịch sử:
+
+            ${
+              patternRate === null ||
+              patternRate === undefined
+
+                ? "Chưa đủ dữ liệu"
+
+                :
+                `${patternRate}%`
+            }
+
+          </div>
+
+
+          <div class="score">
+
+            Vị trí lịch sử:
+
+            ${
+              positionRate === null ||
+              positionRate === undefined
+
+                ? "Chưa đủ dữ liệu"
+
+                :
+                `${positionRate}%`
+            }
+
+          </div>
+
+
+          <div class="score">
+
+            Điểm:
+
+            <strong>
+              ${signal.score}
+            </strong>
+
+          </div>
+
+        </div>
+
+      `;
+    }
+  );
+
+
+  /*
+  ================================================
+  HTML
+  ================================================
+  */
+
+  container.innerHTML = `
+
+    <div class="warning-box">
+
+      Nguồn:
+
+      <strong>
+        ${formatDate(
+          data.sourceDate
+        )}
+      </strong>
+
+      <br>
+
+      Dự đoán kỳ:
+
+      <strong>
+        ${formatDate(
+          data.predictionDate
+        )}
+      </strong>
+
+      <br>
+
+      Theo dõi tối đa:
+
+      <strong>
+        ${formatDate(
+          data.secondPredictionDate
+        )}
+      </strong>
+
+      <br>
+
+      Phân tích:
+      ${data.analyzedDraws || 0}
+      kỳ
+
+    </div>
+
+
+    <div class="section-header">
+
+      <div>
+
+        <div class="section-label">
+          DÀN CẦU
+        </div>
+
+        <h3>
+          Số ưu tiên
+        </h3>
+
+      </div>
+
+    </div>
+
+
+    <div class="secondary-numbers">
+
+      ${suggestionHTML}
+
+    </div>
+
+
+    <div class="section-header">
+
+      <div>
+
+        <div class="section-label">
+          CHI TIẾT
+        </div>
+
+        <h3>
+          Các cầu đang có
+        </h3>
+
+      </div>
+
+    </div>
+
+
+    <div class="prediction-grid">
+
+      ${cards}
+
+    </div>
+
+
+    <div class="warning-box">
+
+      Chỉ xét ĐB, G1, G2 và G3.
+
+      <br>
+
+      Điều kiện:
+      số có đúng 5 chữ số và
+      chỉ chứa 2 chữ số khác nhau.
+
+      <br>
+
+      Ví dụ:
+      66606 → 06 - 60.
+
+      <br><br>
+
+      Điểm chỉ dùng để xếp hạng
+      tín hiệu, không phải xác suất trúng.
+
+    </div>
+
+  `;
+}
+
+
+/* =================================================
+   ESCAPE
+================================================= */
+
+function escapeFiveDigit(value) {
+
+  return String(
+    value ?? ""
+  )
+
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+
+    .replaceAll(
+      "'",
+      "&#039;"
+    );
+}
