@@ -1,68 +1,145 @@
-function padNumber(number) {
-  return String(number).padStart(2, "0");
+function padNumber(
+  number
+) {
+  return String(number)
+    .padStart(
+      2,
+      "0"
+    );
 }
 
-export async function onRequestGet(context) {
+
+/* =========================================
+   API
+========================================= */
+
+export async function onRequestGet(
+  context
+) {
   try {
-    const db = context.env.DB;
+    const db =
+      context.env.DB;
+
 
     /*
-      Lấy toàn bộ dữ liệu loto,
-      mới nhất trước
-    */
-    const { results: rows } = await db
-      .prepare(`
-        SELECT
-          draw_date,
-          number,
-          count
-        FROM loto
-        ORDER BY draw_date DESC
-      `)
-      .all();
+      Lấy toàn bộ bảng loto.
 
-    if (!rows || rows.length === 0) {
+      Dữ liệu hiện chỉ khoảng
+      vài nghìn dòng nên nhẹ.
+    */
+
+    const { results: rows } =
+      await db
+        .prepare(`
+          SELECT
+            draw_date,
+            number,
+            count
+
+          FROM loto
+
+          ORDER BY
+            draw_date DESC
+        `)
+        .all();
+
+
+    if (
+      !rows ||
+      !rows.length
+    ) {
       return Response.json({
         success: false,
-        message: "Database chưa có dữ liệu loto"
+
+        message:
+          "Database chưa có dữ liệu loto."
       });
     }
 
-    /*
-      Lấy danh sách ngày xổ duy nhất
-    */
-    const drawDates = [
-      ...new Set(
-        rows.map(row => row.draw_date)
-      )
-    ];
 
-    const totalDraws = drawDates.length;
+    /*
+      Danh sách ngày xổ
+      mới -> cũ
+    */
+
+    const drawDates =
+      [
+        ...new Set(
+          rows.map(
+            row =>
+              row.draw_date
+          )
+        )
+      ];
+
+
+    const totalDraws =
+      drawDates.length;
+
+
+    const latestDate =
+      drawDates[0];
+
 
     /*
       Map:
-      date -> number -> count
+      ngày -> số -> số lần xuất hiện
     */
-    const dateMap = {};
 
-    for (const row of rows) {
-      if (!dateMap[row.draw_date]) {
-        dateMap[row.draw_date] = {};
+    const dateMap =
+      Object.create(null);
+
+
+    for (
+      const row
+      of rows
+    ) {
+
+      if (
+        !dateMap[
+          row.draw_date
+        ]
+      ) {
+        dateMap[
+          row.draw_date
+        ] =
+          Object.create(null);
       }
 
-      dateMap[row.draw_date][row.number] =
-        row.count;
+
+      dateMap[
+        row.draw_date
+      ][
+        String(row.number)
+          .padStart(
+            2,
+            "0"
+          )
+      ] =
+        Number(
+          row.count || 0
+        );
     }
 
-    const latestDate = drawDates[0];
 
     const statistics = [];
 
+
     /*
-      Phân tích 00 -> 99
+      =================================
+      PHÂN TÍCH 00 -> 99
+      =================================
     */
-    for (let i = 0; i <= 99; i++) {
-      const number = padNumber(i);
+
+    for (
+      let i = 0;
+      i <= 99;
+      i++
+    ) {
+
+      const number =
+        padNumber(i);
+
 
       let totalCount = 0;
 
@@ -76,160 +153,289 @@ export async function onRequestGet(context) {
 
       let gan = 0;
 
-      let foundLastAppearance = false;
+      let foundLatest =
+        false;
 
-      /*
-        Duyệt theo ngày,
-        mới nhất -> cũ nhất
-      */
+
       for (
         let index = 0;
-        index < drawDates.length;
+        index <
+          drawDates.length;
         index++
       ) {
-        const date = drawDates[index];
+
+        const date =
+          drawDates[index];
+
 
         const count =
-          dateMap[date]?.[number] || 0;
+          Number(
+            dateMap[
+              date
+            ]?.[
+              number
+            ] || 0
+          );
 
-        /*
-          Tổng số lần xuất hiện
-        */
-        totalCount += count;
 
-        /*
-          Số kỳ có xuất hiện
-        */
-        if (count > 0) {
+        totalCount +=
+          count;
+
+
+        if (
+          count > 0
+        ) {
           drawsAppeared++;
         }
 
-        /*
-          Tần suất 7 kỳ
-        */
-        if (index < 7) {
-          freq7 += count;
+
+        if (
+          index < 7
+        ) {
+          freq7 +=
+            count;
         }
 
-        /*
-          Tần suất 30 kỳ
-        */
-        if (index < 30) {
-          freq30 += count;
+
+        if (
+          index < 30
+        ) {
+          freq30 +=
+            count;
         }
 
-        /*
-          Tần suất 100 kỳ
-        */
-        if (index < 100) {
-          freq100 += count;
+
+        if (
+          index < 100
+        ) {
+          freq100 +=
+            count;
         }
 
+
         /*
-          Gan hiện tại
+          Gan tính từ ngày
+          mới nhất trở về trước.
         */
-        if (!foundLastAppearance) {
-          if (count > 0) {
-            foundLastAppearance = true;
+
+        if (!foundLatest) {
+
+          if (
+            count > 0
+          ) {
+            foundLatest =
+              true;
           } else {
             gan++;
           }
+
         }
+
       }
 
-      /*
-        Tỷ lệ số kỳ có mặt
-      */
+
       const appearanceRate =
         totalDraws > 0
-          ? drawsAppeared / totalDraws
+          ? (
+              drawsAppeared /
+              totalDraws
+            ) *
+            100
           : 0;
 
+
       statistics.push({
+
         number,
+
         gan,
+
         freq7,
+
         freq30,
+
         freq100,
+
         totalCount,
+
         drawsAppeared,
+
         appearanceRate:
           Number(
-            (
-              appearanceRate * 100
-            ).toFixed(2)
+            appearanceRate
+              .toFixed(
+                2
+              )
           )
+
       });
+
     }
 
-    /*
-      Top gan
-    */
-    const topGan = [...statistics]
-      .sort(
-        (a, b) =>
-          b.gan - a.gan
-      )
-      .slice(0, 15);
 
     /*
-      Top nóng 7 kỳ
+      =================================
+      TOP GAN
+      =================================
     */
-    const hot7 = [...statistics]
-      .sort(
-        (a, b) =>
-          b.freq7 - a.freq7
-      )
-      .slice(0, 15);
+
+    const topGan =
+      [...statistics]
+        .sort(
+          (a, b) =>
+            b.gan -
+            a.gan
+        )
+        .slice(
+          0,
+          15
+        );
+
 
     /*
-      Top nóng 30 kỳ
+      =================================
+      HOT 7
+      =================================
     */
-    const hot30 = [...statistics]
-      .sort(
-        (a, b) =>
-          b.freq30 - a.freq30
-      )
-      .slice(0, 15);
+
+    const hot7 =
+      [...statistics]
+        .sort(
+          (a, b) => {
+
+            if (
+              b.freq7 !==
+              a.freq7
+            ) {
+              return (
+                b.freq7 -
+                a.freq7
+              );
+            }
+
+
+            return (
+              b.freq30 -
+              a.freq30
+            );
+          }
+        )
+        .slice(
+          0,
+          15
+        );
+
 
     /*
-      Tạo cặp đảo
-      Ví dụ:
-      12 <-> 21
+      =================================
+      HOT 30
+      =================================
     */
+
+    const hot30 =
+      [...statistics]
+        .sort(
+          (a, b) => {
+
+            if (
+              b.freq30 !==
+              a.freq30
+            ) {
+              return (
+                b.freq30 -
+                a.freq30
+              );
+            }
+
+
+            return (
+              b.freq100 -
+              a.freq100
+            );
+          }
+        )
+        .slice(
+          0,
+          15
+        );
+
+
+    /*
+      =================================
+      CẶP ĐẢO
+      =================================
+    */
+
+    const byNumber =
+      new Map(
+        statistics.map(
+          item => [
+            item.number,
+            item
+          ]
+        )
+      );
+
+
+    const used =
+      new Set();
+
+
     const reversePairs = [];
 
-    const used = new Set();
 
-    for (const item of statistics) {
+    for (
+      const item
+      of statistics
+    ) {
+
       const reverse =
         item.number
           .split("")
           .reverse()
           .join("");
 
-      const pairKey =
-        [item.number, reverse]
-          .sort()
-          .join("-");
 
-      if (used.has(pairKey)) {
+      const pairArray =
+        [
+          item.number,
+          reverse
+        ].sort();
+
+
+      const pairKey =
+        pairArray.join(
+          "-"
+        );
+
+
+      if (
+        used.has(
+          pairKey
+        )
+      ) {
         continue;
       }
 
-      used.add(pairKey);
+
+      used.add(
+        pairKey
+      );
+
 
       const reverseItem =
-        statistics.find(
-          s =>
-            s.number === reverse
+        byNumber.get(
+          reverse
         );
+
 
       if (!reverseItem) {
         continue;
       }
 
+
       reversePairs.push({
+
         pair:
           `${item.number}-${reverse}`,
 
@@ -255,9 +461,16 @@ export async function onRequestGet(context) {
 
         freq30:
           item.freq30 +
-          reverseItem.freq30
+          reverseItem.freq30,
+
+        freq100:
+          item.freq100 +
+          reverseItem.freq100
+
       });
+
     }
+
 
     const topReverseGan =
       reversePairs
@@ -267,13 +480,33 @@ export async function onRequestGet(context) {
             item.number2
         )
         .sort(
-          (a, b) =>
-            b.combinedGan -
-            a.combinedGan
+          (a, b) => {
+
+            if (
+              b.combinedGan !==
+              a.combinedGan
+            ) {
+              return (
+                b.combinedGan -
+                a.combinedGan
+              );
+            }
+
+
+            return (
+              b.freq30 -
+              a.freq30
+            );
+          }
         )
-        .slice(0, 15);
+        .slice(
+          0,
+          15
+        );
+
 
     return Response.json({
+
       success: true,
 
       latestDate,
@@ -290,17 +523,24 @@ export async function onRequestGet(context) {
 
       numbers:
         statistics
+
     });
 
+
   } catch (error) {
+
     return Response.json(
       {
         success: false,
-        message: error.message
+
+        message:
+          error?.message ||
+          "Lỗi Statistics"
       },
       {
         status: 500
       }
     );
+
   }
 }

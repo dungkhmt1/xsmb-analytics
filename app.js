@@ -1,21 +1,43 @@
-document.addEventListener("DOMContentLoaded", function () {
-  loadDashboard();
-});
+document.addEventListener(
+  "DOMContentLoaded",
+  function () {
+    loadDashboard();
+  }
+);
 
+
+/* =========================================
+   DASHBOARD
+========================================= */
 
 async function loadDashboard() {
-  setSystemStatus("Đang kết nối cơ sở dữ liệu...", "");
+  setSystemStatus(
+    "Đang kết nối cơ sở dữ liệu...",
+    ""
+  );
 
   try {
-    const [latestRes, predictRes] = await Promise.all([
+    /*
+      Latest + Statistics là dữ liệu chính.
+
+      Predict được xử lý độc lập để nếu
+      thuật toán dự đoán gặp lỗi thì
+      dashboard vẫn hiển thị 199 kỳ.
+    */
+
+    const [
+      latestRes,
+      statisticsRes
+    ] = await Promise.all([
       fetch("/api/latest", {
         cache: "no-store"
       }),
 
-      fetch("/api/predict?top=15", {
+      fetch("/api/statistics", {
         cache: "no-store"
       })
     ]);
+
 
     if (!latestRes.ok) {
       throw new Error(
@@ -23,53 +45,101 @@ async function loadDashboard() {
       );
     }
 
-    if (!predictRes.ok) {
+
+    if (!statisticsRes.ok) {
       throw new Error(
-        `Predict API lỗi ${predictRes.status}`
+        `Statistics API lỗi ${statisticsRes.status}`
       );
     }
+
 
     const latest =
       await latestRes.json();
 
-    const predict =
-      await predictRes.json();
+    const statistics =
+      await statisticsRes.json();
+
 
     if (!latest.success) {
       throw new Error(
         latest.message ||
-        "Không đọc được kết quả"
+        "Không đọc được kết quả mới nhất"
       );
     }
 
-    if (!predict.success) {
+
+    if (!statistics.success) {
       throw new Error(
-        predict.message ||
-        "Không đọc được phân tích"
+        statistics.message ||
+        "Không đọc được thống kê"
       );
     }
+
+
+    /*
+      Hiển thị kết quả trước.
+    */
 
     renderLatest(latest);
-    renderPrediction(predict);
-    renderStatistics(predict);
+
+
+    /*
+      Tổng số kỳ lấy từ Statistics.
+    */
+
+    const totalDraws =
+      Number(
+        statistics.totalDraws || 0
+      );
+
+
+    updateTotalDraws(
+      totalDraws
+    );
+
+
+    renderStatistics(
+      statistics
+    );
+
 
     setSystemStatus(
-      `Đã kết nối D1 • ${predict.data?.totalDraws || 0} kỳ dữ liệu`,
+      `Đã kết nối D1 • ${totalDraws} kỳ dữ liệu`,
       "success"
     );
 
+
+    /*
+      Predict tải riêng.
+
+      Nếu Predict lỗi:
+      KHÔNG làm hỏng toàn dashboard.
+    */
+
+    await loadPrediction(
+      totalDraws
+    );
+
+
   } catch (error) {
-    console.error("Dashboard error:", error);
+    console.error(
+      "Dashboard error:",
+      error
+    );
+
 
     setSystemStatus(
-      "Lỗi tải dữ liệu: " + error.message,
+      "Lỗi tải dữ liệu: " +
+      error.message,
       "error"
     );
+
 
     const latestBox =
       document.getElementById(
         "latest-result"
       );
+
 
     if (latestBox) {
       latestBox.innerHTML = `
@@ -78,18 +148,110 @@ async function loadDashboard() {
         </div>
       `;
     }
+  }
+}
 
-    const predictionBox =
-      document.getElementById(
-        "today-prediction"
+
+/* =========================================
+   LOAD PREDICT RIÊNG
+========================================= */
+
+async function loadPrediction(
+  totalDraws
+) {
+  const container =
+    document.getElementById(
+      "today-prediction"
+    );
+
+
+  if (container) {
+    container.innerHTML = `
+      <div class="loading-box">
+        Đang dò cầu vị trí...
+      </div>
+    `;
+  }
+
+
+  try {
+    const response =
+      await fetch(
+        "/api/predict?minStreak=2",
+        {
+          cache: "no-store"
+        }
       );
 
-    if (predictionBox) {
-      predictionBox.innerHTML = `
+
+    if (!response.ok) {
+      throw new Error(
+        `Predict API lỗi ${response.status}`
+      );
+    }
+
+
+    const data =
+      await response.json();
+
+
+    renderPrediction(
+      data,
+      totalDraws
+    );
+
+
+  } catch (error) {
+    console.error(
+      "Predict error:",
+      error
+    );
+
+
+    if (container) {
+      container.innerHTML = `
         <div class="loading-box">
-          Không tải được phân tích.
+          Chưa tải được phân tích cầu.
+        </div>
+
+        <div class="warning-box">
+          Database vẫn hoạt động:
+          <strong>
+            ${totalDraws} kỳ
+          </strong>.
+          <br>
+          Predict:
+          ${escapeHtml(
+            error.message
+          )}
         </div>
       `;
+    }
+  }
+}
+
+
+/* =========================================
+   UPDATE DATA HEADER
+========================================= */
+
+function updateTotalDraws(
+  totalDraws
+) {
+  const possibleIds = [
+    "header-total-draws",
+    "total-draws",
+    "data-count"
+  ];
+
+
+  for (const id of possibleIds) {
+    const element =
+      document.getElementById(id);
+
+    if (element) {
+      element.textContent =
+        `${totalDraws} kỳ`;
     }
   }
 }
@@ -105,19 +267,33 @@ function renderLatest(data) {
       "latest-result"
     );
 
+
   const badge =
     document.getElementById(
       "latest-date-badge"
     );
 
-  if (!container) return;
+
+  if (!container) {
+    return;
+  }
+
+
+  const drawDate =
+    data.drawDate ||
+    data.draw_date ||
+    data.date;
+
 
   if (badge) {
     badge.textContent =
-      formatDate(data.drawDate);
+      formatDate(drawDate);
   }
 
-  const r = data.results || {};
+
+  const r =
+    data.results || {};
+
 
   const prizeRow =
     (
@@ -130,7 +306,14 @@ function renderLatest(data) {
       const list =
         Array.isArray(values)
           ? values
-          : [values];
+          : (
+              values
+                ? String(values)
+                    .trim()
+                    .split(/\s+/)
+                : []
+            );
+
 
       return `
         <div class="prize-row ${extraClass}">
@@ -151,7 +334,7 @@ function renderLatest(data) {
               .map(
                 number => `
                   <span class="prize-number">
-                    ${number}
+                    ${escapeHtml(number)}
                   </span>
                 `
               )
@@ -223,52 +406,128 @@ function renderLatest(data) {
 
 
 /* =========================================
-   DỰ ĐOÁN
+   DỰ ĐOÁN CẦU
 ========================================= */
 
-function renderPrediction(data) {
+function renderPrediction(
+  data,
+  totalDraws = 0
+) {
   const container =
     document.getElementById(
       "today-prediction"
     );
 
-  if (!container) return;
 
-  const numbers =
-    Array.isArray(data.topNumbers)
-      ? data.topNumbers
-      : [];
-
-  const pairs =
-    Array.isArray(data.topPairs)
-      ? data.topPairs
-      : [];
-
-  const touches =
-    Array.isArray(data.topTouches)
-      ? data.topTouches
-      : [];
-
-  const top1 = numbers[0];
-  const top2 = numbers[1];
-  const top3 = numbers[2];
-
-  const bestPair =
-    pairs[0];
-
-  const headerDraws =
-    document.getElementById(
-      "header-total-draws"
-    );
-
-  if (headerDraws) {
-    headerDraws.textContent =
-      `${data.data?.totalDraws || 0} kỳ`;
+  if (!container) {
+    return;
   }
 
 
+  if (!data?.success) {
+    container.innerHTML = `
+      <div class="loading-box">
+        Chưa có phân tích cầu hợp lệ.
+      </div>
+
+      <div class="warning-box">
+        ${escapeHtml(
+          data?.message ||
+          "Không tìm được cầu."
+        )}
+
+        <br>
+
+        Database:
+        <strong>
+          ${totalDraws} kỳ
+        </strong>
+      </div>
+    `;
+
+    return;
+  }
+
+
+  const suggestions =
+    Array.isArray(
+      data.suggestions
+    )
+      ? data.suggestions
+      : [];
+
+
+  if (!suggestions.length) {
+    container.innerHTML = `
+      <div class="loading-box">
+
+        Hiện chưa phát hiện cầu vị trí
+        đang chạy từ
+
+        <strong>
+          ${data.minStreak || 2}
+        </strong>
+
+        kỳ trở lên.
+
+      </div>
+
+
+      <div class="warning-box">
+
+        Phân tích cho:
+
+        <strong>
+          ${formatDate(
+            data.predictionDate
+          )}
+        </strong>
+
+        <br>
+
+        Database:
+        ${totalDraws} kỳ
+
+        • Dò cầu trên:
+        ${data.analyzedDraws || 0} kỳ gần nhất
+
+      </div>
+    `;
+
+    return;
+  }
+
+
+  const top =
+    suggestions.slice(
+      0,
+      10
+    );
+
+
+  const top1 =
+    top[0];
+
+
+  const secondary =
+    top.slice(
+      1,
+      6
+    );
+
+
+  const bestBridge =
+    Array.isArray(
+      top1?.bridges
+    )
+      ? top1.bridges[0]
+      : null;
+
+
   container.innerHTML = `
+
     <div class="prediction-grid">
+
 
       <div
         class="
@@ -286,31 +545,21 @@ function renderPrediction(data) {
         </div>
 
         <div class="score">
-          Điểm:
-          ${top1?.score ?? "--"}
-        </div>
 
-      </div>
+          Cầu chạy:
 
+          <strong>
+            ${top1?.bestStreak || 0}
+            kỳ
+          </strong>
 
-      <div
-        class="
-          prediction-card
-          pair-card
-        "
-      >
-
-        <div class="prediction-title">
-          Cặp đảo mạnh nhất
-        </div>
-
-        <div class="big-pair">
-          ${bestPair?.pair || "--"}
         </div>
 
         <div class="score">
-          Điểm:
-          ${bestPair?.score ?? "--"}
+
+          ${top1?.bridgeCount || 0}
+          cầu vị trí cùng chỉ
+
         </div>
 
       </div>
@@ -324,33 +573,13 @@ function renderPrediction(data) {
 
         <div class="secondary-numbers">
 
-          <span class="secondary-number">
-            ${top2?.number || "--"}
-          </span>
-
-          <span class="secondary-number">
-            ${top3?.number || "--"}
-          </span>
-
-        </div>
-
-      </div>
-
-
-      <div class="prediction-card">
-
-        <div class="prediction-title">
-          Chạm mạnh
-        </div>
-
-        <div class="secondary-numbers">
-
-          ${touches
-            .slice(0, 3)
+          ${secondary
             .map(
               item => `
-                <span class="secondary-number">
-                  ${item.digit}
+                <span
+                  class="secondary-number"
+                >
+                  ${item.number}
                 </span>
               `
             )
@@ -360,20 +589,125 @@ function renderPrediction(data) {
 
       </div>
 
+
+      <div class="prediction-card">
+
+        <div class="prediction-title">
+          Cầu mạnh nhất
+        </div>
+
+        <div class="score">
+
+          ${
+            bestBridge
+              ? `
+                ${bestBridge.positionA}
+                +
+                ${bestBridge.positionB}
+              `
+              : "--"
+          }
+
+        </div>
+
+        <div class="score">
+
+          ${
+            bestBridge
+              ? `
+                ${bestBridge.direction}
+
+                • chạy
+
+                ${bestBridge.streak}
+                kỳ
+              `
+              : ""
+          }
+
+        </div>
+
+      </div>
+
+
+      <div class="prediction-card">
+
+        <div class="prediction-title">
+          Cầu hoạt động
+        </div>
+
+        <div class="big-number">
+          ${data.activeBridgeCount || 0}
+        </div>
+
+        <div class="score">
+          cầu vị trí
+        </div>
+
+      </div>
+
+
     </div>
+
+
+    <div class="top-suggestion-list">
+
+      ${top
+        .map(
+          (item, index) => `
+            <div class="suggestion-row">
+
+              <strong>
+                #${index + 1}
+                &nbsp;
+                ${item.number}
+              </strong>
+
+              <span>
+
+                ${item.bestStreak}
+                kỳ
+
+                •
+
+                ${item.bridgeCount}
+                cầu
+
+              </span>
+
+            </div>
+          `
+        )
+        .join("")}
+
+    </div>
+
 
     <div class="warning-box">
 
-      Phân tích cho
+      Phân tích cầu cho
+
       <strong>
         ${formatDate(
-          data.data?.predictionDate
+          data.predictionDate
         )}
       </strong>
 
-      •
-      ${data.data?.totalDraws || 0}
-      kỳ dữ liệu
+      <br>
+
+      Database:
+      <strong>
+        ${totalDraws} kỳ
+      </strong>
+
+      • ${data.analyzedDraws || 0}
+      kỳ gần nhất dùng để dò cầu.
+
+      <br>
+
+      Điểm/cầu chỉ dùng để
+      xếp hạng tín hiệu,
+      không phải xác suất trúng.
 
     </div>
   `;
@@ -381,7 +715,7 @@ function renderPrediction(data) {
 
 
 /* =========================================
-   TOP MODEL
+   THỐNG KÊ
 ========================================= */
 
 function renderStatistics(data) {
@@ -390,24 +724,90 @@ function renderStatistics(data) {
       "analysis-detail"
     );
 
-  if (!container) return;
 
-  const top =
-    Array.isArray(data.topNumbers)
-      ? data.topNumbers.slice(0, 10)
+  if (!container) {
+    return;
+  }
+
+
+  const numbers =
+    Array.isArray(data.numbers)
+      ? data.numbers
       : [];
 
-  if (!top.length) {
-    container.innerHTML =
-      "Chưa có dữ liệu thống kê.";
+
+  if (!numbers.length) {
+    container.innerHTML = `
+      <div class="loading-box">
+        Chưa có dữ liệu thống kê.
+      </div>
+    `;
 
     return;
   }
 
+
+  /*
+    Điểm chỉ dùng xếp hạng
+    thống kê hiện tại.
+  */
+
+  const ranked =
+    numbers
+      .map(item => {
+
+        const score =
+          (
+            Number(
+              item.freq7 || 0
+            ) * 5
+          )
+          +
+          (
+            Number(
+              item.freq30 || 0
+            ) * 2
+          )
+          +
+          (
+            Number(
+              item.freq100 || 0
+            ) * 0.2
+          );
+
+
+        return {
+          ...item,
+
+          score:
+            Number(
+              score.toFixed(1)
+            )
+        };
+
+      })
+      .sort(
+        (a, b) =>
+          b.score - a.score
+      )
+      .slice(
+        0,
+        10
+      );
+
+
   let rows = "";
 
-  top.forEach(
+
+  ranked.forEach(
     (item, index) => {
+
+      const reverse =
+        String(item.number)
+          .split("")
+          .reverse()
+          .join("");
+
 
       rows += `
         <tr>
@@ -425,19 +825,19 @@ function renderStatistics(data) {
           </td>
 
           <td>
-            ${item.signals?.gan ?? "-"}
+            ${item.gan}
           </td>
 
           <td>
-            ${item.signals?.freq7 ?? "-"}
+            ${item.freq7}
           </td>
 
           <td>
-            ${item.signals?.freq30 ?? "-"}
+            ${item.freq30}
           </td>
 
           <td>
-            ${item.reverse || "-"}
+            ${reverse}
           </td>
 
         </tr>
@@ -447,6 +847,7 @@ function renderStatistics(data) {
 
 
   container.innerHTML = `
+
     <div class="table-wrapper">
 
       <table class="analysis-table">
@@ -473,9 +874,29 @@ function renderStatistics(data) {
 
     </div>
 
+
     <div class="warning-box">
-      Điểm mô hình dùng để xếp hạng,
+
+      Dữ liệu:
+
+      <strong>
+        ${data.totalDraws || 0} kỳ
+      </strong>
+
+      • cập nhật đến
+
+      <strong>
+        ${formatDate(
+          data.latestDate
+        )}
+      </strong>.
+
+      <br>
+
+      Điểm thống kê chỉ dùng
+      để xếp hạng,
       không phải xác suất trúng.
+
     </div>
   `;
 }
@@ -494,10 +915,15 @@ function setSystemStatus(
       "system-status"
     );
 
-  if (!element) return;
+
+  if (!element) {
+    return;
+  }
+
 
   element.textContent =
     message;
+
 
   element.className =
     `system-status ${status || ""}`;
@@ -513,16 +939,37 @@ function formatDate(value) {
     return "--/--/----";
   }
 
+
+  const text =
+    String(value);
+
+
   const parts =
-    String(value).split("-");
+    text.split("-");
+
 
   if (parts.length !== 3) {
-    return value;
+    return text;
   }
+
 
   return (
     `${parts[2]}/${parts[1]}/${parts[0]}`
   );
+}
+
+
+/* =========================================
+   ESCAPE HTML
+========================================= */
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 
@@ -538,16 +985,21 @@ window.refreshAnalysis =
         "analyze-button"
       );
 
+
     if (button) {
       button.disabled = true;
+
       button.textContent =
         "Đang phân tích...";
     }
 
+
     await loadDashboard();
+
 
     if (button) {
       button.disabled = false;
+
       button.textContent =
         "Phân tích hôm nay";
     }
@@ -555,363 +1007,24 @@ window.refreshAnalysis =
 
 
 /* =========================================
-   MENU
+   NAVIGATION
 ========================================= */
 
-window.showStatistics =
-  function () {
-
-    document
-      .getElementById(
-        "analysis-detail"
-      )
-      ?.scrollIntoView({
-        behavior: "smooth"
-      });
-  };
-
-
-window.showPrediction =
-  function () {
-
-    document
-      .getElementById(
-        "today-prediction"
-      )
-      ?.scrollIntoView({
-        behavior: "smooth"
-      });
-  };
-
-
-window.showBacktest =
-  function () {
-
-    window.open(
-      "/api/backtest?days=100",
-      "_blank"
-    );
-  };
-
-
-window.showHistory =
-  function () {
-
-    alert(
-      "Trang lịch sử đang được phát triển."
-    );
-  };
-
-
-/* =========================================
-   THEO DÕI DỰ ĐOÁN
-========================================= */
-
-window.showTracking =
-  async function () {
-
-    const section =
-      document.getElementById(
-        "tracking-section"
-      );
-
-    if (!section) return;
-
-    section.style.display =
-      "block";
-
-    section.scrollIntoView({
-      behavior: "smooth"
-    });
-
-    await loadPredictionHistory();
-  };
-
-
-async function loadPredictionHistory() {
-  const summary =
-    document.getElementById(
-      "tracking-summary"
-    );
-
-  const table =
-    document.getElementById(
-      "tracking-table"
-    );
-
-  if (!summary || !table) {
-    return;
-  }
-
-  try {
-    const response =
-      await fetch(
-        "/api/prediction-history",
-        {
-          cache: "no-store"
-        }
-      );
-
-    if (!response.ok) {
-      throw new Error(
-        `API lỗi ${response.status}`
-      );
-    }
-
-    const data =
-      await response.json();
-
-    if (!data.success) {
-      throw new Error(
-        data.message ||
-        "Không đọc được lịch sử"
-      );
-    }
-
-    const s =
-      data.summary || {};
-
-    summary.innerHTML = `
-      <div class="tracking-summary-grid">
-
-        <div>
-          <small>Kỳ hoàn thành</small>
-          <strong>
-            ${s.completed || 0}
-          </strong>
-        </div>
-
-        <div>
-          <small>Tổng lần về</small>
-          <strong>
-            ${s.totalHits || 0}
-          </strong>
-        </div>
-
-        <div>
-          <small>Tiền đánh</small>
-          <strong>
-            ${money(
-              s.totalCost || 0
-            )}
-          </strong>
-        </div>
-
-        <div>
-          <small>Tiền nhận</small>
-          <strong>
-            ${money(
-              s.totalPayout || 0
-            )}
-          </strong>
-        </div>
-
-        <div>
-          <small>Lãi/Lỗ</small>
-
-          <strong
-            class="${
-              (s.totalProfit || 0) >= 0
-                ? "profit"
-                : "loss"
-            }"
-          >
-
-            ${
-              (s.totalProfit || 0) > 0
-                ? "+"
-                : ""
-            }
-
-            ${money(
-              s.totalProfit || 0
-            )}
-
-          </strong>
-        </div>
-
-      </div>
-    `;
-
-
-    const history =
-      Array.isArray(data.history)
-        ? data.history
-        : [];
-
-    if (!history.length) {
-      table.innerHTML =
-        `<div class="loading-box">
-          Chưa có lịch sử dự đoán.
-        </div>`;
-
-      return;
-    }
-
-
-    let rows = "";
-
-    history.forEach(
-      row => {
-
-        const hits =
-          row.numbers
-            .map(
-              number => {
-
-                const count =
-                  row.hitsByNumber?.[
-                    number
-                  ] || 0;
-
-                return (
-                  `${number}: ${count} lần`
-                );
-              }
-            )
-            .join("<br>");
-
-
-        rows += `
-          <tr>
-
-            <td>
-              ${formatDate(
-                row.date
-              )}
-            </td>
-
-            <td>
-              <strong>
-                ${row.numbers.join(
-                  " - "
-                )}
-              </strong>
-            </td>
-
-            <td>
-              ${
-                row.status ===
-                "pending"
-                  ? "Chưa xổ"
-                  : hits
-              }
-            </td>
-
-            <td>
-              ${
-                row.status ===
-                "pending"
-                  ? "-"
-                  : row.totalHits
-              }
-            </td>
-
-            <td>
-              ${money(row.cost)}
-            </td>
-
-            <td>
-              ${
-                row.status ===
-                "pending"
-                  ? "-"
-                  : money(
-                      row.payout
-                    )
-              }
-            </td>
-
-            <td
-              class="${
-                row.profit >= 0
-                  ? "profit"
-                  : "loss"
-              }"
-            >
-
-              ${
-                row.status ===
-                "pending"
-                  ? "-"
-                  :
-                  (
-                    row.profit > 0
-                      ? "+"
-                      : ""
-                  ) +
-                  money(
-                    row.profit
-                  )
-              }
-
-            </td>
-
-          </tr>
-        `;
-      }
-    );
-
-
-    table.innerHTML = `
-      <div class="table-wrapper">
-
-        <table class="tracking-table">
-
-          <thead>
-            <tr>
-              <th>Ngày</th>
-              <th>Dàn số</th>
-              <th>Kết quả</th>
-              <th>Lần về</th>
-              <th>Tiền đánh</th>
-              <th>Tiền nhận</th>
-              <th>Lãi/Lỗ</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            ${rows}
-          </tbody>
-
-        </table>
-
-      </div>
-    `;
-
-  } catch (error) {
-    console.error(
-      "Tracking error:",
-      error
-    );
-
-    summary.innerHTML =
-      `Không tải được dữ liệu: ${error.message}`;
-
-    table.innerHTML = "";
-  }
-}
-
-
-function money(value) {
-  return new Intl.NumberFormat(
-    "vi-VN"
-  ).format(
-    Number(value || 0)
-  ) + "đ";
-}
 function setActiveNav(index) {
   const items =
     document.querySelectorAll(
       ".bottom-nav .nav-item"
     );
 
+
   items.forEach(
     (item, i) => {
+
       item.classList.toggle(
         "active",
         i === index
       );
+
     }
   );
 }
@@ -949,30 +1062,6 @@ window.showStatistics =
   };
 
 
-window.showTracking =
-  async function () {
-
-    setActiveNav(2);
-
-    const section =
-      document.getElementById(
-        "tracking-section"
-      );
-
-    if (!section) return;
-
-    section.style.display =
-      "block";
-
-    await loadPredictionHistory();
-
-    section.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
-    });
-  };
-
-
 window.showBacktest =
   function () {
 
@@ -983,3 +1072,387 @@ window.showBacktest =
       "_blank"
     );
   };
+
+
+window.showHistory =
+  function () {
+
+    alert(
+      "Trang lịch sử đang được phát triển."
+    );
+
+  };
+
+
+/* =========================================
+   TRACKING
+========================================= */
+
+window.showTracking =
+  async function () {
+
+    setActiveNav(2);
+
+
+    const section =
+      document.getElementById(
+        "tracking-section"
+      );
+
+
+    if (!section) {
+      return;
+    }
+
+
+    section.style.display =
+      "block";
+
+
+    await loadPredictionHistory();
+
+
+    section.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  };
+
+
+async function loadPredictionHistory() {
+  const summary =
+    document.getElementById(
+      "tracking-summary"
+    );
+
+
+  const table =
+    document.getElementById(
+      "tracking-table"
+    );
+
+
+  if (!summary || !table) {
+    return;
+  }
+
+
+  try {
+    const response =
+      await fetch(
+        "/api/prediction-history",
+        {
+          cache: "no-store"
+        }
+      );
+
+
+    if (!response.ok) {
+      throw new Error(
+        `API lỗi ${response.status}`
+      );
+    }
+
+
+    const data =
+      await response.json();
+
+
+    if (!data.success) {
+      throw new Error(
+        data.message ||
+        "Không đọc được lịch sử"
+      );
+    }
+
+
+    const s =
+      data.summary || {};
+
+
+    summary.innerHTML = `
+      <div class="tracking-summary-grid">
+
+        <div>
+          <small>
+            Kỳ hoàn thành
+          </small>
+
+          <strong>
+            ${s.completed || 0}
+          </strong>
+        </div>
+
+
+        <div>
+          <small>
+            Tổng lần về
+          </small>
+
+          <strong>
+            ${s.totalHits || 0}
+          </strong>
+        </div>
+
+
+        <div>
+          <small>
+            Tiền đánh
+          </small>
+
+          <strong>
+            ${money(
+              s.totalCost || 0
+            )}
+          </strong>
+        </div>
+
+
+        <div>
+          <small>
+            Tiền nhận
+          </small>
+
+          <strong>
+            ${money(
+              s.totalPayout || 0
+            )}
+          </strong>
+        </div>
+
+
+        <div>
+
+          <small>
+            Lãi/Lỗ
+          </small>
+
+          <strong
+            class="${
+              (s.totalProfit || 0) >= 0
+                ? "profit"
+                : "loss"
+            }"
+          >
+
+            ${
+              (s.totalProfit || 0) > 0
+                ? "+"
+                : ""
+            }
+
+            ${money(
+              s.totalProfit || 0
+            )}
+
+          </strong>
+
+        </div>
+
+      </div>
+    `;
+
+
+    const history =
+      Array.isArray(
+        data.history
+      )
+        ? data.history
+        : [];
+
+
+    if (!history.length) {
+      table.innerHTML = `
+        <div class="loading-box">
+          Chưa có lịch sử dự đoán.
+        </div>
+      `;
+
+      return;
+    }
+
+
+    let rows = "";
+
+
+    history.forEach(
+      row => {
+
+        const numbers =
+          Array.isArray(row.numbers)
+            ? row.numbers
+            : [];
+
+
+        const hits =
+          numbers
+            .map(
+              number => {
+
+                const count =
+                  row.hitsByNumber?.[
+                    number
+                  ] || 0;
+
+
+                return (
+                  `${number}: ${count} lần`
+                );
+              }
+            )
+            .join("<br>");
+
+
+        rows += `
+          <tr>
+
+            <td>
+              ${formatDate(
+                row.date
+              )}
+            </td>
+
+            <td>
+              <strong>
+                ${numbers.join(
+                  " - "
+                )}
+              </strong>
+            </td>
+
+            <td>
+
+              ${
+                row.status ===
+                "pending"
+                  ? "Chưa xổ"
+                  : hits
+              }
+
+            </td>
+
+            <td>
+
+              ${
+                row.status ===
+                "pending"
+                  ? "-"
+                  : row.totalHits
+              }
+
+            </td>
+
+            <td>
+              ${money(row.cost)}
+            </td>
+
+            <td>
+
+              ${
+                row.status ===
+                "pending"
+                  ? "-"
+                  : money(
+                      row.payout
+                    )
+              }
+
+            </td>
+
+            <td
+              class="${
+                Number(
+                  row.profit || 0
+                ) >= 0
+                  ? "profit"
+                  : "loss"
+              }"
+            >
+
+              ${
+                row.status ===
+                "pending"
+                  ? "-"
+                  :
+                  (
+                    Number(
+                      row.profit || 0
+                    ) > 0
+                      ? "+"
+                      : ""
+                  )
+                  +
+                  money(
+                    row.profit
+                  )
+              }
+
+            </td>
+
+          </tr>
+        `;
+      }
+    );
+
+
+    table.innerHTML = `
+      <div class="table-wrapper">
+
+        <table class="tracking-table">
+
+          <thead>
+
+            <tr>
+              <th>Ngày</th>
+              <th>Dàn số</th>
+              <th>Kết quả</th>
+              <th>Lần về</th>
+              <th>Tiền đánh</th>
+              <th>Tiền nhận</th>
+              <th>Lãi/Lỗ</th>
+            </tr>
+
+          </thead>
+
+
+          <tbody>
+            ${rows}
+          </tbody>
+
+        </table>
+
+      </div>
+    `;
+
+
+  } catch (error) {
+    console.error(
+      "Tracking error:",
+      error
+    );
+
+
+    summary.innerHTML =
+      `Không tải được dữ liệu: ${
+        escapeHtml(
+          error.message
+        )
+      }`;
+
+
+    table.innerHTML = "";
+  }
+}
+
+
+/* =========================================
+   MONEY
+========================================= */
+
+function money(value) {
+  return new Intl.NumberFormat(
+    "vi-VN"
+  ).format(
+    Number(value || 0)
+  ) + "đ";
+}
