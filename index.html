@@ -183,6 +183,44 @@
 
 
   <!-- TRACKING -->
+<section
+  id="five-digit-section"
+  style="display:none;"
+>
+
+  <div class="section-header">
+
+    <div>
+      <div class="section-label">
+        CẦU 5 CHỮ SỐ
+      </div>
+
+      <h2>
+        Cầu 2 chữ số
+      </h2>
+    </div>
+
+    <div
+      id="five-digit-date"
+      class="date-badge"
+    >
+      --/--/----
+    </div>
+
+  </div>
+
+
+  <div
+    id="five-digit-content"
+  >
+
+    <div class="loading-box">
+      Chưa tải dữ liệu.
+    </div>
+
+  </div>
+
+</section>
 
   <section
     class="card"
@@ -275,7 +313,12 @@
   </button>
 
 </nav>
-
+<button
+  class="nav-item"
+  onclick="showFiveDigitBridge()"
+>
+  <span>Cầu 5 số</span>
+</button>
 
 <script src="/app.js"></script>
 
