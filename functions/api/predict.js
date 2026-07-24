@@ -1,6 +1,6 @@
 /*
 ========================================================
-XSMB BRIDGE PREDICT V2.3
+XSMB BRIDGE PREDICT V2.4
 ========================================================
 
 ĐỊNH NGHĨA CẦU:
@@ -548,7 +548,7 @@ function analyzeBridge(
     phải bị loại.
     */
 
-    if (streak >= 4) {
+    if (streak >= 6) {
       break;
     }
   }
@@ -816,7 +816,7 @@ export async function onRequestGet(
 
           if (
             analysis.streak !== 2 &&
-            analysis.streak !== 3
+            analysis.streak !== 5
           ) {
             continue;
           }
@@ -884,14 +884,13 @@ export async function onRequestGet(
               analysis.streak,
 
             priority:
-              analysis.streak === 3
-                ? 2
-                : 1,
+              analysis.streak,
 
             level:
-              analysis.streak === 3
-                ? "priority-3"
-                : "running-2",
+`running-${analysis.streak}`,
+            
+                
+                
 
             positionA:
               nameA,
@@ -1051,35 +1050,26 @@ export async function onRequestGet(
       uniqueNumbers,
 
 
-      rule: {
+rule: {
+  fixedPosition: true,
+  fixedDirection: true,
+  requireCurrent: true,
 
-        fixedPosition:
-          true,
+  acceptedStreaks: [
+    2,
+    3,
+    4,
+    5
+  ],
 
-        fixedDirection:
-          true,
+  preferredStreak: 5,
 
-        requireCurrent:
-          true,
+  rejectBroken: true,
 
-        acceptedStreaks: [
-          2,
-          3
-        ],
+  rejectFromStreak: 6,
 
-        preferredStreak:
-          3,
-
-        rejectBroken:
-          true,
-
-        rejectFromStreak:
-          4,
-
-        aggregateDifferentBridges:
-          false
-
-      },
+  aggregateDifferentBridges: false
+},
 
 
       /*
