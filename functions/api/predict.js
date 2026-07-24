@@ -588,7 +588,7 @@ export async function onRequestGet(
             "bridge-predict",
 
           version:
-            "bridge-v2.3",
+            "bridge-v2.4",
 
           message:
             "Không tìm thấy binding DB."
