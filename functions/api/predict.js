@@ -1,17 +1,15 @@
 /*
 ========================================================
-XSMB BRIDGE PREDICT V2.4
+XSMB BRIDGE PREDICT V2.5
 ========================================================
 
-MỤC TIÊU
+MỖI CẦU =
 
-Mỗi "cầu" là MỘT quy luật vị trí cố định:
-
-Vị trí A
+1 vị trí A cố định
 +
-Vị trí B
+1 vị trí B cố định
 +
-Chiều ghép cố định A+B hoặc B+A
+1 chiều ghép cố định A+B hoặc B+A
 
 
 Ví dụ:
@@ -20,100 +18,89 @@ Ví dụ:
 A+B
 
 
-Nếu cùng chính xác cầu này:
-
-20/07 sinh 27 -> 21/07 có 27
-21/07 sinh 63 -> 22/07 có 63
-22/07 sinh 14 -> 23/07 có 14
-23/07 sinh 52 -> 24/07 có 52
-
-=> streak = 4
-
-
-Sau đó dùng đúng:
-
-ĐB[1].D4 + G4[2].D3
-
-ở ngày 24/07 để tạo số dự đoán 25/07.
-
-
 ========================================================
-QUY TẮC V2.4
+BƯỚC 1 - CẦU HIỆN TẠI
 ========================================================
 
-streak 0  -> loại
-streak 1  -> loại
+Cầu phải chạy liên tục sát kỳ mới nhất.
 
-streak 2  -> giữ
-streak 3  -> giữ
-streak 4  -> giữ
-streak 5  -> giữ
+Chấp nhận:
 
-streak >= 6 -> loại
-
-
-Ưu tiên:
-
-5 kỳ
-4 kỳ
-3 kỳ
 2 kỳ
+3 kỳ
+4 kỳ
+5 kỳ
+
+Loại:
+
+0 kỳ
+1 kỳ
+>= 6 kỳ
+
+Nếu kỳ gần nhất không trúng:
+=> cầu gãy
+=> loại ngay.
 
 
-QUAN TRỌNG
+========================================================
+BƯỚC 2 - BACKTEST CHÍNH CẦU ĐÓ
+========================================================
 
-- Phải còn sống sát kỳ mới nhất.
-- Kỳ gần nhất gãy => loại.
-- Không tìm streak cũ.
-- Không cộng nhiều cầu khác nhau.
-- Không biến "10 cầu" thành một cầu.
-- Mỗi suggestion = một cầu vị trí riêng.
-- API chỉ đọc database.
+Ví dụ cầu hiện tại streak = 3.
+
+Tìm trong lịch sử những thời điểm
+chính cầu này đã chạy 3 kỳ liên tục.
+
+Sau đó kiểm tra:
+
+kỳ tiếp theo có tiếp tục trúng hay không?
+
+
+Ví dụ:
+
+opportunities = 20
+continued = 12
+
+continuationRate = 60%
+
+
+========================================================
+BỘ LỌC MẶC ĐỊNH
+========================================================
+
+opportunities >= 5
+
+continuationRate >= 50%
+
+
+========================================================
+SCORE
+========================================================
+
+Score KHÔNG phải xác suất.
+
+Score sử dụng:
+
+- Wilson lower bound
+- continuation rate
+- weighted recent rate
+- sample size
+
+
+========================================================
+TỐI ƯU CLOUDFLARE
+========================================================
+
+Chỉ backtest những cầu đang sống hiện tại.
+
+Không backtest toàn bộ cầu lịch sử trước.
+
 ========================================================
 */
 
 
-/*
-========================================================
-CẤU HÌNH
-========================================================
-*/
+const VERSION = "bridge-v2.5";
 
-const VERSION =
-  "bridge-v2.4";
-
-
-const MIN_STREAK = 2;
-
-const MAX_STREAK = 5;
-
-
-/*
-Để phát hiện cầu >= 6 kỳ,
-cần tối thiểu 7 kỳ kết quả.
-
-Lấy 16 record để dự phòng:
-- record lỗi
-- record chưa xổ
-- dữ liệu "..."
-*/
-
-const HISTORY_LIMIT = 16;
-
-
-/*
-Giới hạn response để tránh
-response quá lớn trên Cloudflare.
-*/
-
-const MAX_SUGGESTIONS = 100;
-
-
-/*
-========================================================
-DANH SÁCH GIẢI
-========================================================
-*/
 
 const PRIZES = [
   "special",
@@ -128,29 +115,51 @@ const PRIZES = [
 
 
 const LABELS = {
-
   special: "ĐB",
-
   g1: "G1",
-
   g2: "G2",
-
   g3: "G3",
-
   g4: "G4",
-
   g5: "G5",
-
   g6: "G6",
-
   g7: "G7"
-
 };
 
 
 /*
 ========================================================
-TÁCH CÁC SỐ TRONG GIẢI
+CONFIG
+========================================================
+*/
+
+const MIN_CURRENT_STREAK = 2;
+
+const MAX_CURRENT_STREAK = 5;
+
+/*
+Nếu phát hiện >=6 thì cầu hiện tại bị loại.
+*/
+
+const CURRENT_REJECT_FROM = 6;
+
+
+const DEFAULT_HISTORY_DRAWS = 150;
+
+const DEFAULT_MIN_SAMPLES = 5;
+
+const DEFAULT_MIN_RATE = 50;
+
+
+/*
+Giới hạn JSON trả về.
+*/
+
+const MAX_RETURNED_SUGGESTIONS = 40;
+
+
+/*
+========================================================
+TÁCH GIẢI
 ========================================================
 */
 
@@ -165,29 +174,14 @@ function splitPrize(value) {
     .trim()
     .split(/\s+/)
     .filter(
-      value =>
-        /^\d+$/.test(value)
+      value => /^\d+$/.test(value)
     );
 }
 
 
 /*
 ========================================================
-KIỂM TRA RECORD XSMB HỢP LỆ
-========================================================
-
-Một kỳ chuẩn:
-
-ĐB: 1 số x 5 chữ số
-G1: 1 số x 5
-G2: 2 số x 5
-G3: 6 số x 5
-G4: 4 số x 4
-G5: 6 số x 4
-G6: 3 số x 3
-G7: 4 số x 2
-
-Tổng = 27 số.
+KIỂM TRA KỲ HỢP LỆ
 ========================================================
 */
 
@@ -199,56 +193,29 @@ function validRow(row) {
 
 
   const special =
-    splitPrize(
-      row.special
-    );
-
+    splitPrize(row.special);
 
   const g1 =
-    splitPrize(
-      row.g1
-    );
-
+    splitPrize(row.g1);
 
   const g2 =
-    splitPrize(
-      row.g2
-    );
-
+    splitPrize(row.g2);
 
   const g3 =
-    splitPrize(
-      row.g3
-    );
-
+    splitPrize(row.g3);
 
   const g4 =
-    splitPrize(
-      row.g4
-    );
-
+    splitPrize(row.g4);
 
   const g5 =
-    splitPrize(
-      row.g5
-    );
-
+    splitPrize(row.g5);
 
   const g6 =
-    splitPrize(
-      row.g6
-    );
-
+    splitPrize(row.g6);
 
   const g7 =
-    splitPrize(
-      row.g7
-    );
+    splitPrize(row.g7);
 
-
-  /*
-  Kiểm tra số lượng.
-  */
 
   if (
     special.length !== 1 ||
@@ -260,69 +227,56 @@ function validRow(row) {
     g6.length !== 3 ||
     g7.length !== 4
   ) {
-
     return false;
   }
 
 
-  /*
-  Kiểm tra số chữ số.
-  */
-
   return (
 
     special.every(
-      value =>
-        /^\d{5}$/.test(value)
+      value => /^\d{5}$/.test(value)
     )
 
     &&
 
     g1.every(
-      value =>
-        /^\d{5}$/.test(value)
+      value => /^\d{5}$/.test(value)
     )
 
     &&
 
     g2.every(
-      value =>
-        /^\d{5}$/.test(value)
+      value => /^\d{5}$/.test(value)
     )
 
     &&
 
     g3.every(
-      value =>
-        /^\d{5}$/.test(value)
+      value => /^\d{5}$/.test(value)
     )
 
     &&
 
     g4.every(
-      value =>
-        /^\d{4}$/.test(value)
+      value => /^\d{4}$/.test(value)
     )
 
     &&
 
     g5.every(
-      value =>
-        /^\d{4}$/.test(value)
+      value => /^\d{4}$/.test(value)
     )
 
     &&
 
     g6.every(
-      value =>
-        /^\d{3}$/.test(value)
+      value => /^\d{3}$/.test(value)
     )
 
     &&
 
     g7.every(
-      value =>
-        /^\d{2}$/.test(value)
+      value => /^\d{2}$/.test(value)
     )
 
   );
@@ -331,7 +285,7 @@ function validRow(row) {
 
 /*
 ========================================================
-LẤY 27 LOTO CỦA MỘT KỲ
+LOTO CỦA 1 KỲ
 ========================================================
 */
 
@@ -341,9 +295,7 @@ function getLotoSet(row) {
     new Set();
 
 
-  for (
-    const prize of PRIZES
-  ) {
+  for (const prize of PRIZES) {
 
     const numbers =
       splitPrize(
@@ -351,9 +303,7 @@ function getLotoSet(row) {
       );
 
 
-    for (
-      const number of numbers
-    ) {
+    for (const number of numbers) {
 
       result.add(
         number.slice(-2)
@@ -368,25 +318,7 @@ function getLotoSet(row) {
 
 /*
 ========================================================
-TẠO DANH SÁCH TẤT CẢ VỊ TRÍ
-========================================================
-
-Ví dụ:
-
-ĐB[1].D1
-ĐB[1].D2
-ĐB[1].D3
-ĐB[1].D4
-ĐB[1].D5
-
-G1[1].D1
-...
-
-G3[6].D5
-
-G4[1].D1
-...
-
+DANH SÁCH VỊ TRÍ
 ========================================================
 */
 
@@ -395,9 +327,7 @@ function getPositions(row) {
   const result = [];
 
 
-  for (
-    const prize of PRIZES
-  ) {
+  for (const prize of PRIZES) {
 
     const numbers =
       splitPrize(
@@ -413,8 +343,7 @@ function getPositions(row) {
 
         for (
           let digitIndex = 0;
-          digitIndex <
-          number.length;
+          digitIndex < number.length;
           digitIndex++
         ) {
 
@@ -432,7 +361,9 @@ function getPositions(row) {
               `${digitIndex}`
 
           });
+
         }
+
       }
     );
   }
@@ -444,7 +375,7 @@ function getPositions(row) {
 
 /*
 ========================================================
-LẤY MỘT CHỮ SỐ TỪ VỊ TRÍ
+LẤY CHỮ SỐ
 ========================================================
 */
 
@@ -453,11 +384,7 @@ function getDigit(
   position
 ) {
 
-  if (
-    !row ||
-    !position
-  ) {
-
+  if (!row) {
     return null;
   }
 
@@ -475,43 +402,21 @@ function getDigit(
 
 
   if (!number) {
-
     return null;
   }
 
 
-  const digit =
+  return (
     number[
       position.digitIndex
-    ];
-
-
-  if (
-    digit === undefined ||
-    digit === null
-  ) {
-
-    return null;
-  }
-
-
-  return String(digit);
+    ] ?? null
+  );
 }
 
 
 /*
 ========================================================
-GHÉP HAI VỊ TRÍ
-========================================================
-
-reverse = false
-
-A+B
-
-
-reverse = true
-
-B+A
+GHÉP SỐ
 ========================================================
 */
 
@@ -519,7 +424,7 @@ function makeNumber(
   row,
   positionA,
   positionB,
-  reverse = false
+  reverse
 ) {
 
   const digitA =
@@ -545,75 +450,37 @@ function makeNumber(
   }
 
 
-  if (reverse) {
-
-    return (
-      `${digitB}${digitA}`
-    );
-  }
-
-
-  return (
-    `${digitA}${digitB}`
-  );
+  return reverse
+    ? `${digitB}${digitA}`
+    : `${digitA}${digitB}`;
 }
 
 
 /*
 ========================================================
-HIỂN THỊ TÊN VỊ TRÍ
-========================================================
-
-Ví dụ:
-
-special / 0 / digit 3
-
-=>
-
-ĐB[1].D4
+TÊN VỊ TRÍ
 ========================================================
 */
 
-function positionName(
-  position
-) {
-
-  const label =
-    LABELS[
-      position.prize
-    ] ||
-    position.prize;
-
+function positionName(position) {
 
   return (
-
-    `${label}` +
-
+    `${LABELS[position.prize]}` +
     `[${position.numberIndex + 1}]` +
-
     `.D${position.digitIndex + 1}`
-
   );
 }
 
 
 /*
 ========================================================
-NGÀY KẾ TIẾP
-========================================================
+NGÀY + 1
 
-Chỉ dùng để hiển thị predictionDate.
-
-KHÔNG dùng để xác định streak.
-
-Streak dựa trên thứ tự các kỳ hợp lệ
-trong database.
+Chỉ dùng để hiển thị.
 ========================================================
 */
 
-function nextDate(
-  dateString
-) {
+function nextDate(dateString) {
 
   const date =
     new Date(
@@ -634,49 +501,111 @@ function nextDate(
 
 /*
 ========================================================
-PHÂN TÍCH MỘT CẦU
+WILSON LOWER BOUND
 ========================================================
-
-rows:
-
-cũ -> mới
-
 
 Ví dụ:
 
-19
-20
-21
-22
-23
-24
+4/5 = 80%
 
+không nên được coi mạnh hơn:
 
-Bắt đầu từ gần nhất:
+30/50 = 60%
 
-23 sinh số -> 24 kiểm tra
-
-nếu đúng:
-
-22 -> 23
-
-nếu đúng:
-
-21 -> 22
-
-...
-
-
-CHỈ CẦN MỘT LẦN GÃY:
-
-STOP
-
-
-Không tìm chuỗi đẹp cũ.
+Wilson giảm ảnh hưởng
+của sample quá nhỏ.
 ========================================================
 */
 
-function analyzeBridge(
+function wilsonLowerBound(
+  successes,
+  total
+) {
+
+  if (total <= 0) {
+    return 0;
+  }
+
+
+  const z = 1.96;
+
+  const p =
+    successes / total;
+
+
+  const denominator =
+    1 +
+    (
+      z * z /
+      total
+    );
+
+
+  const centre =
+    p +
+    (
+      z * z /
+      (
+        2 * total
+      )
+    );
+
+
+  const adjustment =
+    z *
+    Math.sqrt(
+
+      (
+        p *
+        (
+          1 - p
+        ) /
+        total
+      )
+
+      +
+
+      (
+        z * z /
+        (
+          4 *
+          total *
+          total
+        )
+      )
+
+    );
+
+
+  return (
+    centre -
+    adjustment
+  ) /
+  denominator;
+}
+
+
+/*
+========================================================
+STREAK HIỆN TẠI
+========================================================
+
+Chỉ tính từ kỳ mới nhất đi ngược.
+
+Ví dụ:
+
+20 -> 21 ✓
+21 -> 22 ✓
+22 -> 23 ✓
+23 -> 24 ✗
+
+streak hiện tại = 0
+
+Không lấy streak 3 cũ.
+========================================================
+*/
+
+function getCurrentStreak(
   rows,
   lotoSets,
   positionA,
@@ -686,13 +615,8 @@ function analyzeBridge(
 
   let streak = 0;
 
-
   const history = [];
 
-
-  /*
-  Bắt đầu từ cặp kỳ gần nhất.
-  */
 
   for (
     let i =
@@ -703,98 +627,68 @@ function analyzeBridge(
     i--
   ) {
 
-    const sourceRow =
-      rows[i];
-
-
-    const targetRow =
-      rows[i + 1];
-
-
-    /*
-    Sinh số từ kỳ trước.
-    */
-
-    const generatedNumber =
+    const prediction =
       makeNumber(
-        sourceRow,
+        rows[i],
         positionA,
         positionB,
         reverse
       );
 
 
-    if (!generatedNumber) {
-
+    if (!prediction) {
       break;
     }
 
 
-    /*
-    Kiểm tra số đó có xuất hiện
-    trong 27 loto kỳ tiếp theo.
-    */
-
     const hit =
-      lotoSets[
-        i + 1
-      ].has(
-        generatedNumber
-      );
+      lotoSets[i + 1]
+        .has(prediction);
 
 
     /*
-    Gãy => dừng ngay.
+    Gãy sát hiện tại.
     */
 
     if (!hit) {
-
       break;
     }
 
-
-    /*
-    Trúng.
-    */
 
     streak++;
 
 
     /*
-    Lưu tối đa 6 kỳ để
-    kiểm tra/hiển thị.
+    Lưu lịch sử để giao diện
+    chứng minh cầu.
     */
 
     if (
-      history.length < 6
+      history.length < 5
     ) {
 
       history.push({
 
         sourceDate:
-          sourceRow.draw_date,
+          rows[i].draw_date,
 
         targetDate:
-          targetRow.draw_date,
+          rows[i + 1].draw_date,
 
         number:
-          generatedNumber,
-
-        hit: true
+          prediction
 
       });
     }
 
 
     /*
-    V2.4 loại cầu >= 6 kỳ.
-
-    Vì vậy chỉ cần đếm tới 6
-    là có thể dừng.
+    Chỉ cần biết đã >=6.
     */
 
     if (
-      streak >= 6
+      streak >=
+      CURRENT_REJECT_FROM
     ) {
 
       break;
@@ -803,72 +697,334 @@ function analyzeBridge(
 
 
   return {
-
     streak,
-
     history
-
   };
 }
 
 
 /*
 ========================================================
-ĐỘ ƯU TIÊN
+HIT SERIES
+========================================================
+
+Ví dụ:
+
+[
+  false,
+  true,
+  true,
+  false,
+  true,
+  true,
+  true
+]
+
+Mỗi phần tử đại diện:
+
+kỳ N tạo số
+→ kỳ N+1 có số đó hay không
 ========================================================
 */
 
-function getPriority(
-  streak
+function buildHitSeries(
+  rows,
+  lotoSets,
+  positionA,
+  positionB,
+  reverse
 ) {
 
-  switch (streak) {
+  const result = [];
 
-    case 5:
-      return 4;
 
-    case 4:
-      return 3;
+  for (
+    let i = 0;
+    i < rows.length - 1;
+    i++
+  ) {
 
-    case 3:
-      return 2;
+    const prediction =
+      makeNumber(
+        rows[i],
+        positionA,
+        positionB,
+        reverse
+      );
 
-    case 2:
-      return 1;
 
-    default:
-      return 0;
+    if (!prediction) {
+
+      result.push(false);
+
+      continue;
+    }
+
+
+    result.push(
+      lotoSets[i + 1]
+        .has(prediction)
+    );
   }
+
+
+  return result;
 }
 
 
 /*
 ========================================================
-LEVEL
+BACKTEST THEO STREAK HIỆN TẠI
+========================================================
+
+Ví dụ currentStreak = 3.
+
+Ta tìm lịch sử:
+
+✓ ✓ ✓ ?
+
+Mỗi lần xuất hiện ✓✓✓ là một opportunity.
+
+? = true
+=> continued
+
+? = false
+=> gãy
 ========================================================
 */
 
-function getLevel(
-  streak
+function backtestBridge(
+  hitSeries,
+  currentStreak
 ) {
 
-  switch (streak) {
+  /*
+  Không dùng chính streak hiện tại
+  làm dữ liệu backtest.
+  */
 
-    case 5:
-      return "priority-5";
+  const historicalEnd =
+    Math.max(
+      0,
 
-    case 4:
-      return "priority-4";
+      hitSeries.length -
+      currentStreak
+    );
 
-    case 3:
-      return "priority-3";
 
-    case 2:
-      return "running-2";
+  let opportunities = 0;
 
-    default:
-      return "invalid";
+  let continued = 0;
+
+
+  let weightedOpportunities = 0;
+
+  let weightedContinued = 0;
+
+
+  for (
+    let i =
+      currentStreak;
+
+    i <
+      historicalEnd;
+
+    i++
+  ) {
+
+    let validRun = true;
+
+
+    /*
+    Kiểm tra N hit trước i.
+    */
+
+    for (
+      let j = 1;
+      j <= currentStreak;
+      j++
+    ) {
+
+      if (
+        hitSeries[
+          i - j
+        ] !== true
+      ) {
+
+        validRun = false;
+
+        break;
+      }
+    }
+
+
+    if (!validRun) {
+      continue;
+    }
+
+
+    opportunities++;
+
+
+    const success =
+      hitSeries[i] === true;
+
+
+    if (success) {
+
+      continued++;
+    }
+
+
+    /*
+    Ưu tiên lịch sử gần hơn.
+
+    age càng lớn
+    weight càng nhỏ.
+    */
+
+    const age =
+      historicalEnd -
+      1 -
+      i;
+
+
+    const weight =
+      Math.exp(
+        -age / 60
+      );
+
+
+    weightedOpportunities +=
+      weight;
+
+
+    if (success) {
+
+      weightedContinued +=
+        weight;
+    }
   }
+
+
+  const continuationRate =
+    opportunities > 0
+
+      ? (
+          continued /
+          opportunities *
+          100
+        )
+
+      : 0;
+
+
+  const weightedRate =
+    weightedOpportunities > 0
+
+      ? (
+          weightedContinued /
+          weightedOpportunities *
+          100
+        )
+
+      : 0;
+
+
+  const wilson =
+    wilsonLowerBound(
+      continued,
+      opportunities
+    ) * 100;
+
+
+  /*
+  SAMPLE FACTOR
+
+  Sample >=20:
+  factor = 1
+
+  Sample nhỏ:
+  giảm điểm.
+  */
+
+  const sampleFactor =
+    Math.min(
+      1,
+
+      Math.sqrt(
+        opportunities / 20
+      )
+    );
+
+
+  /*
+  SCORE V2.5
+
+  Không phải xác suất.
+  */
+
+  const baseScore =
+    (
+      wilson * 0.60
+    )
+    +
+    (
+      weightedRate * 0.25
+    )
+    +
+    (
+      continuationRate * 0.15
+    );
+
+
+  const score =
+    Number(
+      (
+        baseScore *
+        sampleFactor
+      ).toFixed(2)
+    );
+
+
+  return {
+
+    opportunities,
+
+    continued,
+
+
+    continuationRate:
+      Number(
+        continuationRate
+          .toFixed(2)
+      ),
+
+
+    weightedRate:
+      Number(
+        weightedRate
+          .toFixed(2)
+      ),
+
+
+    wilsonLowerBound:
+      Number(
+        wilson
+          .toFixed(2)
+      ),
+
+
+    sampleFactor:
+      Number(
+        sampleFactor
+          .toFixed(3)
+      ),
+
+
+    score
+
+  };
 }
 
 
@@ -883,12 +1039,6 @@ export async function onRequestGet(
 ) {
 
   try {
-
-    /*
-    ====================================================
-    DATABASE
-    ====================================================
-    */
 
     const DB =
       context.env.DB;
@@ -920,7 +1070,79 @@ export async function onRequestGet(
 
     /*
     ====================================================
-    ĐỌC CÁC KỲ GẦN NHẤT
+    QUERY PARAMS
+    ====================================================
+    */
+
+    const url =
+      new URL(
+        context.request.url
+      );
+
+
+    const historyDraws =
+      Math.max(
+        50,
+
+        Math.min(
+
+          Number(
+            url.searchParams.get(
+              "days"
+            )
+            ||
+            DEFAULT_HISTORY_DRAWS
+          ),
+
+          250
+
+        )
+      );
+
+
+    const minSamples =
+      Math.max(
+        1,
+
+        Math.min(
+
+          Number(
+            url.searchParams.get(
+              "minSamples"
+            )
+            ||
+            DEFAULT_MIN_SAMPLES
+          ),
+
+          50
+
+        )
+      );
+
+
+    const minRate =
+      Math.max(
+        0,
+
+        Math.min(
+
+          Number(
+            url.searchParams.get(
+              "minRate"
+            )
+            ||
+            DEFAULT_MIN_RATE
+          ),
+
+          100
+
+        )
+      );
+
+
+    /*
+    ====================================================
+    LOAD HISTORY
     ====================================================
     */
 
@@ -953,43 +1175,29 @@ export async function onRequestGet(
 
           LIMIT ?
         `)
+
         .bind(
-          HISTORY_LIMIT
+          historyDraws
         )
+
         .all();
 
-
-    /*
-    ====================================================
-    LỌC RECORD HỢP LỆ
-    ====================================================
-
-    Record kiểu:
-
-    special = "..."
-
-    sẽ bị loại.
-    ====================================================
-    */
 
     const rows =
       (
         query.results ||
         []
       )
+
         .filter(
           validRow
         )
+
         .reverse();
 
 
-    /*
-    Để xác định được >= 6 streak
-    cần tối thiểu 7 kỳ hợp lệ.
-    */
-
     if (
-      rows.length < 7
+      rows.length < 20
     ) {
 
       return Response.json({
@@ -1003,7 +1211,7 @@ export async function onRequestGet(
           VERSION,
 
         message:
-          "Không đủ kỳ XSMB hợp lệ để phân tích V2.4.",
+          "Cần ít nhất 20 kỳ hợp lệ để chạy Predict V2.5.",
 
         validDraws:
           rows.length
@@ -1014,7 +1222,7 @@ export async function onRequestGet(
 
     /*
     ====================================================
-    KỲ MỚI NHẤT
+    BASIC DATA
     ====================================================
     */
 
@@ -1024,24 +1232,11 @@ export async function onRequestGet(
       ];
 
 
-    /*
-    ====================================================
-    TẠO LOTO SET
-    ====================================================
-    */
-
     const lotoSets =
       rows.map(
-        row =>
-          getLotoSet(row)
+        getLotoSet
       );
 
-
-    /*
-    ====================================================
-    TẠO DANH SÁCH VỊ TRÍ
-    ====================================================
-    */
 
     const positions =
       getPositions(
@@ -1051,25 +1246,17 @@ export async function onRequestGet(
 
     /*
     ====================================================
-    KẾT QUẢ
+    PHASE 1
+    FIND ACTIVE BRIDGES
     ====================================================
     */
 
-    const suggestions = [];
+    const activeCandidates = [];
 
-
-    /*
-    ====================================================
-    QUÉT CẶP VỊ TRÍ
-    ====================================================
-    */
 
     for (
       let a = 0;
-
-      a <
-      positions.length;
-
+      a < positions.length;
       a++
     ) {
 
@@ -1078,12 +1265,8 @@ export async function onRequestGet(
 
 
       for (
-        let b =
-          a + 1;
-
-        b <
-        positions.length;
-
+        let b = a + 1;
+        b < positions.length;
         b++
       ) {
 
@@ -1092,22 +1275,8 @@ export async function onRequestGet(
 
 
         /*
-        ==================================================
-        CHỈ GHÉP HAI GIẢI KHÁC NHAU
-        ==================================================
-
-        Cho phép:
-
-        ĐB + G4
-        G3 + G5
-        G1 + G6
-
-
-        Không cho:
-
-        G3 + G3
-        G5 + G5
-        ==================================================
+        Hai vị trí thuộc
+        hai giải khác nhau.
         */
 
         if (
@@ -1120,32 +1289,16 @@ export async function onRequestGet(
 
 
         /*
-        ==================================================
-        KIỂM TRA HAI CHIỀU
-
-        A+B
-
-        B+A
-
-        Đây là hai cầu độc lập.
-        ==================================================
+        Hai hướng độc lập.
         */
 
         for (
           const reverse
-          of [
-            false,
-            true
-          ]
+          of [false, true]
         ) {
 
-          /*
-          Phân tích lịch sử
-          của chính cặp vị trí này.
-          */
-
-          const analysis =
-            analyzeBridge(
+          const current =
+            getCurrentStreak(
               rows,
               lotoSets,
               positionA,
@@ -1155,45 +1308,20 @@ export async function onRequestGet(
 
 
           /*
-          ==================================================
-          FILTER V2.4
-          ==================================================
-
-          Chỉ giữ:
-
-          2
-          3
-          4
-          5
-
-          Loại:
-
-          0
-          1
-          >=6
-          ==================================================
+          Chỉ cầu đang chạy 2-5.
           */
 
           if (
-            analysis.streak <
-              MIN_STREAK
+            current.streak <
+              MIN_CURRENT_STREAK
             ||
-            analysis.streak >
-              MAX_STREAK
+            current.streak >
+              MAX_CURRENT_STREAK
           ) {
 
             continue;
           }
 
-
-          /*
-          ==================================================
-          SINH SỐ CHO KỲ TIẾP THEO
-
-          Dùng chính hai vị trí
-          tại kỳ mới nhất.
-          ==================================================
-          */
 
           const prediction =
             makeNumber(
@@ -1209,12 +1337,6 @@ export async function onRequestGet(
             continue;
           }
 
-
-          /*
-          ==================================================
-          TÊN VỊ TRÍ
-          ==================================================
-          */
 
           const nameA =
             positionName(
@@ -1234,104 +1356,55 @@ export async function onRequestGet(
               : "A+B";
 
 
-          /*
-          ==================================================
-          BRIDGE KEY
-
-          ID duy nhất của cầu.
-
-          Bao gồm:
-
-          vị trí A
-          vị trí B
-          chiều
-          ==================================================
-          */
-
-          const bridgeKey =
-
-            `${positionA.key}|` +
-
-            `${positionB.key}|` +
-
-            `${direction}`;
-
-
-          /*
-          ==================================================
-          BRIDGE NAME
-
-          Hiển thị đúng thứ tự
-          sinh số.
-          ==================================================
-          */
-
-          const bridgeName =
+          const bridge =
             reverse
 
-              ? (
-                  `${nameB} + ` +
-                  `${nameA}`
-                )
+              ? `${nameB} + ${nameA}`
 
-              : (
-                  `${nameA} + ` +
-                  `${nameB}`
-                );
+              : `${nameA} + ${nameB}`;
 
 
-          /*
-          ==================================================
-          THÊM CẦU
+          activeCandidates.push({
 
-          MỖI ITEM = 1 CẦU.
+            positionA,
 
-          KHÔNG GROUP THEO NUMBER.
-          ==================================================
-          */
+            positionB,
 
-          suggestions.push({
+            reverse,
 
-            bridgeKey,
+
+            bridgeKey:
+
+              `${positionA.key}|` +
+              `${positionB.key}|` +
+              `${direction}`,
+
 
             number:
               prediction,
 
+
             streak:
-              analysis.streak,
+              current.streak,
 
-            priority:
-              getPriority(
-                analysis.streak
-              ),
 
-            level:
-              getLevel(
-                analysis.streak
-              ),
+            history:
+              current.history,
 
-            positionA:
+
+            positionAName:
               nameA,
 
-            positionB:
+
+            positionBName:
               nameB,
 
-            positionAKey:
-              positionA.key,
-
-            positionBKey:
-              positionB.key,
 
             direction,
 
-            bridge:
-              bridgeName,
-
-            history:
-              analysis.history
+            bridge
 
           });
-
         }
       }
     }
@@ -1339,137 +1412,252 @@ export async function onRequestGet(
 
     /*
     ====================================================
-    XẾP HẠNG
-    ====================================================
-
-    5 kỳ trước
-    4 kỳ
-    3 kỳ
-    2 kỳ
-
-
-    Nếu cùng streak:
-
-    sắp theo số tăng dần.
-
-    Nếu vẫn bằng:
-
-    bridgeKey để kết quả ổn định.
+    PHASE 2
+    BACKTEST ACTIVE BRIDGES ONLY
     ====================================================
     */
 
-    suggestions.sort(
+    const accepted = [];
+
+
+    const rejected = {
+
+      insufficientSamples: 0,
+
+      lowContinuationRate: 0
+
+    };
+
+
+    for (
+      const candidate
+      of activeCandidates
+    ) {
+
+      const hitSeries =
+        buildHitSeries(
+          rows,
+          lotoSets,
+          candidate.positionA,
+          candidate.positionB,
+          candidate.reverse
+        );
+
+
+      const backtest =
+        backtestBridge(
+          hitSeries,
+          candidate.streak
+        );
+
+
+      /*
+      SAMPLE FILTER
+      */
+
+      if (
+        backtest.opportunities <
+        minSamples
+      ) {
+
+        rejected
+          .insufficientSamples++;
+
+        continue;
+      }
+
+
+      /*
+      RATE FILTER
+      */
+
+      if (
+        backtest.continuationRate <
+        minRate
+      ) {
+
+        rejected
+          .lowContinuationRate++;
+
+        continue;
+      }
+
+
+      /*
+      Strength chỉ là phân nhóm.
+      */
+
+      let strength =
+        "qualified";
+
+
+      if (
+        backtest.continuationRate >= 70
+      ) {
+
+        strength =
+          "very-strong";
+
+      } else if (
+        backtest.continuationRate >= 60
+      ) {
+
+        strength =
+          "strong";
+      }
+
+
+      accepted.push({
+
+        bridgeKey:
+          candidate.bridgeKey,
+
+
+        number:
+          candidate.number,
+
+
+        streak:
+          candidate.streak,
+
+
+        bridge:
+          candidate.bridge,
+
+
+        positionA:
+          candidate.positionAName,
+
+
+        positionB:
+          candidate.positionBName,
+
+
+        direction:
+          candidate.direction,
+
+
+        strength,
+
+
+        opportunities:
+          backtest.opportunities,
+
+
+        continued:
+          backtest.continued,
+
+
+        continuationRate:
+          backtest.continuationRate,
+
+
+        weightedRate:
+          backtest.weightedRate,
+
+
+        wilsonLowerBound:
+          backtest.wilsonLowerBound,
+
+
+        sampleFactor:
+          backtest.sampleFactor,
+
+
+        score:
+          backtest.score,
+
+
+        history:
+          candidate.history
+
+      });
+    }
+
+
+    /*
+    ====================================================
+    SORT
+    ====================================================
+    */
+
+    accepted.sort(
       (
         a,
         b
       ) => {
 
         /*
-        Streak cao trước.
+        Score quan trọng nhất.
         */
 
         if (
-          b.streak !==
-          a.streak
+          b.score !==
+          a.score
         ) {
 
           return (
-            b.streak -
-            a.streak
+            b.score -
+            a.score
           );
         }
 
 
         /*
-        Cùng streak:
-        sort number.
+        Sample lớn hơn.
         */
 
-        const numberCompare =
-
-          Number(
-            a.number
-          )
-
-          -
-
-          Number(
-            b.number
-          );
-
-
         if (
-          numberCompare !== 0
+          b.opportunities !==
+          a.opportunities
         ) {
 
-          return numberCompare;
+          return (
+            b.opportunities -
+            a.opportunities
+          );
         }
 
 
         /*
-        Cùng cả số:
-        sort bridge key.
+        Rate.
+        */
+
+        if (
+          b.continuationRate !==
+          a.continuationRate
+        ) {
+
+          return (
+            b.continuationRate -
+            a.continuationRate
+          );
+        }
+
+
+        /*
+        Cuối cùng mới dùng streak.
         */
 
         return (
-          a.bridgeKey
-            .localeCompare(
-              b.bridgeKey
-            )
+          b.streak -
+          a.streak
         );
+
       }
     );
 
 
     /*
     ====================================================
-    PHÂN NHÓM THEO STREAK
-    ====================================================
-    */
-
-    const streak5 =
-      suggestions.filter(
-        item =>
-          item.streak === 5
-      );
-
-
-    const streak4 =
-      suggestions.filter(
-        item =>
-          item.streak === 4
-      );
-
-
-    const streak3 =
-      suggestions.filter(
-        item =>
-          item.streak === 3
-      );
-
-
-    const streak2 =
-      suggestions.filter(
-        item =>
-          item.streak === 2
-      );
-
-
-    /*
-    ====================================================
-    SỐ KHÁC NHAU
-    ====================================================
-
-    Chỉ dùng thống kê.
-
-    KHÔNG dùng để gom cầu.
+    UNIQUE NUMBERS
     ====================================================
     */
 
     const uniqueNumbers =
       [
         ...new Set(
-          suggestions.map(
+          accepted.map(
             item =>
               item.number
           )
@@ -1479,163 +1667,32 @@ export async function onRequestGet(
 
     /*
     ====================================================
-    ĐẾM CẦU THEO SỐ
-
-    Chỉ cung cấp thêm thông tin.
-
-    Không ảnh hưởng xếp hạng cầu.
+    GROUPS
     ====================================================
     */
 
-    const numberMap =
-      new Map();
-
-
-    for (
-      const item
-      of suggestions
-    ) {
-
-      if (
-        !numberMap.has(
-          item.number
-        )
-      ) {
-
-        numberMap.set(
-          item.number,
-          {
-
-            number:
-              item.number,
-
-            totalBridges: 0,
-
-            streak5: 0,
-
-            streak4: 0,
-
-            streak3: 0,
-
-            streak2: 0
-
-          }
-        );
-      }
-
-
-      const stat =
-        numberMap.get(
-          item.number
-        );
-
-
-      stat.totalBridges++;
-
-
-      if (
-        item.streak === 5
-      ) {
-
-        stat.streak5++;
-
-      } else if (
-        item.streak === 4
-      ) {
-
-        stat.streak4++;
-
-      } else if (
-        item.streak === 3
-      ) {
-
-        stat.streak3++;
-
-      } else if (
-        item.streak === 2
-      ) {
-
-        stat.streak2++;
-      }
-    }
-
-
-    const numberSummary =
-      Array.from(
-        numberMap.values()
+    const veryStrong =
+      accepted.filter(
+        item =>
+          item.strength ===
+          "very-strong"
       );
 
 
-    /*
-    Chỉ để tham khảo.
-
-    Ưu tiên số có cầu 5 kỳ,
-    sau đó 4,3,2.
-
-    Nhưng suggestions phía trên
-    vẫn là nguồn chính.
-    */
-
-    numberSummary.sort(
-      (
-        a,
-        b
-      ) => {
-
-        if (
-          b.streak5 !==
-          a.streak5
-        ) {
-
-          return (
-            b.streak5 -
-            a.streak5
-          );
-        }
+    const strong =
+      accepted.filter(
+        item =>
+          item.strength ===
+          "strong"
+      );
 
 
-        if (
-          b.streak4 !==
-          a.streak4
-        ) {
-
-          return (
-            b.streak4 -
-            a.streak4
-          );
-        }
-
-
-        if (
-          b.streak3 !==
-          a.streak3
-        ) {
-
-          return (
-            b.streak3 -
-            a.streak3
-          );
-        }
-
-
-        if (
-          b.streak2 !==
-          a.streak2
-        ) {
-
-          return (
-            b.streak2 -
-            a.streak2
-          );
-        }
-
-
-        return (
-          Number(a.number) -
-          Number(b.number)
-        );
-      }
-    );
+    const qualified =
+      accepted.filter(
+        item =>
+          item.strength ===
+          "qualified"
+      );
 
 
     /*
@@ -1648,24 +1705,18 @@ export async function onRequestGet(
 
       success: true,
 
+
       module:
         "bridge-predict",
+
 
       version:
         VERSION,
 
 
-      /*
-      Kỳ dùng sinh dự đoán.
-      */
-
       sourceDate:
         latest.draw_date,
 
-
-      /*
-      Ngày dự đoán.
-      */
 
       predictionDate:
         nextDate(
@@ -1673,55 +1724,39 @@ export async function onRequestGet(
         ),
 
 
-      /*
-      Số kỳ thực tế được dùng
-      trong lần phân tích này.
-      */
-
       analyzedDraws:
         rows.length,
 
 
       /*
-      Tổng số cầu 2-5 kỳ
-      trước khi giới hạn response.
+      Trước backtest.
       */
 
-      signalCount:
-        suggestions.length,
+      activeCandidateCount:
+        activeCandidates.length,
 
 
       /*
-      Số cầu thực tế trả frontend.
+      Sau bộ lọc.
       */
 
-      returnedSignalCount:
+      qualifiedCount:
+        accepted.length,
+
+
+      returnedCount:
         Math.min(
-          suggestions.length,
-          MAX_SUGGESTIONS
+          accepted.length,
+          MAX_RETURNED_SUGGESTIONS
         ),
 
-
-      /*
-      Số lượng số khác nhau.
-      */
 
       uniqueNumberCount:
         uniqueNumbers.length,
 
 
-      /*
-      Danh sách số khác nhau.
-      */
-
       uniqueNumbers,
 
-
-      /*
-      ==================================================
-      RULE
-      ==================================================
-      */
 
       rule: {
 
@@ -1734,140 +1769,73 @@ export async function onRequestGet(
         requireCurrent:
           true,
 
-        requireContinuous:
-          true,
-
-        acceptedStreaks: [
+        currentStreaks: [
           2,
           3,
           4,
           5
         ],
 
-        preferredStreak:
-          5,
-
         rejectBroken:
           true,
 
-        rejectFromStreak:
-          6,
+        minSamples,
 
-        aggregateDifferentBridges:
+        minContinuationRate:
+          minRate,
+
+        historyDraws:
+          rows.length,
+
+        scoreIsProbability:
           false
 
       },
 
 
-      /*
-      ==================================================
-      COUNTS
-      ==================================================
-      */
+      rejected,
 
-      counts: {
-
-        streak5:
-          streak5.length,
-
-        streak4:
-          streak4.length,
-
-        streak3:
-          streak3.length,
-
-        streak2:
-          streak2.length,
-
-        total:
-          suggestions.length
-
-      },
-
-
-      /*
-      ==================================================
-      SUGGESTIONS
-
-      Mỗi phần tử = 1 cầu vị trí.
-      ==================================================
-      */
 
       suggestions:
-        suggestions.slice(
+        accepted.slice(
           0,
-          MAX_SUGGESTIONS
+          MAX_RETURNED_SUGGESTIONS
         ),
 
 
-      /*
-      ==================================================
-      GROUPS
-      ==================================================
-      */
-
       groups: {
 
-        streak5:
-          streak5.slice(
+        veryStrong:
+          veryStrong.slice(
             0,
-            30
+            20
           ),
 
-        streak4:
-          streak4.slice(
+        strong:
+          strong.slice(
             0,
-            30
+            20
           ),
 
-        streak3:
-          streak3.slice(
+        qualified:
+          qualified.slice(
             0,
-            30
-          ),
-
-        streak2:
-          streak2.slice(
-            0,
-            30
+            20
           )
 
       },
 
 
-      /*
-      ==================================================
-      THỐNG KÊ THEO SỐ
-
-      Chỉ tham khảo.
-
-      Không phải logic xác định cầu.
-      ==================================================
-      */
-
-      numberSummary:
-        numberSummary.slice(
-          0,
-          100
-        ),
-
-
       note:
-        "V2.4: mỗi gợi ý là một cầu vị trí cố định và chiều ghép cố định. Chỉ giữ cầu đang chạy liên tục sát kỳ mới nhất từ 2 đến 5 kỳ. Cầu gãy hoặc đã chạy từ 6 kỳ trở lên bị loại."
+        "V2.5: chỉ các cầu vị trí đang sống hiện tại được backtest. Cầu phải có đủ mẫu và tỷ lệ tiếp diễn lịch sử đạt ngưỡng. Score chỉ dùng xếp hạng, không phải xác suất trúng."
 
     });
 
 
   } catch (error) {
 
-    /*
-    ====================================================
-    ERROR
-    ====================================================
-    */
-
     console.error(
-      "Predict V2.4 error:",
+      "Predict V2.5:",
       error
     );
 
@@ -1885,7 +1853,7 @@ export async function onRequestGet(
 
         message:
           error?.message ||
-          "Lỗi phân tích cầu V2.4."
+          "Lỗi Predict V2.5."
 
       },
       {
