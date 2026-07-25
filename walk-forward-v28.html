@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>XSMB Walk-forward V2.8 Rank Calibration</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#f5f6f8;color:#202124;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+    .page{width:min(1180px,100%);margin:0 auto;padding:16px}.panel{background:#fff;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+    h1,h2,h3{margin-top:0}h1{font-size:24px;margin-bottom:8px}h2{font-size:18px;margin-bottom:12px}h3{font-size:15px;margin:14px 0 8px}p{margin:6px 0;color:#5f6368;line-height:1.5}
+    .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}label{display:block;margin-bottom:5px;color:#5f6368;font-size:13px}
+    select,button{width:100%;min-height:42px;border-radius:9px;border:1px solid #dadce0;padding:8px 10px;font-size:15px;background:#fff}button{cursor:pointer;font-weight:700}button:disabled{opacity:.55;cursor:not-allowed}
+    .primary{background:#202124;color:#fff;border-color:#202124}.danger{color:#b3261e;border-color:#b3261e}.status{margin-top:14px;min-height:22px;font-size:14px}.progress-wrap{height:10px;background:#eceff1;border-radius:999px;overflow:hidden;margin-top:10px}.progress{width:0;height:100%;background:#202124;transition:width .15s ease}
+    .table-wrap{width:100%;overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:720px}th,td{border-bottom:1px solid #eceff1;padding:9px 8px;text-align:left;vertical-align:top;font-size:13px}th{color:#5f6368;white-space:nowrap}
+    .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}.num{display:inline-block;min-width:31px;text-align:center;padding:4px 6px;margin:2px;border-radius:7px;background:#f1f3f4;font-weight:800}.num.hit{background:#e6f4ea;color:#137333}
+    .pos{color:#137333;font-weight:800}.neg{color:#b3261e;font-weight:800}.small{color:#5f6368;font-size:12px;line-height:1.45}.warning{margin-top:10px;padding:10px;border-radius:9px;background:#fff8e1;color:#7a5b00;font-size:13px;line-height:1.45}.error{padding:10px;border-radius:9px;background:#fce8e6;color:#b3261e;font-size:13px}.hidden{display:none}
+    @media(max-width:600px){.page{padding:10px}h1{font-size:20px}}
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="panel">
+    <h1>Walk-forward V2.8 Rank Calibration</h1>
+    <p>So sánh trực tiếp thứ hạng V2.6.2 với V2.8 trên cùng candidate pool và cùng dữ liệu lịch sử.</p>
+    <p>V2.8 chỉ thay cách xếp hạng; không thay điều kiện tìm cầu và không sửa production.</p>
+  </div>
+
+  <div class="panel">
+    <div class="controls">
+      <div><label>Số ngày kiểm tra</label><select id="test-days"><option value="10">10 ngày</option><option value="30" selected>30 ngày</option><option value="60">60 ngày</option><option value="90">90 ngày</option></select></div>
+      <div><label>Window lịch sử</label><select id="model-window"><option value="120">120 kỳ</option><option value="150">150 kỳ</option><option value="180">180 kỳ</option><option value="200" selected>200 kỳ</option></select></div>
+      <div><label>Train tối thiểu</label><select id="min-train"><option value="80">80 kỳ</option><option value="100" selected>100 kỳ</option><option value="120">120 kỳ</option></select></div>
+      <div><button id="start-button" class="primary" onclick="startWalkForwardV28()">Chạy V2.8</button></div>
+      <div><button id="stop-button" class="danger" onclick="stopWalkForwardV28()" disabled>Dừng</button></div>
+    </div>
+    <div id="status" class="status">Sẵn sàng.</div>
+    <div class="progress-wrap"><div id="progress" class="progress"></div></div>
+    <div id="data-info" class="small" style="margin-top:10px"></div>
+  </div>
+
+  <div id="comparison-panel" class="panel hidden">
+    <h2>So sánh V2.6.2 và V2.8</h2>
+    <div id="comparison-table" class="table-wrap"></div>
+    <div class="warning">
+      V2.8 dùng shrinkage về baseline để giảm việc xếp quá cao các cầu có sample nhỏ hoặc rate lịch sử cao nhưng thiếu bằng chứng ổn định. Không dùng kết quả ngày target để xếp hạng.
+    </div>
+  </div>
+
+  <div id="detail-panel" class="panel hidden">
+    <h2>Phân bố thứ hạng</h2>
+    <div class="grid2">
+      <div><h3>V2.6.2 — Rank #1 → #5</h3><div id="base-rank" class="table-wrap"></div></div>
+      <div><h3>V2.8 — Rank #1 → #5</h3><div id="v28-rank" class="table-wrap"></div></div>
+      <div><h3>V2.8 — Recent Evidence</h3><div id="v28-recent" class="table-wrap"></div></div>
+      <div><h3>V2.8 — Strength gốc</h3><div id="v28-strength" class="table-wrap"></div></div>
+      <div><h3>Calibration học từ các ngày trước</h3><div id="calibration-table" class="table-wrap"></div></div>
+    </div>
+  </div>
+
+  <div id="daily-panel" class="panel hidden">
+    <h2>Chi tiết từng ngày</h2>
+    <div id="daily-table" class="table-wrap"></div>
+  </div>
+
+  <div id="error-panel" class="panel hidden">
+    <h2>Lỗi</h2>
+    <div id="error-text" class="error"></div>
+  </div>
+</div>
+<script src="/walk-forward-v28.js?v=2801"></script>
+</body>
+</html>
