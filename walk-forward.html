@@ -3523,7 +3523,7 @@ async function loadEngine() {
   const response =
     await fetch(
 
-      `/api/walk-forward-data` +
+      `/api/walk-forward-v27` +
       `?limit=340` +
       `&t=${Date.now()}`,
 
@@ -3534,8 +3534,37 @@ async function loadEngine() {
     );
 
 
-  const data =
-    await response.json();
+  const responseText =
+  await response.text();
+
+
+let data;
+
+
+try {
+
+  data =
+    JSON.parse(
+      responseText
+    );
+
+}
+catch (error) {
+
+  console.error(
+    "Response thực tế:",
+    responseText.slice(
+      0,
+      500
+    )
+  );
+
+
+  throw new Error(
+    "API không trả JSON. " +
+    "Kiểm tra /api/walk-forward-v27 sau khi deploy."
+  );
+}
 
 
   if (
