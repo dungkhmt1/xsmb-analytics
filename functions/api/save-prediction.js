@@ -1,20 +1,36 @@
 /*
 ========================================================
-XSMB V2.6.2 LIVE VALIDATION
+XSMB V2.6.2
+LIVE VALIDATION + LIVE PRIORITY V1
 /api/save-prediction
 ========================================================
 
-- Đọc đúng schema thực tế của /api/predict
-- Lưu prediction trước khi biết kết quả
-- Prediction đã lưu => LOCK, không ghi đè
-- Giữ prediction_daily để tương thích hệ thống cũ
-- Lưu toàn bộ suggestions V2.6.2 để nghiên cứu sau này
-- Top1 / Top3 / Top5 được chấm tự động
+BASE MODEL:
+bridge-v2.6.2
+
+PRIORITY MODEL:
+bridge-v2.6.2-live-priority-v1
+
+QUY TẮC PRIORITY:
+- Cầu đã HIT ở kỳ liền trước.
+- Cùng bridgeKey.
+- Cầu vẫn phải xuất hiện trong suggestions V2.6.2 hiện tại.
+- Không hồi sinh cầu đã bị V2.6.2 loại.
+- Không sửa score / strength / filter V2.6.2.
+- Chỉ thay thứ tự dùng thực tế.
+
+BASE và PRIORITY được lưu riêng để kiểm chứng.
 ========================================================
 */
 
-const TRACK_MODEL = "bridge-v2.6.2";
-const MAX_TRACK_RECOMMENDATIONS = 12;
+const BASE_MODEL =
+  "bridge-v2.6.2";
+
+const PRIORITY_MODEL =
+  "bridge-v2.6.2-live-priority-v1";
+
+const MAX_TRACK_RECOMMENDATIONS =
+  12;
 
 
 /*
@@ -23,13 +39,21 @@ JSON RESPONSE
 ========================================================
 */
 
-function json(data, status = 200) {
-  return Response.json(data, {
-    status,
-    headers: {
-      "Cache-Control": "no-store, no-cache, must-revalidate"
+function json(
+  data,
+  status = 200
+) {
+  return Response.json(
+    data,
+    {
+      status,
+
+      headers: {
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate"
+      }
     }
-  });
+  );
 }
 
 
@@ -40,18 +64,26 @@ HELPERS
 */
 
 function round2(value) {
-  const n = Number(value);
+
+  const n =
+    Number(value);
 
   if (!Number.isFinite(n)) {
     return 0;
   }
 
-  return Math.round(n * 100) / 100;
+  return Math.round(
+    n * 100
+  ) / 100;
 }
 
 
 function normalizeNumber(value) {
-  if (value === null || value === undefined) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return null;
   }
 
@@ -71,11 +103,18 @@ function normalizeNumber(value) {
 
 /*
 ========================================================
-CREATE TRACKING TABLE
+DATABASE TABLES
 ========================================================
 */
 
-async function ensureTrackingTable(db) {
+async function ensureTables(db) {
+
+  /*
+  ================================================
+  BASE V2.6.2 TRACKING
+  ================================================
+  */
+
   await db
     .prepare(`
       CREATE TABLE IF NOT EXISTS prediction_tracking (
@@ -121,13 +160,54 @@ async function ensureTrackingTable(db) {
     .run();
 
 
+  /*
+  ================================================
+  PRIORITY VARIANT TRACKING
+  ================================================
+  */
+
   await db
     .prepare(`
-      CREATE INDEX IF NOT EXISTS
-      idx_prediction_tracking_date
+      CREATE TABLE IF NOT EXISTS prediction_priority_tracking (
 
-      ON prediction_tracking (
-        prediction_date
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        prediction_date TEXT NOT NULL,
+        source_date TEXT,
+
+        base_model TEXT NOT NULL,
+        variant TEXT NOT NULL,
+
+        numbers TEXT NOT NULL,
+        pick_count INTEGER NOT NULL DEFAULT 0,
+
+        recommendations_json TEXT NOT NULL,
+
+        promoted_count INTEGER NOT NULL DEFAULT 0,
+        promoted_bridge_keys TEXT,
+
+        status TEXT NOT NULL DEFAULT 'locked',
+
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+        evaluated_at TEXT,
+
+        actual_unique_count INTEGER,
+
+        top1_hit INTEGER,
+        top3_hit INTEGER,
+        top5_hit INTEGER,
+
+        baseline_top1 REAL,
+        baseline_top3 REAL,
+        baseline_top5 REAL,
+
+        evaluation_json TEXT,
+
+        UNIQUE (
+          prediction_date,
+          variant
+        )
       )
     `)
     .run();
@@ -144,25 +224,48 @@ async function ensureTrackingTable(db) {
       )
     `)
     .run();
+
+
+  await db
+    .prepare(`
+      CREATE INDEX IF NOT EXISTS
+      idx_prediction_priority_pending
+
+      ON prediction_priority_tracking (
+        variant,
+        evaluated_at
+      )
+    `)
+    .run();
 }
 
 
 /*
 ========================================================
-EXTRACT LOTO FROM RESULT
+LOTTERY RESULT HELPERS
 ========================================================
 */
 
 function extractPrizeNumbers(value) {
-  if (value === null || value === undefined) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return [];
   }
 
-  return String(value).match(/\d+/g) || [];
+  return (
+    String(value)
+      .match(/\d+/g)
+    ||
+    []
+  );
 }
 
 
 function extractUniqueLoto(row) {
+
   const fields = [
     "special",
     "g1",
@@ -178,24 +281,65 @@ function extractUniqueLoto(row) {
     new Set();
 
 
-  for (const field of fields) {
+  for (
+    const field
+    of fields
+  ) {
+
     const prizes =
       extractPrizeNumbers(
         row[field]
       );
 
-    for (const prize of prizes) {
-      const number =
+
+    for (
+      const prize
+      of prizes
+    ) {
+
+      set.add(
         prize
           .padStart(2, "0")
-          .slice(-2);
-
-      set.add(number);
+          .slice(-2)
+      );
     }
   }
 
 
-  return [...set].sort();
+  return [
+    ...set
+  ].sort();
+}
+
+
+async function getResult(
+  db,
+  drawDate
+) {
+
+  return db
+    .prepare(`
+      SELECT
+        draw_date,
+        special,
+        g1,
+        g2,
+        g3,
+        g4,
+        g5,
+        g6,
+        g7
+
+      FROM results
+
+      WHERE draw_date = ?
+
+      LIMIT 1
+    `)
+    .bind(
+      drawDate
+    )
+    .first();
 }
 
 
@@ -203,9 +347,8 @@ function extractUniqueLoto(row) {
 ========================================================
 RANDOM BASELINE
 
-P(at least one hit)
-k số được chọn
-u số loto unique thực tế
+Xác suất >= 1 số trúng khi chọn K số,
+target có U loto unique.
 ========================================================
 */
 
@@ -213,6 +356,7 @@ function randomHitProbability(
   uniqueCount,
   pickCount
 ) {
+
   const u =
     Math.max(
       0,
@@ -221,6 +365,7 @@ function randomHitProbability(
         Number(uniqueCount) || 0
       )
     );
+
 
   const k =
     Math.max(
@@ -232,7 +377,10 @@ function randomHitProbability(
     );
 
 
-  if (!u || !k) {
+  if (
+    u <= 0 ||
+    k <= 0
+  ) {
     return 0;
   }
 
@@ -241,16 +389,28 @@ function randomHitProbability(
     1;
 
 
-  for (let i = 0; i < k; i++) {
+  for (
+    let i = 0;
+    i < k;
+    i++
+  ) {
+
     const numerator =
-      100 - u - i;
+      100 -
+      u -
+      i;
 
     const denominator =
-      100 - i;
+      100 -
+      i;
 
 
-    if (numerator <= 0) {
+    if (
+      numerator <= 0
+    ) {
+
       noHit = 0;
+
       break;
     }
 
@@ -277,8 +437,13 @@ function normalizeSuggestion(
   item,
   rank
 ) {
+
   return {
+
     rank,
+
+    baseRank:
+      rank,
 
     number:
       normalizeNumber(
@@ -301,126 +466,196 @@ function normalizeSuggestion(
       item.direction ?? null,
 
     streak:
-      Number(item.streak) || 0,
+      Number(
+        item.streak
+      ) || 0,
 
     opportunities:
-      Number(item.opportunities) || 0,
+      Number(
+        item.opportunities
+      ) || 0,
 
     continued:
-      Number(item.continued) || 0,
+      Number(
+        item.continued
+      ) || 0,
 
     continuationRate:
-      Number(item.continuationRate) || 0,
+      Number(
+        item.continuationRate
+      ) || 0,
 
     weightedRate:
-      Number(item.weightedRate) || 0,
+      Number(
+        item.weightedRate
+      ) || 0,
 
     baselineRate:
-      Number(item.baselineRate) || 0,
+      Number(
+        item.baselineRate
+      ) || 0,
 
     edge:
-      Number(item.edge) || 0,
+      Number(
+        item.edge
+      ) || 0,
 
     wilsonLowerBound:
-      Number(item.wilsonLowerBound) || 0,
+      Number(
+        item.wilsonLowerBound
+      ) || 0,
 
     wilsonEdge:
-      Number(item.wilsonEdge) || 0,
+      Number(
+        item.wilsonEdge
+      ) || 0,
 
     rate30:
-      Number(item.rate30) || 0,
+      Number(
+        item.rate30
+      ) || 0,
 
     samples30:
-      Number(item.samples30) || 0,
+      Number(
+        item.samples30
+      ) || 0,
 
     rate60:
-      Number(item.rate60) || 0,
+      Number(
+        item.rate60
+      ) || 0,
 
     samples60:
-      Number(item.samples60) || 0,
+      Number(
+        item.samples60
+      ) || 0,
 
     rate100:
-      Number(item.rate100) || 0,
+      Number(
+        item.rate100
+      ) || 0,
 
     samples100:
-      Number(item.samples100) || 0,
+      Number(
+        item.samples100
+      ) || 0,
 
     recentRate:
-      Number(item.recentRate) || 0,
+      Number(
+        item.recentRate
+      ) || 0,
 
     recentSamples:
-      Number(item.recentSamples) || 0,
+      Number(
+        item.recentSamples
+      ) || 0,
 
     recentStatus:
       item.recentStatus ?? null,
 
     stabilityRange:
-      Number(item.stabilityRange) || 0,
+      Number(
+        item.stabilityRange
+      ) || 0,
 
     stabilityScore:
-      Number(item.stabilityScore) || 0,
+      Number(
+        item.stabilityScore
+      ) || 0,
 
     sampleReliability:
-      Number(item.sampleReliability) || 0,
+      Number(
+        item.sampleReliability
+      ) || 0,
 
     rawScore:
-      Number(item.rawScore) || 0,
+      Number(
+        item.rawScore
+      ) || 0,
 
     independentConsensus:
-      Number(item.independentConsensus) || 0,
+      Number(
+        item.independentConsensus
+      ) || 0,
 
     relatedBridgeCount:
-      Number(item.relatedBridgeCount) || 0,
+      Number(
+        item.relatedBridgeCount
+      ) || 0,
 
     consensusBonus:
-      Number(item.consensusBonus) || 0,
+      Number(
+        item.consensusBonus
+      ) || 0,
 
     correlationPenalty:
-      Number(item.correlationPenalty) || 0,
+      Number(
+        item.correlationPenalty
+      ) || 0,
 
     recentAdjustment:
-      Number(item.recentAdjustment) || 0,
+      Number(
+        item.recentAdjustment
+      ) || 0,
 
     score:
-      Number(item.score) || 0,
+      Number(
+        item.score
+      ) || 0,
 
     strength:
-      item.strength ?? null
+      item.strength ?? null,
+
+    history:
+      Array.isArray(
+        item.history
+      )
+        ?
+        item.history
+        :
+        []
   };
 }
 
 
 /*
 ========================================================
-READ SAVED PAYLOAD
+READ STORED RECOMMENDATIONS
 ========================================================
 */
 
 function readRecommendations(text) {
+
   try {
+
     const parsed =
-      JSON.parse(text || "[]");
+      JSON.parse(
+        text || "[]"
+      );
 
 
-    // Schema mới
     if (
-      parsed &&
-      Array.isArray(
-        parsed.recommendations
-      )
+      Array.isArray(parsed)
     ) {
-      return parsed.recommendations;
-    }
-
-
-    // Tương thích row cũ
-    if (Array.isArray(parsed)) {
       return parsed;
     }
 
 
+    if (
+      Array.isArray(
+        parsed?.recommendations
+      )
+    ) {
+
+      return parsed
+        .recommendations;
+    }
+
+
     return [];
+
   } catch {
+
     return [];
   }
 }
@@ -428,11 +663,248 @@ function readRecommendations(text) {
 
 /*
 ========================================================
-EVALUATE PENDING PREDICTIONS
+CALL /api/predict SAFELY
+
+Quan trọng:
+- Không truyền ?top=12
+- Đọc BODY kể cả HTTP 500
+- Trả lỗi thật từ predict
 ========================================================
 */
 
-async function evaluatePending(db) {
+async function fetchPrediction(
+  requestUrl
+) {
+
+  const origin =
+    new URL(
+      requestUrl
+    ).origin;
+
+
+  const predictUrl =
+    `${origin}/api/predict?t=${Date.now()}`;
+
+
+  let response;
+
+
+  try {
+
+    response =
+      await fetch(
+        predictUrl,
+        {
+          headers: {
+            Accept:
+              "application/json",
+
+            "Cache-Control":
+              "no-cache"
+          }
+        }
+      );
+
+  } catch (error) {
+
+    return {
+      success: false,
+
+      stage:
+        "predict-network",
+
+      status:
+        0,
+
+      url:
+        predictUrl,
+
+      message:
+        error?.message ||
+        "Không gọi được /api/predict",
+
+      body:
+        null
+    };
+  }
+
+
+  let rawText = "";
+
+
+  try {
+
+    rawText =
+      await response.text();
+
+  } catch (error) {
+
+    return {
+      success: false,
+
+      stage:
+        "predict-read-body",
+
+      status:
+        response.status,
+
+      url:
+        predictUrl,
+
+      message:
+        error?.message ||
+        "Không đọc được response /api/predict",
+
+      body:
+        null
+    };
+  }
+
+
+  let data = null;
+
+
+  try {
+
+    data =
+      JSON.parse(
+        rawText
+      );
+
+  } catch {
+
+    data = null;
+  }
+
+
+  /*
+  ================================================
+  HTTP ERROR
+  ================================================
+  */
+
+  if (!response.ok) {
+
+    return {
+      success: false,
+
+      stage:
+        "predict-http",
+
+      status:
+        response.status,
+
+      url:
+        predictUrl,
+
+      message:
+        data?.message
+        ||
+        `Predict API HTTP ${response.status}`,
+
+      body:
+        rawText.slice(
+          0,
+          1500
+        ),
+
+      parsed:
+        data
+    };
+  }
+
+
+  /*
+  ================================================
+  INVALID JSON
+  ================================================
+  */
+
+  if (!data) {
+
+    return {
+      success: false,
+
+      stage:
+        "predict-json",
+
+      status:
+        response.status,
+
+      url:
+        predictUrl,
+
+      message:
+        "Predict API không trả JSON hợp lệ",
+
+      body:
+        rawText.slice(
+          0,
+          1500
+        )
+    };
+  }
+
+
+  /*
+  ================================================
+  success:false
+  ================================================
+  */
+
+  if (!data.success) {
+
+    return {
+      success: false,
+
+      stage:
+        "predict-response",
+
+      status:
+        response.status,
+
+      url:
+        predictUrl,
+
+      message:
+        data.message
+        ||
+        "Predict API trả success=false",
+
+      body:
+        rawText.slice(
+          0,
+          1500
+        ),
+
+      parsed:
+        data
+    };
+  }
+
+
+  return {
+    success: true,
+
+    status:
+      response.status,
+
+    url:
+      predictUrl,
+
+    data
+  };
+}
+
+
+/*
+========================================================
+EVALUATE BASE PENDING
+========================================================
+*/
+
+async function evaluateBasePending(db) {
+
   const query =
     await db
       .prepare(`
@@ -451,48 +923,30 @@ async function evaluatePending(db) {
         ORDER BY prediction_date ASC
       `)
       .bind(
-        TRACK_MODEL
+        BASE_MODEL
       )
       .all();
 
 
-  const rows =
+  const pending =
     query.results || [];
 
 
   let evaluatedNow = 0;
 
 
-  for (const saved of rows) {
+  for (
+    const saved
+    of pending
+  ) {
+
     const actual =
-      await db
-        .prepare(`
-          SELECT
-            draw_date,
-            special,
-            g1,
-            g2,
-            g3,
-            g4,
-            g5,
-            g6,
-            g7
-
-          FROM results
-
-          WHERE draw_date = ?
-
-          LIMIT 1
-        `)
-        .bind(
-          saved.prediction_date
-        )
-        .first();
+      await getResult(
+        db,
+        saved.prediction_date
+      );
 
 
-    /*
-     * Chưa có kết quả target.
-     */
     if (!actual) {
       continue;
     }
@@ -522,25 +976,44 @@ async function evaluatePending(db) {
 
 
     /*
-     * Fallback cho dữ liệu cũ.
+     * Fallback cho snapshot rất cũ.
      */
-    if (!recommendations.length) {
+    if (
+      !recommendations.length
+    ) {
+
       recommendations =
-        String(saved.numbers || "")
+        String(
+          saved.numbers || ""
+        )
           .split(",")
           .map(
-            (number, index) => ({
+            (
+              number,
+              index
+            ) => ({
+
               rank:
+                index + 1,
+
+              baseRank:
                 index + 1,
 
               number:
                 normalizeNumber(
                   number
-                )
+                ),
+
+              bridgeKey:
+                null,
+
+              bridge:
+                null
             })
           )
           .filter(
-            x => x.number
+            item =>
+              item.number
           );
     }
 
@@ -548,23 +1021,53 @@ async function evaluatePending(db) {
     recommendations =
       recommendations
         .filter(
-          x => x.number
+          item =>
+            item.number
         )
         .sort(
-          (a, b) =>
-            Number(a.rank) -
-            Number(b.rank)
+          (
+            a,
+            b
+          ) =>
+            Number(
+              a.baseRank ??
+              a.rank
+            )
+            -
+            Number(
+              b.baseRank ??
+              b.rank
+            )
         );
 
 
-    const evaluated =
+    /*
+     * Lưu bridgeKey trong evaluation.
+     * Đây là dữ liệu dùng cho Live Priority.
+     */
+    const evaluation =
       recommendations.map(
-        item => ({
+        (
+          item,
+          index
+        ) => ({
+
           rank:
-            item.rank,
+            index + 1,
+
+          baseRank:
+            item.baseRank ??
+            item.rank ??
+            index + 1,
 
           number:
             item.number,
+
+          bridgeKey:
+            item.bridgeKey ?? null,
+
+          bridge:
+            item.bridge ?? null,
 
           hit:
             actualSet.has(
@@ -575,52 +1078,26 @@ async function evaluatePending(db) {
 
 
     const top1 =
-      evaluated.slice(0, 1);
+      evaluation.slice(
+        0,
+        1
+      );
 
     const top3 =
-      evaluated.slice(0, 3);
+      evaluation.slice(
+        0,
+        3
+      );
 
     const top5 =
-      evaluated.slice(0, 5);
-
-
-    const top1Hit =
-      top1.some(x => x.hit)
-        ? 1
-        : 0;
-
-    const top3Hit =
-      top3.some(x => x.hit)
-        ? 1
-        : 0;
-
-    const top5Hit =
-      top5.some(x => x.hit)
-        ? 1
-        : 0;
+      evaluation.slice(
+        0,
+        5
+      );
 
 
     const uniqueCount =
       actualNumbers.length;
-
-
-    const baselineTop1 =
-      randomHitProbability(
-        uniqueCount,
-        top1.length
-      );
-
-    const baselineTop3 =
-      randomHitProbability(
-        uniqueCount,
-        top3.length
-      );
-
-    const baselineTop5 =
-      randomHitProbability(
-        uniqueCount,
-        top5.length
-      );
 
 
     await db
@@ -648,20 +1125,50 @@ async function evaluatePending(db) {
           AND evaluated_at IS NULL
       `)
       .bind(
+
         uniqueCount,
 
-        top1Hit,
-        top3Hit,
-        top5Hit,
+        top1.some(
+          item =>
+            item.hit
+        )
+          ? 1
+          : 0,
 
-        baselineTop1,
-        baselineTop3,
-        baselineTop5,
+        top3.some(
+          item =>
+            item.hit
+        )
+          ? 1
+          : 0,
+
+        top5.some(
+          item =>
+            item.hit
+        )
+          ? 1
+          : 0,
+
+        randomHitProbability(
+          uniqueCount,
+          top1.length
+        ),
+
+        randomHitProbability(
+          uniqueCount,
+          top3.length
+        ),
+
+        randomHitProbability(
+          uniqueCount,
+          top5.length
+        ),
 
         JSON.stringify({
           actualNumbers,
+
           recommendations:
-            evaluated
+            evaluation
         }),
 
         saved.id
@@ -679,17 +1186,1143 @@ async function evaluatePending(db) {
 
 /*
 ========================================================
-LIVE STATISTICS
+EVALUATE PRIORITY PENDING
 ========================================================
 */
 
-async function getLiveStatistics(db) {
-  const stats =
+async function evaluatePriorityPending(
+  db
+) {
+
+  const query =
+    await db
+      .prepare(`
+        SELECT
+          id,
+          prediction_date,
+          recommendations_json
+
+        FROM prediction_priority_tracking
+
+        WHERE
+          variant = ?
+          AND evaluated_at IS NULL
+
+        ORDER BY prediction_date ASC
+      `)
+      .bind(
+        PRIORITY_MODEL
+      )
+      .all();
+
+
+  const pending =
+    query.results || [];
+
+
+  let evaluatedNow = 0;
+
+
+  for (
+    const saved
+    of pending
+  ) {
+
+    const actual =
+      await getResult(
+        db,
+        saved.prediction_date
+      );
+
+
+    if (!actual) {
+      continue;
+    }
+
+
+    const actualNumbers =
+      extractUniqueLoto(
+        actual
+      );
+
+
+    if (!actualNumbers.length) {
+      continue;
+    }
+
+
+    const actualSet =
+      new Set(
+        actualNumbers
+      );
+
+
+    const recommendations =
+      readRecommendations(
+        saved.recommendations_json
+      )
+        .filter(
+          item =>
+            item.number
+        )
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            Number(
+              a.liveRank ??
+              a.rank
+            )
+            -
+            Number(
+              b.liveRank ??
+              b.rank
+            )
+        );
+
+
+    const evaluation =
+      recommendations.map(
+        (
+          item,
+          index
+        ) => ({
+
+          liveRank:
+            index + 1,
+
+          baseRank:
+            item.baseRank ?? null,
+
+          number:
+            item.number,
+
+          bridgeKey:
+            item.bridgeKey ?? null,
+
+          bridge:
+            item.bridge ?? null,
+
+          promoted:
+            Boolean(
+              item.livePriority
+            ),
+
+          priorityReason:
+            item.priorityReason ??
+            null,
+
+          hit:
+            actualSet.has(
+              item.number
+            )
+        })
+      );
+
+
+    const top1 =
+      evaluation.slice(
+        0,
+        1
+      );
+
+    const top3 =
+      evaluation.slice(
+        0,
+        3
+      );
+
+    const top5 =
+      evaluation.slice(
+        0,
+        5
+      );
+
+
+    const uniqueCount =
+      actualNumbers.length;
+
+
+    await db
+      .prepare(`
+        UPDATE prediction_priority_tracking
+
+        SET
+          actual_unique_count = ?,
+
+          top1_hit = ?,
+          top3_hit = ?,
+          top5_hit = ?,
+
+          baseline_top1 = ?,
+          baseline_top3 = ?,
+          baseline_top5 = ?,
+
+          evaluation_json = ?,
+
+          evaluated_at =
+            CURRENT_TIMESTAMP
+
+        WHERE
+          id = ?
+          AND evaluated_at IS NULL
+      `)
+      .bind(
+
+        uniqueCount,
+
+        top1.some(
+          x => x.hit
+        )
+          ? 1
+          : 0,
+
+        top3.some(
+          x => x.hit
+        )
+          ? 1
+          : 0,
+
+        top5.some(
+          x => x.hit
+        )
+          ? 1
+          : 0,
+
+        randomHitProbability(
+          uniqueCount,
+          top1.length
+        ),
+
+        randomHitProbability(
+          uniqueCount,
+          top3.length
+        ),
+
+        randomHitProbability(
+          uniqueCount,
+          top5.length
+        ),
+
+        JSON.stringify({
+          actualNumbers,
+
+          recommendations:
+            evaluation
+        }),
+
+        saved.id
+      )
+      .run();
+
+
+    evaluatedNow++;
+  }
+
+
+  return evaluatedNow;
+}
+
+
+/*
+========================================================
+PREVIOUS DAY HIT CONTEXT
+
+Không phụ thuộc evaluation_json cũ có bridgeKey hay không.
+
+Đọc trực tiếp:
+- prediction_tracking
+- recommendations_json
+- results
+
+=> snapshot 25/07 cũ vẫn dùng được.
+========================================================
+*/
+
+async function getPreviousHitContext(
+  db,
+  sourceDate
+) {
+
+  const snapshot =
+    await db
+      .prepare(`
+        SELECT
+          prediction_date,
+          recommendations_json,
+          numbers
+
+        FROM prediction_tracking
+
+        WHERE
+          prediction_date = ?
+          AND model = ?
+
+        LIMIT 1
+      `)
+      .bind(
+        sourceDate,
+        BASE_MODEL
+      )
+      .first();
+
+
+  if (!snapshot) {
+
+    return {
+      available: false,
+
+      date:
+        sourceDate,
+
+      hitBridgeKeys:
+        new Set(),
+
+      hits: []
+    };
+  }
+
+
+  const actual =
+    await getResult(
+      db,
+      sourceDate
+    );
+
+
+  if (!actual) {
+
+    return {
+      available: false,
+
+      date:
+        sourceDate,
+
+      hitBridgeKeys:
+        new Set(),
+
+      hits: []
+    };
+  }
+
+
+  const actualNumbers =
+    extractUniqueLoto(
+      actual
+    );
+
+
+  const actualSet =
+    new Set(
+      actualNumbers
+    );
+
+
+  const recommendations =
+    readRecommendations(
+      snapshot.recommendations_json
+    );
+
+
+  const hits =
+    recommendations
+      .filter(
+        item =>
+          item.number &&
+          item.bridgeKey &&
+          actualSet.has(
+            item.number
+          )
+      )
+      .map(
+        item => ({
+
+          baseRank:
+            item.baseRank ??
+            item.rank,
+
+          number:
+            item.number,
+
+          bridgeKey:
+            item.bridgeKey,
+
+          bridge:
+            item.bridge,
+
+          score:
+            item.score,
+
+          strength:
+            item.strength
+        })
+      );
+
+
+  return {
+
+    available: true,
+
+    date:
+      sourceDate,
+
+    actualNumbers,
+
+    hitBridgeKeys:
+      new Set(
+        hits.map(
+          item =>
+            item.bridgeKey
+        )
+      ),
+
+    hits
+  };
+}
+
+
+/*
+========================================================
+BUILD PRIORITY RANKING
+========================================================
+*/
+
+function buildPriorityRanking(
+  baseRecommendations,
+  previousContext
+) {
+
+  const hitKeys =
+    previousContext
+      ?.hitBridgeKeys
+    ||
+    new Set();
+
+
+  const ranked =
+    baseRecommendations
+      .map(
+        (
+          item,
+          index
+        ) => {
+
+          const baseRank =
+            index + 1;
+
+
+          const livePriority =
+            Boolean(
+              item.bridgeKey &&
+              hitKeys.has(
+                item.bridgeKey
+              )
+            );
+
+
+          return {
+
+            ...item,
+
+            rank:
+              baseRank,
+
+            baseRank,
+
+            livePriority,
+
+            priorityReason:
+              livePriority
+                ?
+                "previous-day-same-bridge-hit"
+                :
+                null,
+
+            previousHitDate:
+              livePriority
+                ?
+                previousContext.date
+                :
+                null
+          };
+        }
+      );
+
+
+  /*
+  ================================================
+  Cầu vừa HIT lên đầu.
+
+  Nếu nhiều cầu HIT:
+  giữ nguyên thứ tự V2.6.2 giữa chúng.
+
+  Các cầu còn lại:
+  giữ nguyên thứ tự V2.6.2.
+  ================================================
+  */
+
+  ranked.sort(
+    (
+      a,
+      b
+    ) => {
+
+      const priorityDifference =
+        Number(
+          b.livePriority
+        )
+        -
+        Number(
+          a.livePriority
+        );
+
+
+      if (
+        priorityDifference !== 0
+      ) {
+
+        return priorityDifference;
+      }
+
+
+      return (
+        a.baseRank -
+        b.baseRank
+      );
+    }
+  );
+
+
+  return ranked.map(
+    (
+      item,
+      index
+    ) => ({
+
+      ...item,
+
+      liveRank:
+        index + 1
+    })
+  );
+}
+
+
+/*
+========================================================
+GET SNAPSHOTS
+========================================================
+*/
+
+async function getBaseSnapshot(
+  db,
+  predictionDate
+) {
+
+  return db
+    .prepare(`
+      SELECT *
+
+      FROM prediction_tracking
+
+      WHERE
+        prediction_date = ?
+        AND model = ?
+
+      LIMIT 1
+    `)
+    .bind(
+      predictionDate,
+      BASE_MODEL
+    )
+    .first();
+}
+
+
+async function getPrioritySnapshot(
+  db,
+  predictionDate
+) {
+
+  return db
+    .prepare(`
+      SELECT *
+
+      FROM prediction_priority_tracking
+
+      WHERE
+        prediction_date = ?
+        AND variant = ?
+
+      LIMIT 1
+    `)
+    .bind(
+      predictionDate,
+      PRIORITY_MODEL
+    )
+    .first();
+}
+
+
+/*
+========================================================
+SAVE BASE SNAPSHOT
+========================================================
+*/
+
+async function saveBaseSnapshot(
+  db,
+  predict,
+  recommendations
+) {
+
+  let snapshot =
+    await getBaseSnapshot(
+      db,
+      predict.predictionDate
+    );
+
+
+  if (snapshot) {
+
+    return {
+      savedNew: false,
+
+      blocked:
+        null,
+
+      snapshot
+    };
+  }
+
+
+  /*
+  * Không được tạo prediction sau khi
+  * kết quả target đã tồn tại.
+  */
+  const target =
+    await getResult(
+      db,
+      predict.predictionDate
+    );
+
+
+  if (target) {
+
+    return {
+      savedNew: false,
+
+      blocked:
+        "target-result-already-exists",
+
+      snapshot:
+        null
+    };
+  }
+
+
+  const numbers =
+    recommendations.map(
+      item =>
+        item.number
+    );
+
+
+  const payload = {
+
+    meta: {
+
+      module:
+        predict.module,
+
+      version:
+        predict.version,
+
+      sourceDate:
+        predict.sourceDate,
+
+      predictionDate:
+        predict.predictionDate,
+
+      analyzedDraws:
+        predict.analyzedDraws,
+
+      baselineRate:
+        predict.baselineRate,
+
+      totalPositions:
+        predict.totalPositions,
+
+      activeCandidateCount:
+        predict.activeCandidateCount,
+
+      qualifiedCount:
+        predict.qualifiedCount,
+
+      recommendationCount:
+        predict.recommendationCount,
+
+      historicalOnlyCount:
+        predict.historicalOnlyCount,
+
+      returnedCount:
+        predict.returnedCount,
+
+      uniqueNumberCount:
+        predict.uniqueNumberCount,
+
+      rule:
+        predict.rule,
+
+      rejected:
+        predict.rejected,
+
+      counts:
+        predict.counts
+    },
+
+    recommendations
+  };
+
+
+  const insert =
+    await db
+      .prepare(`
+        INSERT INTO prediction_tracking (
+
+          prediction_date,
+          source_date,
+
+          model,
+
+          numbers,
+          pick_count,
+
+          recommendations_json,
+
+          points,
+
+          status
+        )
+
+        VALUES (
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          'locked'
+        )
+
+        ON CONFLICT(
+          prediction_date,
+          model
+        )
+
+        DO NOTHING
+      `)
+      .bind(
+
+        predict.predictionDate,
+
+        predict.sourceDate,
+
+        BASE_MODEL,
+
+        numbers.join(","),
+
+        numbers.length,
+
+        JSON.stringify(
+          payload
+        ),
+
+        1
+      )
+      .run();
+
+
+  snapshot =
+    await getBaseSnapshot(
+      db,
+      predict.predictionDate
+    );
+
+
+  return {
+
+    savedNew:
+      Number(
+        insert?.meta?.changes || 0
+      ) > 0,
+
+    blocked:
+      null,
+
+    snapshot
+  };
+}
+
+
+/*
+========================================================
+SAVE PRIORITY SNAPSHOT
+========================================================
+*/
+
+async function savePrioritySnapshot(
+  db,
+  predict,
+  recommendations
+) {
+
+  let snapshot =
+    await getPrioritySnapshot(
+      db,
+      predict.predictionDate
+    );
+
+
+  if (snapshot) {
+
+    return {
+      savedNew: false,
+
+      blocked:
+        null,
+
+      snapshot
+    };
+  }
+
+
+  const target =
+    await getResult(
+      db,
+      predict.predictionDate
+    );
+
+
+  if (target) {
+
+    return {
+      savedNew: false,
+
+      blocked:
+        "target-result-already-exists",
+
+      snapshot:
+        null
+    };
+  }
+
+
+  const numbers =
+    recommendations.map(
+      item =>
+        item.number
+    );
+
+
+  const promoted =
+    recommendations.filter(
+      item =>
+        item.livePriority
+    );
+
+
+  const payload = {
+
+    meta: {
+
+      baseModel:
+        BASE_MODEL,
+
+      variant:
+        PRIORITY_MODEL,
+
+      sourceDate:
+        predict.sourceDate,
+
+      predictionDate:
+        predict.predictionDate,
+
+      priorityRule:
+        "previous-day-same-bridge-hit",
+
+      sameBridgeKeyRequired:
+        true,
+
+      bridgeMustStillQualifyV262:
+        true,
+
+      resurrectRejectedBridge:
+        false,
+
+      modifyBaseScore:
+        false
+    },
+
+    recommendations
+  };
+
+
+  const insert =
+    await db
+      .prepare(`
+        INSERT INTO prediction_priority_tracking (
+
+          prediction_date,
+          source_date,
+
+          base_model,
+          variant,
+
+          numbers,
+          pick_count,
+
+          recommendations_json,
+
+          promoted_count,
+          promoted_bridge_keys,
+
+          status
+        )
+
+        VALUES (
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          'locked'
+        )
+
+        ON CONFLICT(
+          prediction_date,
+          variant
+        )
+
+        DO NOTHING
+      `)
+      .bind(
+
+        predict.predictionDate,
+
+        predict.sourceDate,
+
+        BASE_MODEL,
+
+        PRIORITY_MODEL,
+
+        numbers.join(","),
+
+        numbers.length,
+
+        JSON.stringify(
+          payload
+        ),
+
+        promoted.length,
+
+        promoted
+          .map(
+            item =>
+              item.bridgeKey
+          )
+          .join(",")
+      )
+      .run();
+
+
+  /*
+  ================================================
+  prediction_daily = dàn sử dụng thực tế.
+
+  Top2 lấy theo Live Priority.
+
+  Không ghi đè prediction đã tồn tại.
+  ================================================
+  */
+
+  await db
+    .prepare(`
+      INSERT INTO prediction_daily (
+        prediction_date,
+        numbers,
+        points,
+        model
+      )
+
+      VALUES (?, ?, ?, ?)
+
+      ON CONFLICT(prediction_date)
+
+      DO NOTHING
+    `)
+    .bind(
+
+      predict.predictionDate,
+
+      numbers
+        .slice(0, 2)
+        .join(","),
+
+      1,
+
+      PRIORITY_MODEL
+    )
+    .run();
+
+
+  snapshot =
+    await getPrioritySnapshot(
+      db,
+      predict.predictionDate
+    );
+
+
+  return {
+
+    savedNew:
+      Number(
+        insert?.meta?.changes || 0
+      ) > 0,
+
+    blocked:
+      null,
+
+    snapshot
+  };
+}
+
+
+/*
+========================================================
+PERFORMANCE HELPER
+========================================================
+*/
+
+function buildPerformance(
+  row,
+  totalTracked
+) {
+
+  const tested =
+    Number(
+      row?.tested || 0
+    );
+
+
+  function metric(
+    hitsValue,
+    baselineValue
+  ) {
+
+    const hits =
+      Number(
+        hitsValue || 0
+      );
+
+
+    const hitRate =
+      tested
+        ?
+        hits /
+        tested *
+        100
+        :
+        0;
+
+
+    const baseline =
+      round2(
+        baselineValue
+      );
+
+
+    return {
+
+      hits,
+
+      tested,
+
+      hitRate:
+        round2(
+          hitRate
+        ),
+
+      baseline,
+
+      lift:
+        round2(
+          hitRate -
+          baseline
+        )
+    };
+  }
+
+
+  return {
+
+    totalTracked:
+
+      Number(
+        totalTracked || 0
+      ),
+
+    tested,
+
+    pending:
+      Math.max(
+        0,
+        Number(
+          totalTracked || 0
+        ) - tested
+      ),
+
+    top1:
+      metric(
+        row?.top1_hits,
+        row?.baseline_top1
+      ),
+
+    top3:
+      metric(
+        row?.top3_hits,
+        row?.baseline_top3
+      ),
+
+    top5:
+      metric(
+        row?.top5_hits,
+        row?.baseline_top5
+      )
+  };
+}
+
+
+/*
+========================================================
+BASE PERFORMANCE
+========================================================
+*/
+
+async function getBasePerformance(db) {
+
+  const row =
     await db
       .prepare(`
         SELECT
 
-          COUNT(*) AS evaluated,
+          COUNT(*) AS tested,
 
           COALESCE(
             SUM(top1_hit),
@@ -725,12 +2358,12 @@ async function getLiveStatistics(db) {
           AND evaluated_at IS NOT NULL
       `)
       .bind(
-        TRACK_MODEL
+        BASE_MODEL
       )
       .first();
 
 
-  const totalRow =
+  const count =
     await db
       .prepare(`
         SELECT
@@ -741,352 +2374,326 @@ async function getLiveStatistics(db) {
         WHERE model = ?
       `)
       .bind(
-        TRACK_MODEL
+        BASE_MODEL
       )
       .first();
 
 
-  const totalTracked =
-    Number(
-      totalRow?.total || 0
-    );
-
-  const evaluated =
-    Number(
-      stats?.evaluated || 0
-    );
-
-  const top1Hits =
-    Number(
-      stats?.top1_hits || 0
-    );
-
-  const top3Hits =
-    Number(
-      stats?.top3_hits || 0
-    );
-
-  const top5Hits =
-    Number(
-      stats?.top5_hits || 0
-    );
-
-
-  const buildMetric =
-    (
-      hits,
-      baseline
-    ) => {
-
-      const hitRate =
-        evaluated
-          ?
-          hits /
-          evaluated *
-          100
-          :
-          0;
-
-
-      const baselineRate =
-        round2(
-          baseline
-        );
-
-
-      return {
-        hits,
-
-        tested:
-          evaluated,
-
-        hitRate:
-          round2(
-            hitRate
-          ),
-
-        baseline:
-          baselineRate,
-
-        lift:
-          round2(
-            hitRate -
-            baselineRate
-          )
-      };
-    };
-
-
-  return {
-    model:
-      TRACK_MODEL,
-
-    totalTracked,
-
-    evaluated,
-
-    pending:
-      Math.max(
-        0,
-        totalTracked -
-        evaluated
-      ),
-
-    top1:
-      buildMetric(
-        top1Hits,
-        stats?.baseline_top1
-      ),
-
-    top3:
-      buildMetric(
-        top3Hits,
-        stats?.baseline_top3
-      ),
-
-    top5:
-      buildMetric(
-        top5Hits,
-        stats?.baseline_top5
-      )
-  };
+  return buildPerformance(
+    row,
+    count?.total
+  );
 }
 
 
 /*
 ========================================================
-GET CURRENT SNAPSHOT
+PRIORITY PERFORMANCE
 ========================================================
 */
 
-async function getSnapshot(
-  db,
-  predictionDate
+async function getPriorityPerformance(
+  db
 ) {
-  return db
-    .prepare(`
-      SELECT
-        *
 
-      FROM prediction_tracking
+  const row =
+    await db
+      .prepare(`
+        SELECT
 
-      WHERE
-        prediction_date = ?
-        AND model = ?
+          COUNT(*) AS tested,
 
-      LIMIT 1
-    `)
-    .bind(
-      predictionDate,
-      TRACK_MODEL
-    )
-    .first();
+          COALESCE(
+            SUM(top1_hit),
+            0
+          ) AS top1_hits,
+
+          COALESCE(
+            SUM(top3_hit),
+            0
+          ) AS top3_hits,
+
+          COALESCE(
+            SUM(top5_hit),
+            0
+          ) AS top5_hits,
+
+          AVG(
+            baseline_top1
+          ) AS baseline_top1,
+
+          AVG(
+            baseline_top3
+          ) AS baseline_top3,
+
+          AVG(
+            baseline_top5
+          ) AS baseline_top5
+
+        FROM prediction_priority_tracking
+
+        WHERE
+          variant = ?
+          AND evaluated_at IS NOT NULL
+      `)
+      .bind(
+        PRIORITY_MODEL
+      )
+      .first();
+
+
+  const count =
+    await db
+      .prepare(`
+        SELECT
+          COUNT(*) AS total
+
+        FROM prediction_priority_tracking
+
+        WHERE variant = ?
+      `)
+      .bind(
+        PRIORITY_MODEL
+      )
+      .first();
+
+
+  return buildPerformance(
+    row,
+    count?.total
+  );
 }
 
 
 /*
 ========================================================
-API GET
+MAIN GET
 ========================================================
 */
 
-export async function onRequestGet(context) {
+export async function onRequestGet(
+  context
+) {
+
   try {
+
     const db =
       context.env.DB;
 
 
     if (!db) {
-      throw new Error(
-        "Không tìm thấy D1 binding DB"
+
+      return json(
+        {
+          success: false,
+
+          stage:
+            "database",
+
+          message:
+            "Không tìm thấy D1 binding DB"
+        },
+        500
       );
     }
 
 
-    await ensureTrackingTable(
+    /*
+    ================================================
+    1. TABLES
+    ================================================
+    */
+
+    await ensureTables(
       db
     );
 
 
     /*
     ================================================
-    1. Chấm các prediction cũ
+    2. CHẤM PREDICTION CŨ TRƯỚC
+
+    Việc này vẫn chạy kể cả khi
+    /api/predict hiện tại bị lỗi.
     ================================================
     */
 
-    const evaluatedNow =
-      await evaluatePending(
+    const evaluatedBaseNow =
+      await evaluateBasePending(
+        db
+      );
+
+
+    const evaluatedPriorityNow =
+      await evaluatePriorityPending(
         db
       );
 
 
     /*
     ================================================
-    2. GET V2.6.2 PREDICTION
-
-    Cấu trúc thực tế:
-
-    version
-    sourceDate
-    predictionDate
-    suggestions[]
+    3. PERFORMANCE HIỆN TẠI
     ================================================
     */
 
-    const origin =
-      new URL(
-        context.request.url
-      ).origin;
+    let basePerformance =
+      await getBasePerformance(
+        db
+      );
+
+
+    let priorityPerformance =
+      await getPriorityPerformance(
+        db
+      );
 
 
     /*
-========================================================
-2. GET V2.6.2 PREDICTION
-========================================================
-*/
+    ================================================
+    4. CALL /api/predict
 
-const origin =
-  new URL(
-    context.request.url
-  ).origin;
+    KHÔNG dùng ?top=12.
+    ================================================
+    */
 
-
-const predictResponse =
-  await fetch(
-    `${origin}/api/predict?t=${Date.now()}`,
-    {
-      headers: {
-        Accept:
-          "application/json"
-      }
-    }
-  );
+    const predictResult =
+      await fetchPrediction(
+        context.request.url
+      );
 
 
-/*
- * Đọc text trước để lấy được lỗi thật
- * nếu /api/predict trả HTTP 500.
- */
+    /*
+    ================================================
+    PREDICT ERROR
 
-const predictText =
-  await predictResponse.text();
+    Không che lỗi thật nữa.
+    ================================================
+    */
 
+    if (
+      !predictResult.success
+    ) {
 
-let predict;
+      return json(
+        {
+          success: false,
 
+          module:
+            "v2.6.2-live-validation-priority",
 
-try {
+          stage:
+            predictResult.stage,
 
-  predict =
-    JSON.parse(
-      predictText
-    );
+          message:
+            predictResult.message,
 
-} catch {
+          evaluatedNow: {
 
-  throw new Error(
-    "Predict API không trả JSON: " +
-    predictText.slice(0, 500)
-  );
-}
+            base:
+              evaluatedBaseNow,
 
+            priority:
+              evaluatedPriorityNow
+          },
 
-if (!predictResponse.ok) {
+          livePerformance: {
 
-  throw new Error(
-    predict?.message
-    ||
-    (
-      `Predict API HTTP ${predictResponse.status}: ` +
-      predictText.slice(0, 500)
-    )
-  );
-}
+            base:
+              basePerformance,
 
+            livePriority:
+              priorityPerformance
+          },
 
-if (!predict?.success) {
+          predictDiagnostic: {
 
-  throw new Error(
-    predict?.message
-    ||
-    "Predict API trả success=false"
-  );
-}
+            status:
+              predictResult.status,
 
+            url:
+              predictResult.url,
 
-    if (!predictResponse.ok) {
-      throw new Error(
-        `Predict API HTTP ${predictResponse.status}`
+            body:
+              predictResult.body,
+
+            parsed:
+              predictResult.parsed ??
+              null
+          }
+        },
+        502
       );
     }
 
 
     const predict =
-      await predictResponse.json();
-
-
-    if (!predict?.success) {
-      throw new Error(
-        predict?.message ||
-        "Không lấy được prediction"
-      );
-    }
+      predictResult.data;
 
 
     /*
     ================================================
-    EXACT V2.6.2 SCHEMA
+    5. VALIDATE V2.6.2 SCHEMA
     ================================================
     */
 
-    const model =
-      predict.version;
+    if (
+      predict.version !==
+      BASE_MODEL
+    ) {
 
-    const predictionDate =
-      predict.predictionDate;
-
-    const sourceDate =
-      predict.sourceDate;
-
-
-    if (model !== TRACK_MODEL) {
       return json(
         {
           success: false,
 
+          stage:
+            "model-version",
+
           message:
-            "Model hiện tại không phải V2.6.2. Không lưu Live Validation.",
+            "Predict API không phải bridge-v2.6.2",
 
-          expectedModel:
-            TRACK_MODEL,
+          expected:
+            BASE_MODEL,
 
-          actualModel:
-            model || null
+          actual:
+            predict.version ??
+            null
         },
         409
       );
     }
 
 
-    if (!predictionDate) {
-      throw new Error(
-        "Predict API không trả predictionDate"
-      );
-    }
+    if (
+      !predict.sourceDate ||
+      !predict.predictionDate
+    ) {
 
+      return json(
+        {
+          success: false,
 
-    if (!sourceDate) {
-      throw new Error(
-        "Predict API không trả sourceDate"
+          stage:
+            "predict-schema",
+
+          message:
+            "Predict API thiếu sourceDate hoặc predictionDate",
+
+          sourceDate:
+            predict.sourceDate ??
+            null,
+
+          predictionDate:
+            predict.predictionDate ??
+            null
+        },
+        500
       );
     }
 
 
     /*
     ================================================
-    SUGGESTIONS
-
-    Dùng đúng array predict.suggestions.
+    6. SUGGESTIONS
     ================================================
     */
 
@@ -1100,21 +2707,51 @@ if (!predict?.success) {
         [];
 
 
-    if (!sourceSuggestions.length) {
-      throw new Error(
-        "V2.6.2 không có suggestions để lưu"
+    if (
+      !sourceSuggestions.length
+    ) {
+
+      return json(
+        {
+          success: false,
+
+          stage:
+            "suggestions",
+
+          message:
+            "V2.6.2 không có suggestions để lưu",
+
+          sourceDate:
+            predict.sourceDate,
+
+          predictionDate:
+            predict.predictionDate,
+
+          activeCandidateCount:
+            predict.activeCandidateCount,
+
+          qualifiedCount:
+            predict.qualifiedCount,
+
+          rejected:
+            predict.rejected
+        },
+        409
       );
     }
 
 
-    const suggestions =
+    const baseRecommendations =
       sourceSuggestions
         .slice(
           0,
           MAX_TRACK_RECOMMENDATIONS
         )
         .map(
-          (item, index) =>
+          (
+            item,
+            index
+          ) =>
             normalizeSuggestion(
               item,
               index + 1
@@ -1126,303 +2763,178 @@ if (!predict?.success) {
         );
 
 
-    if (!suggestions.length) {
-      throw new Error(
-        "Không lấy được số hợp lệ từ suggestions"
-      );
-    }
+    if (
+      !baseRecommendations.length
+    ) {
 
+      return json(
+        {
+          success: false,
 
-    /*
-    ================================================
-    3. KIỂM TRA SNAPSHOT ĐÃ TỒN TẠI
+          stage:
+            "normalize",
 
-    Có rồi => tuyệt đối không regenerate.
-    ================================================
-    */
-
-    let snapshot =
-      await getSnapshot(
-        db,
-        predictionDate
-      );
-
-
-    let savedNew =
-      false;
-
-
-    if (!snapshot) {
-
-      /*
-      ==============================================
-      PROSPECTIVE VALIDATION GUARD
-
-      Nếu kết quả target đã tồn tại thì
-      KHÔNG cho tạo snapshot mới.
-
-      Như vậy không thể vô tình lưu prediction
-      sau khi đã biết kết quả.
-      ==============================================
-      */
-
-      const targetResult =
-        await db
-          .prepare(`
-            SELECT draw_date
-
-            FROM results
-
-            WHERE draw_date = ?
-
-            LIMIT 1
-          `)
-          .bind(
-            predictionDate
-          )
-          .first();
-
-
-      if (targetResult) {
-        return json(
-          {
-            success: false,
-
-            message:
-              `Kết quả ${predictionDate} đã tồn tại. ` +
-              "Không tạo snapshot Live Validation sau khi đã biết kết quả.",
-
-            predictionDate,
-
-            model:
-              TRACK_MODEL,
-
-            evaluatedNow,
-
-            livePerformance:
-              await getLiveStatistics(db)
-          },
-          409
-        );
-      }
-
-
-      const numbers =
-        suggestions.map(
-          item => item.number
-        );
-
-
-      /*
-      ==============================================
-      4. GIỮ prediction_daily CŨ
-
-      Chỉ Top2.
-      DO NOTHING = LOCK.
-      ==============================================
-      */
-
-      const legacyNumbers =
-        numbers.slice(0, 2);
-
-
-      await db
-        .prepare(`
-          INSERT INTO prediction_daily (
-            prediction_date,
-            numbers,
-            points,
-            model
-          )
-
-          VALUES (?, ?, ?, ?)
-
-          ON CONFLICT(prediction_date)
-
-          DO NOTHING
-        `)
-        .bind(
-          predictionDate,
-          legacyNumbers.join(","),
-          1,
-          TRACK_MODEL
-        )
-        .run();
-
-
-      /*
-      ==============================================
-      5. FULL V2.6.2 SNAPSHOT
-
-      recommendations_json lưu cả:
-      - metadata model
-      - rule
-      - rejected
-      - counts
-      - suggestions
-      ==============================================
-      */
-
-      const trackingPayload = {
-        meta: {
-          module:
-            predict.module,
-
-          version:
-            predict.version,
-
-          sourceDate:
-            predict.sourceDate,
-
-          predictionDate:
-            predict.predictionDate,
-
-          analyzedDraws:
-            predict.analyzedDraws,
-
-          baselineRate:
-            predict.baselineRate,
-
-          totalPositions:
-            predict.totalPositions,
-
-          activeCandidateCount:
-            predict.activeCandidateCount,
-
-          qualifiedCount:
-            predict.qualifiedCount,
-
-          recommendationCount:
-            predict.recommendationCount,
-
-          historicalOnlyCount:
-            predict.historicalOnlyCount,
-
-          returnedCount:
-            predict.returnedCount,
-
-          uniqueNumberCount:
-            predict.uniqueNumberCount,
-
-          rule:
-            predict.rule,
-
-          rejected:
-            predict.rejected,
-
-          counts:
-            predict.counts
+          message:
+            "Không lấy được số hợp lệ từ suggestions V2.6.2"
         },
-
-        recommendations:
-          suggestions
-      };
-
-
-      const insert =
-        await db
-          .prepare(`
-            INSERT INTO prediction_tracking (
-
-              prediction_date,
-
-              source_date,
-
-              model,
-
-              numbers,
-
-              pick_count,
-
-              recommendations_json,
-
-              points,
-
-              status
-            )
-
-            VALUES (
-              ?,
-              ?,
-              ?,
-              ?,
-              ?,
-              ?,
-              ?,
-              'locked'
-            )
-
-            ON CONFLICT(
-              prediction_date,
-              model
-            )
-
-            DO NOTHING
-          `)
-          .bind(
-            predictionDate,
-
-            sourceDate,
-
-            TRACK_MODEL,
-
-            numbers.join(","),
-
-            numbers.length,
-
-            JSON.stringify(
-              trackingPayload
-            ),
-
-            1
-          )
-          .run();
-
-
-      savedNew =
-        Number(
-          insert?.meta?.changes || 0
-        ) > 0;
-
-
-      snapshot =
-        await getSnapshot(
-          db,
-          predictionDate
-        );
+        500
+      );
     }
 
 
     /*
     ================================================
-    6. READ STORED SNAPSHOT
+    7. XÁC ĐỊNH CẦU HIT NGÀY SOURCE
+
+    Ví dụ:
+    prediction 25/07 đã HIT
+    source hiện tại = 25/07
+
+    => lấy bridgeKey HIT của 25/07.
     ================================================
     */
 
-    const storedRecommendations =
-      readRecommendations(
-        snapshot?.recommendations_json
+    const previousContext =
+      await getPreviousHitContext(
+        db,
+        predict.sourceDate
       );
-
-
-    const numbers =
-      String(
-        snapshot?.numbers || ""
-      )
-        .split(",")
-        .filter(Boolean);
 
 
     /*
     ================================================
-    7. LIVE STATS
+    8. PRIORITY RANKING
     ================================================
     */
 
-    const livePerformance =
-      await getLiveStatistics(
+    const priorityRecommendations =
+      buildPriorityRanking(
+        baseRecommendations,
+        previousContext
+      );
+
+
+    /*
+    ================================================
+    9. SAVE BASE
+    ================================================
+    */
+
+    const baseSave =
+      await saveBaseSnapshot(
+        db,
+        predict,
+        baseRecommendations
+      );
+
+
+    /*
+    ================================================
+    10. SAVE PRIORITY
+    ================================================
+    */
+
+    const prioritySave =
+      await savePrioritySnapshot(
+        db,
+        predict,
+        priorityRecommendations
+      );
+
+
+    /*
+    ================================================
+    11. UPDATE PERFORMANCE
+    ================================================
+    */
+
+    basePerformance =
+      await getBasePerformance(
         db
       );
+
+
+    priorityPerformance =
+      await getPriorityPerformance(
+        db
+      );
+
+
+    const baseNumbers =
+      baseRecommendations.map(
+        item =>
+          item.number
+      );
+
+
+    const priorityNumbers =
+      priorityRecommendations.map(
+        item =>
+          item.number
+      );
+
+
+    const promoted =
+      priorityRecommendations
+        .filter(
+          item =>
+            item.livePriority
+        )
+        .map(
+          item => ({
+
+            previousHitDate:
+              item.previousHitDate,
+
+            bridgeKey:
+              item.bridgeKey,
+
+            bridge:
+              item.bridge,
+
+            previousBaseRank:
+              previousContext
+                ?.hits
+                ?.find(
+                  old =>
+                    old.bridgeKey ===
+                    item.bridgeKey
+                )
+                ?.baseRank
+              ??
+              null,
+
+            previousNumber:
+              previousContext
+                ?.hits
+                ?.find(
+                  old =>
+                    old.bridgeKey ===
+                    item.bridgeKey
+                )
+                ?.number
+              ??
+              null,
+
+            currentNumber:
+              item.number,
+
+            baseRank:
+              item.baseRank,
+
+            liveRank:
+              item.liveRank,
+
+            score:
+              item.score,
+
+            strength:
+              item.strength,
+
+            recentStatus:
+              item.recentStatus
+          })
+        );
 
 
     /*
@@ -1432,94 +2944,183 @@ if (!predict?.success) {
     */
 
     return json({
+
       success: true,
 
       module:
-        "v2.6.2-live-validation",
+        "v2.6.2-live-validation-priority",
 
       version:
-        TRACK_MODEL,
+        "live-priority-v1",
 
-      action:
-        savedNew
-          ?
-          "saved-and-locked"
-          :
-          "already-locked",
+      baseModel:
+        BASE_MODEL,
 
-      savedNew,
+      priorityModel:
+        PRIORITY_MODEL,
 
-      evaluatedNow,
+      sourceDate:
+        predict.sourceDate,
 
-      prediction: {
-        sourceDate:
-          snapshot?.source_date,
+      predictionDate:
+        predict.predictionDate,
 
-        predictionDate:
-          snapshot?.prediction_date,
 
-        numbers,
+      evaluatedNow: {
+
+        base:
+          evaluatedBaseNow,
+
+        priority:
+          evaluatedPriorityNow
+      },
+
+
+      previousDayEvidence: {
+
+        available:
+          previousContext.available,
+
+        date:
+          previousContext.date,
+
+        hits:
+          previousContext.hits
+      },
+
+
+      basePrediction: {
+
+        action:
+          baseSave.savedNew
+            ?
+            "saved-and-locked"
+            :
+            baseSave.blocked
+              ?
+              baseSave.blocked
+              :
+              "already-locked",
+
+        savedNew:
+          baseSave.savedNew,
+
+        numbers:
+          baseNumbers,
 
         top1:
-          numbers.slice(0, 1),
-
-        top2:
-          numbers.slice(0, 2),
-
-        top3:
-          numbers.slice(0, 3),
-
-        top5:
-          numbers.slice(0, 5),
-
-        totalSuggestions:
-          numbers.length,
-
-        recommendations:
-          storedRecommendations,
-
-        status:
-          snapshot?.status,
-
-        createdAt:
-          snapshot?.created_at
-      },
-
-      evaluation: {
-        evaluated:
-          Boolean(
-            snapshot?.evaluated_at
+          baseNumbers.slice(
+            0,
+            1
           ),
 
-        evaluatedAt:
-          snapshot?.evaluated_at || null,
+        top3:
+          baseNumbers.slice(
+            0,
+            3
+          ),
 
-        actualUniqueCount:
-          snapshot?.actual_unique_count ?? null,
+        top5:
+          baseNumbers.slice(
+            0,
+            5
+          ),
 
-        top1Hit:
-          snapshot?.top1_hit ?? null,
-
-        top3Hit:
-          snapshot?.top3_hit ?? null,
-
-        top5Hit:
-          snapshot?.top5_hit ?? null,
-
-        baselineTop1:
-          snapshot?.baseline_top1 ?? null,
-
-        baselineTop3:
-          snapshot?.baseline_top3 ?? null,
-
-        baselineTop5:
-          snapshot?.baseline_top5 ?? null
+        recommendations:
+          baseRecommendations
       },
 
-      livePerformance
+
+      priorityPrediction: {
+
+        action:
+          prioritySave.savedNew
+            ?
+            "saved-and-locked"
+            :
+            prioritySave.blocked
+              ?
+              prioritySave.blocked
+              :
+              "already-locked",
+
+        savedNew:
+          prioritySave.savedNew,
+
+        numbers:
+          priorityNumbers,
+
+        top1:
+          priorityNumbers.slice(
+            0,
+            1
+          ),
+
+        top2:
+          priorityNumbers.slice(
+            0,
+            2
+          ),
+
+        top3:
+          priorityNumbers.slice(
+            0,
+            3
+          ),
+
+        top5:
+          priorityNumbers.slice(
+            0,
+            5
+          ),
+
+        promotedCount:
+          promoted.length,
+
+        promoted,
+
+        recommendations:
+          priorityRecommendations
+      },
+
+
+      comparison: {
+
+        base:
+          basePerformance,
+
+        livePriority:
+          priorityPerformance
+      },
+
+
+      rule: {
+
+        priority:
+          "previous-day-same-bridge-hit",
+
+        sameBridgeKeyRequired:
+          true,
+
+        bridgeMustStillAppearInV262:
+          true,
+
+        resurrectRejectedBridge:
+          false,
+
+        modifyPredictJs:
+          false,
+
+        modifyBaseScore:
+          false,
+
+        modifyStrength:
+          false
+      }
     });
 
   } catch (error) {
+
     console.error(
       "save-prediction:",
       error
@@ -1530,9 +3131,27 @@ if (!predict?.success) {
       {
         success: false,
 
+        module:
+          "v2.6.2-live-validation-priority",
+
+        stage:
+          "save-prediction",
+
         message:
           error?.message ||
-          "Lỗi save prediction"
+          "Lỗi save prediction",
+
+        stack:
+          error?.stack
+            ?
+            String(
+              error.stack
+            ).slice(
+              0,
+              1500
+            )
+            :
+            null
       },
       500
     );
