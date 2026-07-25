@@ -1213,3 +1213,339 @@ button {
 
   font-size: 13px;
 }
+/* =====================================================
+   DÀN SỐ GỢI Ý - USER FOCUSED
+===================================================== */
+
+.pick-panel {
+  margin-top: 14px;
+}
+
+.pick-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  margin-bottom: 12px;
+}
+
+.pick-panel-title {
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: .2px;
+}
+
+.pick-panel-subtitle {
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: .68;
+}
+
+.pick-model-badge {
+  padding: 5px 9px;
+
+  border-radius: 999px;
+
+  font-size: 11px;
+  font-weight: 800;
+
+  background: rgba(37,99,235,.10);
+}
+
+
+/* =====================================================
+   PRIMARY NUMBER
+===================================================== */
+
+.pick-primary {
+  padding: 18px;
+
+  border: 2px solid rgba(37,99,235,.28);
+  border-radius: 18px;
+
+  text-align: center;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(37,99,235,.10),
+      rgba(255,255,255,.96)
+    );
+
+  box-shadow:
+    0 8px 24px rgba(0,0,0,.07);
+}
+
+.pick-primary.selected {
+  border-width: 3px;
+}
+
+.pick-primary-label {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 1px;
+
+  opacity: .68;
+}
+
+.pick-primary-number {
+  margin: 8px 0 6px;
+
+  font-size: 72px;
+  line-height: .95;
+
+  font-weight: 900;
+  letter-spacing: -3px;
+}
+
+.pick-primary-bridge {
+  margin: 10px 0;
+
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pick-primary-streak {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.pick-main-button {
+  width: 100%;
+
+  margin-top: 14px;
+  padding: 12px 14px;
+
+  border: 0;
+  border-radius: 12px;
+
+  font-size: 14px;
+  font-weight: 850;
+
+  cursor: pointer;
+}
+
+
+/* =====================================================
+   STRENGTH
+===================================================== */
+
+.pick-strength {
+  display: inline-flex;
+
+  padding: 4px 8px;
+
+  border-radius: 999px;
+
+  font-size: 10px;
+  font-weight: 850;
+
+  letter-spacing: .4px;
+}
+
+.pick-strength-max {
+  background: rgba(220,38,38,.12);
+}
+
+.pick-strength-strong {
+  background: rgba(245,158,11,.15);
+}
+
+.pick-strength-normal {
+  background: rgba(37,99,235,.10);
+}
+
+
+/* =====================================================
+   ALTERNATIVE NUMBERS
+===================================================== */
+
+.pick-alternative-title {
+  margin: 18px 0 8px;
+
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .6px;
+
+  opacity: .6;
+}
+
+.pick-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 9px;
+}
+
+.pick-card {
+  cursor: pointer;
+}
+
+.pick-grid .pick-card {
+  padding: 12px;
+
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 14px;
+
+  text-align: center;
+
+  background: var(--card-bg, #fff);
+
+  transition:
+    transform .15s ease,
+    border .15s ease,
+    box-shadow .15s ease;
+}
+
+.pick-grid .pick-card:active {
+  transform: scale(.98);
+}
+
+.pick-grid .pick-card.selected {
+  border: 2px solid rgba(37,99,235,.65);
+
+  box-shadow:
+    0 5px 15px rgba(37,99,235,.12);
+}
+
+.pick-number {
+  margin: 6px 0;
+
+  font-size: 40px;
+  line-height: 1;
+
+  font-weight: 900;
+}
+
+.pick-bridge {
+  min-height: 35px;
+
+  font-size: 11px;
+  line-height: 1.45;
+
+  font-weight: 650;
+}
+
+.pick-streak {
+  margin-top: 8px;
+
+  font-size: 11px;
+}
+
+.pick-select-text {
+  margin-top: 9px;
+
+  font-size: 10px;
+  font-weight: 850;
+}
+
+
+/* =====================================================
+   HISTORY
+===================================================== */
+
+.pick-section-label {
+  margin-top: 12px;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  opacity: .6;
+}
+
+.pick-history {
+  display: flex;
+
+  justify-content: center;
+  flex-wrap: wrap;
+
+  gap: 5px;
+
+  margin-top: 6px;
+}
+
+.pick-history-chip {
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 3px;
+
+  padding: 4px 6px;
+
+  border-radius: 8px;
+
+  background: rgba(22,163,74,.09);
+
+  font-size: 11px;
+}
+
+.pick-history-date {
+  opacity: .55;
+}
+
+.pick-history-hit {
+  font-weight: 900;
+}
+
+.pick-history-empty {
+  margin-top: 6px;
+
+  font-size: 11px;
+  opacity: .55;
+}
+
+
+/* =====================================================
+   SELECTED
+===================================================== */
+
+.selected-number-box {
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+
+  margin-top: 12px;
+  padding: 9px;
+
+  border-radius: 10px;
+
+  background: rgba(37,99,235,.07);
+
+  font-size: 12px;
+}
+
+.selected-number-box strong {
+  font-size: 22px;
+}
+
+.pick-footer {
+  margin-top: 10px;
+
+  text-align: center;
+
+  font-size: 10px;
+  opacity: .55;
+}
+
+
+/* =====================================================
+   MOBILE
+===================================================== */
+
+@media (max-width: 520px) {
+
+  .pick-primary-number {
+    font-size: 68px;
+  }
+
+  .pick-number {
+    font-size: 38px;
+  }
+}
