@@ -1,0 +1,2122 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>
+    XSMB Walk-forward V2.7.1
+  </title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #f5f6f8;
+      color: #202124;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Arial,
+        sans-serif;
+    }
+
+    .page {
+      width: min(1100px, 100%);
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    .header {
+      background: white;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow:
+        0 2px 10px
+        rgba(0, 0, 0, 0.06);
+    }
+
+    .header h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+    }
+
+    .header p {
+      margin: 5px 0;
+      color: #5f6368;
+      line-height: 1.5;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow:
+        0 2px 10px
+        rgba(0, 0, 0, 0.06);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns:
+        repeat(
+          auto-fit,
+          minmax(160px, 1fr)
+        );
+      gap: 12px;
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: #5f6368;
+      margin-bottom: 5px;
+    }
+
+    select,
+    input,
+    button {
+      width: 100%;
+      min-height: 42px;
+      border-radius: 9px;
+      border: 1px solid #dadce0;
+      padding: 8px 10px;
+      font-size: 15px;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .primary {
+      background: #202124;
+      color: white;
+      border-color: #202124;
+    }
+
+    .danger {
+      background: white;
+      color: #b3261e;
+      border-color: #b3261e;
+    }
+
+    .status {
+      margin-top: 14px;
+      min-height: 24px;
+      font-size: 14px;
+    }
+
+    .progress-wrap {
+      height: 10px;
+      background: #eceff1;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress {
+      height: 100%;
+      width: 0%;
+      background: #202124;
+      transition: width 0.2s;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns:
+        repeat(
+          auto-fit,
+          minmax(210px, 1fr)
+        );
+      gap: 12px;
+    }
+
+    .metric {
+      border: 1px solid #e4e6e8;
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .metric-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .metric-value {
+      font-size: 27px;
+      font-weight: 750;
+      margin-bottom: 8px;
+    }
+
+    .metric-line {
+      font-size: 13px;
+      margin: 4px 0;
+      color: #5f6368;
+    }
+
+    .positive {
+      color: #137333;
+      font-weight: 700;
+    }
+
+    .negative {
+      color: #b3261e;
+      font-weight: 700;
+    }
+
+    .neutral {
+      color: #5f6368;
+      font-weight: 700;
+    }
+
+    .section-title {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 650px;
+    }
+
+    th,
+    td {
+      border-bottom:
+        1px solid #eceff1;
+      padding: 10px 8px;
+      text-align: left;
+      font-size: 13px;
+      vertical-align: top;
+    }
+
+    th {
+      color: #5f6368;
+      white-space: nowrap;
+    }
+
+    .number {
+      display: inline-block;
+      min-width: 31px;
+      text-align: center;
+      padding: 4px 6px;
+      margin: 2px;
+      border-radius: 7px;
+      background: #f1f3f4;
+      font-weight: 700;
+    }
+
+    .number.hit {
+      background: #e6f4ea;
+      color: #137333;
+    }
+
+    .hit-text {
+      color: #137333;
+      font-weight: 700;
+    }
+
+    .miss-text {
+      color: #b3261e;
+      font-weight: 700;
+    }
+
+    .small {
+      color: #5f6368;
+      font-size: 12px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .error-box {
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 9px;
+      background: #fce8e6;
+      color: #b3261e;
+      font-size: 13px;
+    }
+
+    @media (
+      max-width: 600px
+    ) {
+      .page {
+        padding: 10px;
+      }
+
+      .header h1 {
+        font-size: 20px;
+      }
+
+      .metric-value {
+        font-size: 23px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="page">
+
+  <div class="header">
+
+    <h1>
+      Walk-forward V2.7.1
+    </h1>
+
+    <p>
+      Kiểm định Bridge V2.6.2 bằng dữ liệu
+      chưa được nhìn thấy tại thời điểm dự đoán.
+    </p>
+
+    <p>
+      Mỗi ngày được xử lý bằng một request riêng
+      để giảm tải Cloudflare.
+    </p>
+
+  </div>
+
+
+  <!-- =================================================
+       CONTROLS
+  ================================================== -->
+
+  <div class="panel">
+
+    <div class="controls">
+
+      <div>
+        <label>
+          Số ngày kiểm tra
+        </label>
+
+        <select id="test-days">
+          <option value="5">
+            5 ngày
+          </option>
+
+          <option value="10" selected>
+            10 ngày
+          </option>
+
+          <option value="20">
+            20 ngày
+          </option>
+
+          <option value="30">
+            30 ngày
+          </option>
+
+          <option value="60">
+            60 ngày
+          </option>
+        </select>
+      </div>
+
+
+      <div>
+        <label>
+          Window lịch sử
+        </label>
+
+        <select id="history-window">
+          <option value="120">
+            120 kỳ
+          </option>
+
+          <option value="150">
+            150 kỳ
+          </option>
+
+          <option value="200" selected>
+            200 kỳ
+          </option>
+        </select>
+      </div>
+
+
+      <div>
+        <label>
+          Nghỉ giữa request
+        </label>
+
+        <select id="request-delay">
+          <option value="200">
+            0.2 giây
+          </option>
+
+          <option value="400" selected>
+            0.4 giây
+          </option>
+
+          <option value="800">
+            0.8 giây
+          </option>
+        </select>
+      </div>
+
+
+      <div>
+        <button
+          id="start-button"
+          class="primary"
+          onclick="startWalkForward()"
+        >
+          Chạy Walk-forward
+        </button>
+      </div>
+
+
+      <div>
+        <button
+          id="stop-button"
+          class="danger"
+          onclick="stopWalkForward()"
+          disabled
+        >
+          Dừng
+        </button>
+      </div>
+
+    </div>
+
+
+    <div
+      id="status"
+      class="status"
+    >
+      Sẵn sàng.
+    </div>
+
+
+    <div class="progress-wrap">
+      <div
+        id="progress"
+        class="progress"
+      ></div>
+    </div>
+
+  </div>
+
+
+  <!-- =================================================
+       SUMMARY
+  ================================================== -->
+
+  <div
+    id="summary-panel"
+    class="panel hidden"
+  >
+
+    <h2 class="section-title">
+      Tổng hợp Top 1 / Top 3 / Top 5
+    </h2>
+
+    <div
+      id="metrics"
+      class="metric-grid"
+    ></div>
+
+  </div>
+
+
+  <!-- =================================================
+       RANK
+  ================================================== -->
+
+  <div
+    id="rank-panel"
+    class="panel hidden"
+  >
+
+    <h2 class="section-title">
+      Hiệu quả từng thứ hạng
+    </h2>
+
+    <div
+      id="rank-table"
+      class="table-wrap"
+    ></div>
+
+  </div>
+
+
+  <!-- =================================================
+       STREAK
+  ================================================== -->
+
+  <div
+    id="streak-panel"
+    class="panel hidden"
+  >
+
+    <h2 class="section-title">
+      Hiệu quả theo Streak
+    </h2>
+
+    <div
+      id="streak-table"
+      class="table-wrap"
+    ></div>
+
+  </div>
+
+
+  <!-- =================================================
+       STRENGTH
+  ================================================== -->
+
+  <div
+    id="strength-panel"
+    class="panel hidden"
+  >
+
+    <h2 class="section-title">
+      Hiệu quả theo Strength
+    </h2>
+
+    <div
+      id="strength-table"
+      class="table-wrap"
+    ></div>
+
+  </div>
+
+
+  <!-- =================================================
+       RECENT STATUS
+  ================================================== -->
+
+  <div
+    id="recent-panel"
+    class="panel hidden"
+  >
+
+    <h2 class="section-title">
+      Hiệu quả theo Recent Evidence
+    </h2>
+
+    <div
+      id="recent-table"
+      class="table-wrap"
+    ></div>
+
+  </div>
+
+
+  <!-- =================================================
+       DAILY
+  ================================================== -->
+
+  <div
+    id="daily-panel"
+    class="panel hidden"
+  >
+
+    <h2 class="section-title">
+      Chi tiết từng ngày
+    </h2>
+
+    <div
+      id="daily-table"
+      class="table-wrap"
+    ></div>
+
+  </div>
+
+
+  <!-- =================================================
+       ERRORS
+  ================================================== -->
+
+  <div
+    id="error-panel"
+    class="panel hidden"
+  >
+
+    <h2 class="section-title">
+      Request lỗi
+    </h2>
+
+    <div id="errors"></div>
+
+  </div>
+
+</div>
+
+
+<script>
+
+/*
+========================================================
+STATE
+========================================================
+*/
+
+let running = false;
+
+let stopRequested = false;
+
+let currentController = null;
+
+let successfulResults = [];
+
+let failedResults = [];
+
+
+/*
+========================================================
+HELPERS
+========================================================
+*/
+
+function sleep(ms) {
+  return new Promise(
+    resolve =>
+      setTimeout(
+        resolve,
+        ms
+      )
+  );
+}
+
+
+function round(
+  value,
+  digits = 2
+) {
+  const p =
+    10 ** digits;
+
+  return (
+    Math.round(
+      (
+        Number(value) +
+        Number.EPSILON
+      )
+      *
+      p
+    )
+    /
+    p
+  );
+}
+
+
+function percent(value) {
+  return (
+    round(
+      value,
+      2
+    )
+    +
+    "%"
+  );
+}
+
+
+function escapeHtml(value) {
+  return String(
+    value ?? ""
+  )
+    .replace(
+      /&/g,
+      "&amp;"
+    )
+    .replace(
+      /</g,
+      "&lt;"
+    )
+    .replace(
+      />/g,
+      "&gt;"
+    )
+    .replace(
+      /"/g,
+      "&quot;"
+    )
+    .replace(
+      /'/g,
+      "&#039;"
+    );
+}
+
+
+function formatDate(value) {
+  if (!value) {
+    return "--";
+  }
+
+  const parts =
+    String(value)
+      .split("-");
+
+  if (
+    parts.length !== 3
+  ) {
+    return escapeHtml(value);
+  }
+
+  return (
+    `${parts[2]}/` +
+    `${parts[1]}/` +
+    `${parts[0]}`
+  );
+}
+
+
+function setStatus(message) {
+  document
+    .getElementById(
+      "status"
+    )
+    .textContent =
+      message;
+}
+
+
+function updateProgress(
+  completed,
+  total
+) {
+  const percentage =
+    total > 0
+      ?
+      completed /
+      total *
+      100
+      :
+      0;
+
+  document
+    .getElementById(
+      "progress"
+    )
+    .style.width =
+      `${percentage}%`;
+}
+
+
+function liftClass(value) {
+  if (
+    value > 0
+  ) {
+    return "positive";
+  }
+
+  if (
+    value < 0
+  ) {
+    return "negative";
+  }
+
+  return "neutral";
+}
+
+
+/*
+========================================================
+FETCH ONE DAY
+========================================================
+*/
+
+async function fetchOffset(
+  offset,
+  historyWindow
+) {
+  let lastError = null;
+
+
+  /*
+  Thử tối đa 2 lần.
+  */
+
+  for (
+    let attempt = 1;
+    attempt <= 2;
+    attempt++
+  ) {
+    if (
+      stopRequested
+    ) {
+      throw new Error(
+        "Đã dừng."
+      );
+    }
+
+
+    currentController =
+      new AbortController();
+
+
+    try {
+
+      const url =
+        `/api/walk-forward-v27` +
+        `?offset=${offset}` +
+        `&window=${historyWindow}` +
+        `&t=${Date.now()}`;
+
+
+      const response =
+        await fetch(
+          url,
+          {
+            cache:
+              "no-store",
+
+            signal:
+              currentController.signal
+          }
+        );
+
+
+      const text =
+        await response.text();
+
+
+      let data = null;
+
+
+      try {
+        data =
+          JSON.parse(text);
+      }
+      catch {
+        data = null;
+      }
+
+
+      if (
+        !response.ok
+      ) {
+
+        let message =
+          data?.message
+          ||
+          `HTTP ${response.status}`;
+
+
+        if (
+          text.includes(
+            "1102"
+          )
+        ) {
+          message =
+            "Cloudflare 1102";
+        }
+
+
+        throw new Error(
+          message
+        );
+      }
+
+
+      if (
+        !data
+        ||
+        !data.success
+      ) {
+        throw new Error(
+          data?.message
+          ||
+          "Response không hợp lệ."
+        );
+      }
+
+
+      return data;
+
+    }
+    catch (error) {
+
+      lastError =
+        error;
+
+
+      if (
+        error.name ===
+        "AbortError"
+      ) {
+        throw error;
+      }
+
+
+      /*
+      Trước lần retry thứ 2
+      nghỉ lâu hơn.
+      */
+
+      if (
+        attempt < 2
+      ) {
+        await sleep(
+          1200
+        );
+      }
+    }
+  }
+
+
+  throw (
+    lastError
+    ||
+    new Error(
+      "Request thất bại."
+    )
+  );
+}
+
+
+/*
+========================================================
+START
+========================================================
+*/
+
+async function startWalkForward() {
+
+  if (running) {
+    return;
+  }
+
+
+  const days =
+    Number(
+      document
+        .getElementById(
+          "test-days"
+        )
+        .value
+    );
+
+
+  const historyWindow =
+    Number(
+      document
+        .getElementById(
+          "history-window"
+        )
+        .value
+    );
+
+
+  const delay =
+    Number(
+      document
+        .getElementById(
+          "request-delay"
+        )
+        .value
+    );
+
+
+  running = true;
+
+  stopRequested = false;
+
+  successfulResults = [];
+
+  failedResults = [];
+
+
+  document
+    .getElementById(
+      "start-button"
+    )
+    .disabled =
+      true;
+
+
+  document
+    .getElementById(
+      "stop-button"
+    )
+    .disabled =
+      false;
+
+
+  updateProgress(
+    0,
+    days
+  );
+
+
+  clearResults();
+
+
+  try {
+
+    for (
+      let offset = 1;
+      offset <= days;
+      offset++
+    ) {
+
+      if (
+        stopRequested
+      ) {
+        break;
+      }
+
+
+      setStatus(
+        `Đang chạy ${offset}/${days}` +
+        ` • offset=${offset}` +
+        ` • window=${historyWindow}`
+      );
+
+
+      try {
+
+        const result =
+          await fetchOffset(
+            offset,
+            historyWindow
+          );
+
+
+        successfulResults.push(
+          result
+        );
+
+      }
+      catch (error) {
+
+        if (
+          error.name ===
+          "AbortError"
+          ||
+          stopRequested
+        ) {
+          break;
+        }
+
+
+        failedResults.push({
+          offset,
+
+          message:
+            error.message
+        });
+      }
+
+
+      updateProgress(
+        offset,
+        days
+      );
+
+
+      /*
+      Render luôn sau mỗi ngày
+      để người dùng theo dõi.
+      */
+
+      renderAll(
+        days
+      );
+
+
+      if (
+        offset < days
+        &&
+        !stopRequested
+      ) {
+        await sleep(
+          delay
+        );
+      }
+    }
+
+
+    if (
+      stopRequested
+    ) {
+      setStatus(
+        `Đã dừng. Thành công ` +
+        `${successfulResults.length} ngày.`
+      );
+    }
+    else {
+      setStatus(
+        `Hoàn tất: ` +
+        `${successfulResults.length}/${days} ngày` +
+        (
+          failedResults.length
+            ?
+            ` • lỗi ${failedResults.length}`
+            :
+            ""
+        )
+      );
+    }
+
+  }
+  finally {
+
+    running = false;
+
+    currentController = null;
+
+
+    document
+      .getElementById(
+        "start-button"
+      )
+      .disabled =
+        false;
+
+
+    document
+      .getElementById(
+        "stop-button"
+      )
+      .disabled =
+        true;
+
+
+    renderAll(
+      days
+    );
+  }
+}
+
+
+/*
+========================================================
+STOP
+========================================================
+*/
+
+function stopWalkForward() {
+
+  stopRequested = true;
+
+
+  if (
+    currentController
+  ) {
+    currentController.abort();
+  }
+
+
+  setStatus(
+    "Đang dừng..."
+  );
+}
+
+
+/*
+========================================================
+CLEAR
+========================================================
+*/
+
+function clearResults() {
+
+  const panels = [
+    "summary-panel",
+    "rank-panel",
+    "streak-panel",
+    "strength-panel",
+    "recent-panel",
+    "daily-panel",
+    "error-panel"
+  ];
+
+
+  panels.forEach(
+    id => {
+
+      document
+        .getElementById(id)
+        .classList
+        .add(
+          "hidden"
+        );
+    }
+  );
+
+
+  document
+    .getElementById(
+      "metrics"
+    )
+    .innerHTML =
+      "";
+
+
+  document
+    .getElementById(
+      "rank-table"
+    )
+    .innerHTML =
+      "";
+
+
+  document
+    .getElementById(
+      "streak-table"
+    )
+    .innerHTML =
+      "";
+
+
+  document
+    .getElementById(
+      "strength-table"
+    )
+    .innerHTML =
+      "";
+
+
+  document
+    .getElementById(
+      "recent-table"
+    )
+    .innerHTML =
+      "";
+
+
+  document
+    .getElementById(
+      "daily-table"
+    )
+    .innerHTML =
+      "";
+
+
+  document
+    .getElementById(
+      "errors"
+    )
+    .innerHTML =
+      "";
+}
+
+
+/*
+========================================================
+TOP METRIC
+========================================================
+*/
+
+function calculateTopMetric(
+  key,
+  requestedDays
+) {
+  let availableDays = 0;
+
+  let fullPickDays = 0;
+
+  let hitDays = 0;
+
+  let baselineTotal = 0;
+
+
+  let requestedSize = 0;
+
+
+  for (
+    const result
+    of successfulResults
+  ) {
+
+    const evaluation =
+      result.evaluation?.[key];
+
+
+    if (!evaluation) {
+      continue;
+    }
+
+
+    requestedSize =
+      Number(
+        evaluation.requestedSize
+        ||
+        requestedSize
+      );
+
+
+    const count =
+      Number(
+        evaluation.actualPickCount
+        ||
+        0
+      );
+
+
+    if (
+      count <= 0
+    ) {
+      continue;
+    }
+
+
+    availableDays++;
+
+
+    if (
+      count >=
+      requestedSize
+    ) {
+      fullPickDays++;
+    }
+
+
+    if (
+      evaluation.hit
+    ) {
+      hitDays++;
+    }
+
+
+    baselineTotal +=
+      Number(
+        evaluation.baselineRate
+        ||
+        0
+      );
+  }
+
+
+  const hitRate =
+    availableDays > 0
+      ?
+      hitDays /
+      availableDays *
+      100
+      :
+      0;
+
+
+  const baselineRate =
+    availableDays > 0
+      ?
+      baselineTotal /
+      availableDays
+      :
+      0;
+
+
+  const coverage =
+    requestedDays > 0
+      ?
+      availableDays /
+      requestedDays *
+      100
+      :
+      0;
+
+
+  const fullCoverage =
+    requestedDays > 0
+      ?
+      fullPickDays /
+      requestedDays *
+      100
+      :
+      0;
+
+
+  return {
+    requestedSize,
+
+    availableDays,
+
+    fullPickDays,
+
+    hitDays,
+
+    hitRate:
+      round(hitRate),
+
+    baselineRate:
+      round(
+        baselineRate
+      ),
+
+    lift:
+      round(
+        hitRate -
+        baselineRate
+      ),
+
+    coverage:
+      round(
+        coverage
+      ),
+
+    fullCoverage:
+      round(
+        fullCoverage
+      )
+  };
+}
+
+
+/*
+========================================================
+SUMMARY
+========================================================
+*/
+
+function renderSummary(
+  requestedDays
+) {
+
+  const top1 =
+    calculateTopMetric(
+      "top1",
+      requestedDays
+    );
+
+
+  const top3 =
+    calculateTopMetric(
+      "top3",
+      requestedDays
+    );
+
+
+  const top5 =
+    calculateTopMetric(
+      "top5",
+      requestedDays
+    );
+
+
+  const metrics =
+    document
+      .getElementById(
+        "metrics"
+      );
+
+
+  metrics.innerHTML = [
+    renderMetricCard(
+      "TOP 1",
+      top1
+    ),
+
+    renderMetricCard(
+      "TOP 3",
+      top3
+    ),
+
+    renderMetricCard(
+      "TOP 5",
+      top5
+    )
+  ].join("");
+
+
+  document
+    .getElementById(
+      "summary-panel"
+    )
+    .classList
+    .remove(
+      "hidden"
+    );
+}
+
+
+function renderMetricCard(
+  title,
+  metric
+) {
+
+  const className =
+    liftClass(
+      metric.lift
+    );
+
+
+  return `
+    <div class="metric">
+
+      <div class="metric-title">
+        ${title}
+      </div>
+
+      <div class="metric-value">
+        ${percent(metric.hitRate)}
+      </div>
+
+      <div class="metric-line">
+        Trúng:
+        <strong>
+          ${metric.hitDays}/${metric.availableDays}
+        </strong>
+      </div>
+
+      <div class="metric-line">
+        Baseline:
+        <strong>
+          ${percent(metric.baselineRate)}
+        </strong>
+      </div>
+
+      <div class="metric-line">
+        Lift:
+
+        <span class="${className}">
+
+          ${
+            metric.lift > 0
+              ? "+"
+              : ""
+          }
+
+          ${percent(metric.lift)}
+
+        </span>
+      </div>
+
+      <div class="metric-line">
+        Coverage:
+        <strong>
+          ${percent(metric.coverage)}
+        </strong>
+      </div>
+
+      <div class="metric-line">
+        Đủ ${metric.requestedSize} số:
+        <strong>
+          ${percent(metric.fullCoverage)}
+        </strong>
+      </div>
+
+    </div>
+  `;
+}
+
+
+/*
+========================================================
+BUCKETS
+========================================================
+*/
+
+function addBucket(
+  map,
+  key,
+  hit
+) {
+
+  const name =
+    String(key);
+
+
+  if (
+    !map[name]
+  ) {
+    map[name] = {
+      signals: 0,
+      hits: 0
+    };
+  }
+
+
+  map[name].signals++;
+
+
+  if (hit) {
+    map[name].hits++;
+  }
+}
+
+
+function calculateBuckets() {
+
+  const rank = {};
+
+  const streak = {};
+
+  const strength = {};
+
+  const recent = {};
+
+
+  for (
+    const result
+    of successfulResults
+  ) {
+
+    const recommendations =
+      Array.isArray(
+        result.recommendations
+      )
+        ?
+        result.recommendations
+        :
+        [];
+
+
+    /*
+    Chỉ phân tích Top 5.
+    */
+
+    recommendations
+      .slice(
+        0,
+        5
+      )
+      .forEach(
+        (
+          item,
+          index
+        ) => {
+
+          const hit =
+            Boolean(
+              item.hit
+            );
+
+
+          addBucket(
+            rank,
+            index + 1,
+            hit
+          );
+
+
+          addBucket(
+            streak,
+            item.streak,
+            hit
+          );
+
+
+          addBucket(
+            strength,
+            item.strength,
+            hit
+          );
+
+
+          addBucket(
+            recent,
+            item.recentStatus,
+            hit
+          );
+        }
+      );
+  }
+
+
+  return {
+    rank,
+    streak,
+    strength,
+    recent
+  };
+}
+
+
+/*
+========================================================
+GENERIC BUCKET TABLE
+========================================================
+*/
+
+function renderBucketTable(
+  map,
+  firstColumn
+) {
+
+  const entries =
+    Object.entries(map);
+
+
+  if (
+    !entries.length
+  ) {
+    return `
+      <div class="small">
+        Chưa có dữ liệu.
+      </div>
+    `;
+  }
+
+
+  return `
+    <table>
+
+      <thead>
+
+        <tr>
+          <th>${firstColumn}</th>
+          <th>Signals</th>
+          <th>Hits</th>
+          <th>Hit rate</th>
+        </tr>
+
+      </thead>
+
+      <tbody>
+
+        ${
+          entries
+            .map(
+              (
+                [
+                  key,
+                  value
+                ]
+              ) => {
+
+                const rate =
+                  value.signals
+                    ?
+                    value.hits /
+                    value.signals *
+                    100
+                    :
+                    0;
+
+
+                return `
+                  <tr>
+
+                    <td>
+                      <strong>
+                        ${escapeHtml(key)}
+                      </strong>
+                    </td>
+
+                    <td>
+                      ${value.signals}
+                    </td>
+
+                    <td>
+                      ${value.hits}
+                    </td>
+
+                    <td>
+                      ${percent(rate)}
+                    </td>
+
+                  </tr>
+                `;
+              }
+            )
+            .join("")
+        }
+
+      </tbody>
+
+    </table>
+  `;
+}
+
+
+/*
+========================================================
+RANK / STREAK / STRENGTH / RECENT
+========================================================
+*/
+
+function renderBuckets() {
+
+  const buckets =
+    calculateBuckets();
+
+
+  document
+    .getElementById(
+      "rank-table"
+    )
+    .innerHTML =
+      renderBucketTable(
+        buckets.rank,
+        "Rank"
+      );
+
+
+  document
+    .getElementById(
+      "streak-table"
+    )
+    .innerHTML =
+      renderBucketTable(
+        buckets.streak,
+        "Streak"
+      );
+
+
+  document
+    .getElementById(
+      "strength-table"
+    )
+    .innerHTML =
+      renderBucketTable(
+        buckets.strength,
+        "Strength"
+      );
+
+
+  document
+    .getElementById(
+      "recent-table"
+    )
+    .innerHTML =
+      renderBucketTable(
+        buckets.recent,
+        "Recent"
+      );
+
+
+  [
+    "rank-panel",
+    "streak-panel",
+    "strength-panel",
+    "recent-panel"
+  ]
+    .forEach(
+      id => {
+
+        document
+          .getElementById(id)
+          .classList
+          .remove(
+            "hidden"
+          );
+      }
+    );
+}
+
+
+/*
+========================================================
+DAILY
+========================================================
+*/
+
+function renderDaily() {
+
+  if (
+    !successfulResults.length
+  ) {
+    return;
+  }
+
+
+  const sorted =
+    [...successfulResults]
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          Number(a.offset) -
+          Number(b.offset)
+      );
+
+
+  const rows =
+    sorted
+      .map(
+        result => {
+
+          const recommendations =
+            Array.isArray(
+              result.recommendations
+            )
+              ?
+              result.recommendations
+              :
+              [];
+
+
+          const top5 =
+            recommendations
+              .slice(
+                0,
+                5
+              );
+
+
+          const numbers =
+            top5
+              .map(
+                item => `
+
+                  <span
+                    class="
+                      number
+                      ${item.hit ? "hit" : ""}
+                    "
+                  >
+
+                    ${escapeHtml(
+                      item.number
+                    )}
+
+                  </span>
+                `
+              )
+              .join("");
+
+
+          const top1Hit =
+            result
+              .evaluation
+              ?.top1
+              ?.hit;
+
+
+          const top3Hit =
+            result
+              .evaluation
+              ?.top3
+              ?.hit;
+
+
+          const top5Hit =
+            result
+              .evaluation
+              ?.top5
+              ?.hit;
+
+
+          return `
+            <tr>
+
+              <td>
+                ${result.offset}
+              </td>
+
+              <td>
+                ${formatDate(
+                  result.sourceDate
+                )}
+
+                →
+
+                ${formatDate(
+                  result.predictionDate
+                )}
+              </td>
+
+              <td>
+                ${numbers || "-"}
+              </td>
+
+              <td
+                class="${
+                  top1Hit
+                    ?
+                    "hit-text"
+                    :
+                    "miss-text"
+                }"
+              >
+                ${top1Hit ? "HIT" : "MISS"}
+              </td>
+
+              <td
+                class="${
+                  top3Hit
+                    ?
+                    "hit-text"
+                    :
+                    "miss-text"
+                }"
+              >
+                ${top3Hit ? "HIT" : "MISS"}
+              </td>
+
+              <td
+                class="${
+                  top5Hit
+                    ?
+                    "hit-text"
+                    :
+                    "miss-text"
+                }"
+              >
+                ${top5Hit ? "HIT" : "MISS"}
+              </td>
+
+              <td>
+                ${
+                  result
+                    .actualUniqueLotoCount
+                  ??
+                  "-"
+                }
+              </td>
+
+            </tr>
+          `;
+        }
+      )
+      .join("");
+
+
+  document
+    .getElementById(
+      "daily-table"
+    )
+    .innerHTML = `
+
+      <table>
+
+        <thead>
+
+          <tr>
+            <th>Offset</th>
+            <th>Kỳ</th>
+            <th>Top 5</th>
+            <th>Top1</th>
+            <th>Top3</th>
+            <th>Top5</th>
+            <th>Loto unique</th>
+          </tr>
+
+        </thead>
+
+        <tbody>
+          ${rows}
+        </tbody>
+
+      </table>
+    `;
+
+
+  document
+    .getElementById(
+      "daily-panel"
+    )
+    .classList
+    .remove(
+      "hidden"
+    );
+}
+
+
+/*
+========================================================
+ERRORS
+========================================================
+*/
+
+function renderErrors() {
+
+  const panel =
+    document
+      .getElementById(
+        "error-panel"
+      );
+
+
+  if (
+    !failedResults.length
+  ) {
+    panel
+      .classList
+      .add(
+        "hidden"
+      );
+
+    return;
+  }
+
+
+  document
+    .getElementById(
+      "errors"
+    )
+    .innerHTML =
+      failedResults
+        .map(
+          error => `
+
+            <div class="error-box">
+
+              Offset
+              <strong>
+                ${error.offset}
+              </strong>
+
+              :
+
+              ${escapeHtml(
+                error.message
+              )}
+
+            </div>
+          `
+        )
+        .join("");
+
+
+  panel
+    .classList
+    .remove(
+      "hidden"
+    );
+}
+
+
+/*
+========================================================
+RENDER ALL
+========================================================
+*/
+
+function renderAll(
+  requestedDays
+) {
+
+  if (
+    successfulResults.length
+  ) {
+    renderSummary(
+      requestedDays
+    );
+
+    renderBuckets();
+
+    renderDaily();
+  }
+
+
+  renderErrors();
+}
+
+</script>
+
+</body>
+</html>
