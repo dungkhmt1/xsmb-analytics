@@ -1,67 +1,127 @@
 /*
 ========================================================
-XSMB WALK-FORWARD DATA V2.7.2
-Lightweight D1 data endpoint
+XSMB WALK-FORWARD V2.7.2
+DATA ONLY ENDPOINT
+========================================================
+
+Cloudflare chỉ:
+- đọc D1
+- trả dữ liệu JSON
+
+Không:
+- tìm cầu
+- backtest
+- Wilson
+- consensus
+- walk-forward
+
+Toàn bộ tính toán V2.7.2 chạy trên trình duyệt.
 ========================================================
 */
 
-const VERSION = "walk-forward-data-v2.7.2";
+const VERSION =
+  "walk-forward-data-v2.7.2";
 
 const DEFAULT_LIMIT = 320;
-const MIN_LIMIT = 120;
+const MIN_LIMIT = 100;
 const MAX_LIMIT = 340;
 
-function clampInteger(value, min, max, fallback) {
-  const n = Number(value);
 
-  if (!Number.isFinite(n)) {
+function clampInteger(
+  value,
+  min,
+  max,
+  fallback
+) {
+  const number =
+    Number(value);
+
+  if (
+    !Number.isFinite(number)
+  ) {
     return fallback;
   }
 
   return Math.max(
     min,
-    Math.min(max, Math.floor(n))
+    Math.min(
+      max,
+      Math.floor(number)
+    )
   );
 }
 
-export async function onRequestGet(context) {
+
+function jsonResponse(
+  data,
+  status = 200
+) {
+  return new Response(
+    JSON.stringify(data),
+    {
+      status,
+
+      headers: {
+        "Content-Type":
+          "application/json; charset=UTF-8",
+
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate"
+      }
+    }
+  );
+}
+
+
+export async function onRequestGet(
+  context
+) {
   try {
-    const DB = context.env.DB;
+
+    const DB =
+      context.env.DB;
+
 
     if (!DB) {
-      return Response.json(
+
+      return jsonResponse(
         {
           success: false,
-          module: "walk-forward-data",
-          version: VERSION,
-          message: "Không tìm thấy D1 binding DB."
+
+          module:
+            "walk-forward-data",
+
+          version:
+            VERSION,
+
+          message:
+            "Không tìm thấy D1 binding DB."
         },
-        {
-          status: 500
-        }
+        500
       );
     }
 
+
     const url =
-      new URL(context.request.url);
+      new URL(
+        context.request.url
+      );
+
 
     const limit =
       clampInteger(
-        url.searchParams.get("limit"),
+        url.searchParams.get(
+          "limit"
+        ),
         MIN_LIMIT,
         MAX_LIMIT,
         DEFAULT_LIMIT
       );
 
-    /*
-    Chỉ lấy dữ liệu.
 
-    Không:
-    - tìm cầu
-    - backtest
-    - Wilson
-    - consensus
-    - score
+    /*
+    Chỉ SELECT dữ liệu.
+    Đây là phần rất nhẹ.
     */
 
     const query =
@@ -78,82 +138,81 @@ export async function onRequestGet(context) {
             g6,
             g7
 
-          FROM (
-            SELECT
-              draw_date,
-              special,
-              g1,
-              g2,
-              g3,
-              g4,
-              g5,
-              g6,
-              g7
+          FROM results
 
-            FROM results
+          ORDER BY draw_date DESC
 
-            ORDER BY draw_date DESC
-
-            LIMIT ?
-          )
-
-          ORDER BY draw_date ASC
+          LIMIT ?
         `)
         .bind(limit)
         .all();
 
+
+    /*
+    Query trả mới -> cũ.
+
+    Walk-forward cần:
+    cũ -> mới.
+    */
+
     const rows =
-      Array.isArray(query.results)
-        ? query.results
-        : [];
+      Array.isArray(
+        query.results
+      )
+        ?
+        [...query.results]
+          .reverse()
+        :
+        [];
 
-    return Response.json(
-      {
-        success: true,
 
-        module:
-          "walk-forward-data",
+    return jsonResponse({
+      success: true,
 
-        version:
-          VERSION,
+      module:
+        "walk-forward-data",
 
-        requestedLimit:
-          limit,
+      version:
+        VERSION,
 
-        returnedRows:
-          rows.length,
+      requestedLimit:
+        limit,
 
-        firstDate:
-          rows.length
-            ? rows[0].draw_date
-            : null,
+      returnedRows:
+        rows.length,
 
-        lastDate:
-          rows.length
-            ? rows[rows.length - 1].draw_date
-            : null,
+      firstDate:
+        rows.length
+          ?
+          rows[0].draw_date
+          :
+          null,
 
-        rows,
+      lastDate:
+        rows.length
+          ?
+          rows[
+            rows.length - 1
+          ].draw_date
+          :
+          null,
 
-        note:
-          "Endpoint chỉ đọc dữ liệu D1. Walk-forward V2.7.2 được tính hoàn toàn trên trình duyệt."
-      },
-      {
-        headers: {
-          "Cache-Control":
-            "no-store, no-cache, must-revalidate"
-        }
-      }
-    );
+      rows,
+
+      note:
+        "V2.7.2 chỉ tải dữ liệu D1. Toàn bộ walk-forward được xử lý local trên trình duyệt."
+    });
+
 
   } catch (error) {
 
     console.error(
-      "Walk-forward data V2.7.2:",
+      "Walk-forward Data V2.7.2:",
       error
     );
 
-    return Response.json(
+
+    return jsonResponse(
       {
         success: false,
 
@@ -164,12 +223,11 @@ export async function onRequestGet(context) {
           VERSION,
 
         message:
-          error?.message ||
-          "Lỗi khi đọc dữ liệu walk-forward từ D1."
+          error?.message
+          ||
+          "Lỗi đọc dữ liệu D1."
       },
-      {
-        status: 500
-      }
+      500
     );
   }
 }
