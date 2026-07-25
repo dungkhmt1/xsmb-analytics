@@ -4,46 +4,32 @@ XSMB V2.6.2 LIVE VALIDATION
 /api/save-prediction
 ========================================================
 
-Chức năng:
-
-1. Gọi /api/predict?top=5
-2. Chỉ chấp nhận bridge-v2.6.2
-3. Lưu Top 2 vào prediction_daily (tương thích cũ)
-4. Lưu Top 5 + feature vào prediction_tracking
-5. Snapshot LOCKED, không ghi đè
-6. Tự chấm các prediction cũ khi results đã có
-7. Trả thống kê Live Top1 / Top3 / Top5
-
-IMPORTANT:
-Prediction đã lưu không bao giờ regenerate.
+- Đọc đúng schema thực tế của /api/predict
+- Lưu prediction trước khi biết kết quả
+- Prediction đã lưu => LOCK, không ghi đè
+- Giữ prediction_daily để tương thích hệ thống cũ
+- Lưu toàn bộ suggestions V2.6.2 để nghiên cứu sau này
+- Top1 / Top3 / Top5 được chấm tự động
 ========================================================
 */
 
 const TRACK_MODEL = "bridge-v2.6.2";
-
-const MAX_TRACK_NUMBERS = 5;
+const MAX_TRACK_RECOMMENDATIONS = 12;
 
 
 /*
 ========================================================
-RESPONSE
+JSON RESPONSE
 ========================================================
 */
 
-function jsonResponse(
-  data,
-  status = 200
-) {
-  return Response.json(
-    data,
-    {
-      status,
-      headers: {
-        "Cache-Control":
-          "no-store, no-cache, must-revalidate"
-      }
+function json(data, status = 200) {
+  return Response.json(data, {
+    status,
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate"
     }
-  );
+  });
 }
 
 
@@ -54,81 +40,28 @@ HELPERS
 */
 
 function round2(value) {
-
-  const n =
-    Number(value);
+  const n = Number(value);
 
   if (!Number.isFinite(n)) {
     return 0;
   }
 
-  return Math.round(
-    n * 100
-  ) / 100;
+  return Math.round(n * 100) / 100;
 }
 
 
-function firstDefined(
-  ...values
-) {
-
-  for (
-    const value
-    of values
-  ) {
-
-    if (
-      value !== undefined &&
-      value !== null
-    ) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-
-function numberValue(
-  value
-) {
-
-  const n =
-    Number(value);
-
-  return Number.isFinite(n)
-    ? n
-    : null;
-}
-
-
-/*
-========================================================
-NORMALIZE 2 DIGIT NUMBER
-========================================================
-*/
-
-function normalizeNumber(
-  value
-) {
-
-  if (
-    value === undefined ||
-    value === null
-  ) {
+function normalizeNumber(value) {
+  if (value === null || value === undefined) {
     return null;
   }
-
 
   const digits =
     String(value)
       .replace(/\D/g, "");
 
-
-  if (!digits.length) {
+  if (!digits) {
     return null;
   }
-
 
   return digits
     .padStart(2, "0")
@@ -138,14 +71,11 @@ function normalizeNumber(
 
 /*
 ========================================================
-DATABASE TABLE
+CREATE TRACKING TABLE
 ========================================================
 */
 
-async function ensureTrackingTable(
-  db
-) {
-
+async function ensureTrackingTable(db) {
   await db
     .prepare(`
       CREATE TABLE IF NOT EXISTS prediction_tracking (
@@ -153,13 +83,11 @@ async function ensureTrackingTable(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
 
         prediction_date TEXT NOT NULL,
-
         source_date TEXT,
 
         model TEXT NOT NULL,
 
         numbers TEXT NOT NULL,
-
         pick_count INTEGER NOT NULL DEFAULT 0,
 
         recommendations_json TEXT NOT NULL,
@@ -175,15 +103,11 @@ async function ensureTrackingTable(
         actual_unique_count INTEGER,
 
         top1_hit INTEGER,
-
         top3_hit INTEGER,
-
         top5_hit INTEGER,
 
         baseline_top1 REAL,
-
         baseline_top3 REAL,
-
         baseline_top5 REAL,
 
         evaluation_json TEXT,
@@ -225,105 +149,63 @@ async function ensureTrackingTable(
 
 /*
 ========================================================
-LOTTERY RESULT -> UNIQUE LOTO
+EXTRACT LOTO FROM RESULT
 ========================================================
 */
 
-function prizeTokens(
-  value
-) {
-
-  if (
-    value === undefined ||
-    value === null
-  ) {
+function extractPrizeNumbers(value) {
+  if (value === null || value === undefined) {
     return [];
   }
 
-
-  return (
-    String(value)
-      .match(/\d+/g)
-    ||
-    []
-  );
+  return String(value).match(/\d+/g) || [];
 }
 
 
-function extractLotoNumbers(
-  result
-) {
-
-  const prizeFields = [
-
+function extractUniqueLoto(row) {
+  const fields = [
     "special",
-
     "g1",
-
     "g2",
-
     "g3",
-
     "g4",
-
     "g5",
-
     "g6",
-
     "g7"
   ];
 
-
-  const numbers =
+  const set =
     new Set();
 
 
-  for (
-    const field
-    of prizeFields
-  ) {
-
-    const tokens =
-      prizeTokens(
-        result[field]
+  for (const field of fields) {
+    const prizes =
+      extractPrizeNumbers(
+        row[field]
       );
 
-
-    for (
-      const token
-      of tokens
-    ) {
-
-      const loto =
-        token
+    for (const prize of prizes) {
+      const number =
+        prize
           .padStart(2, "0")
           .slice(-2);
 
-
-      numbers.add(
-        loto
-      );
+      set.add(number);
     }
   }
 
 
-  return [
-    ...numbers
-  ]
-    .sort();
+  return [...set].sort();
 }
 
 
 /*
 ========================================================
-EXACT RANDOM BASELINE
+RANDOM BASELINE
 
-Giả sử:
-- 100 số từ 00 -> 99
-- target có U loto unique
-- model chọn K số khác nhau
-
-P(at least 1 hit)
+P(at least one hit)
+k số được chọn
+u số loto unique thực tế
 ========================================================
 */
 
@@ -331,7 +213,6 @@ function randomHitProbability(
   uniqueCount,
   pickCount
 ) {
-
   const u =
     Math.max(
       0,
@@ -340,7 +221,6 @@ function randomHitProbability(
         Number(uniqueCount) || 0
       )
     );
-
 
   const k =
     Math.max(
@@ -352,18 +232,8 @@ function randomHitProbability(
     );
 
 
-  if (
-    u <= 0 ||
-    k <= 0
-  ) {
+  if (!u || !k) {
     return 0;
-  }
-
-
-  if (
-    u >= 100
-  ) {
-    return 100;
   }
 
 
@@ -371,30 +241,16 @@ function randomHitProbability(
     1;
 
 
-  for (
-    let i = 0;
-    i < k;
-    i++
-  ) {
-
+  for (let i = 0; i < k; i++) {
     const numerator =
-      100 -
-      u -
-      i;
-
+      100 - u - i;
 
     const denominator =
-      100 -
-      i;
+      100 - i;
 
 
-    if (
-      numerator <= 0
-    ) {
-
-      noHit =
-        0;
-
+    if (numerator <= 0) {
+      noHit = 0;
       break;
     }
 
@@ -406,336 +262,167 @@ function randomHitProbability(
 
 
   return round2(
-    (
-      1 -
-      noHit
-    )
-    *
-    100
+    (1 - noHit) * 100
   );
 }
 
 
 /*
 ========================================================
-NORMALIZE RECOMMENDATION
+NORMALIZE V2.6.2 SUGGESTION
 ========================================================
 */
 
-function normalizeRecommendation(
+function normalizeSuggestion(
   item,
   rank
 ) {
-
-  const number =
-    normalizeNumber(
-      firstDefined(
-        item?.number,
-        item?.predictedNumber,
-        item?.value
-      )
-    );
-
-
   return {
-
     rank,
 
-    number,
-
-    bridge:
-      firstDefined(
-        item?.bridge,
-        item?.bridgeName
+    number:
+      normalizeNumber(
+        item.number
       ),
 
     bridgeKey:
-      firstDefined(
-        item?.bridgeKey,
-        item?.bridge_key
-      ),
+      item.bridgeKey ?? null,
+
+    bridge:
+      item.bridge ?? null,
+
+    positionA:
+      item.positionA ?? null,
+
+    positionB:
+      item.positionB ?? null,
+
+    direction:
+      item.direction ?? null,
 
     streak:
-      numberValue(
-        firstDefined(
-          item?.streak,
-          item?.currentStreak
-        )
-      ),
+      Number(item.streak) || 0,
 
     opportunities:
-      numberValue(
-        item?.opportunities
-      ),
+      Number(item.opportunities) || 0,
 
     continued:
-      numberValue(
-        item?.continued
-      ),
+      Number(item.continued) || 0,
 
     continuationRate:
-      numberValue(
-        firstDefined(
-          item?.continuationRate,
-          item?.rate
-        )
-      ),
+      Number(item.continuationRate) || 0,
+
+    weightedRate:
+      Number(item.weightedRate) || 0,
 
     baselineRate:
-      numberValue(
-        item?.baselineRate
-      ),
+      Number(item.baselineRate) || 0,
 
     edge:
-      numberValue(
-        item?.edge
-      ),
+      Number(item.edge) || 0,
+
+    wilsonLowerBound:
+      Number(item.wilsonLowerBound) || 0,
 
     wilsonEdge:
-      numberValue(
-        item?.wilsonEdge
-      ),
+      Number(item.wilsonEdge) || 0,
 
-    posteriorEdge:
-      numberValue(
-        item?.posteriorEdge
-      ),
+    rate30:
+      Number(item.rate30) || 0,
 
-    recentPosteriorEdge:
-      numberValue(
-        item?.recentPosteriorEdge
-      ),
+    samples30:
+      Number(item.samples30) || 0,
 
-    stabilityScore:
-      numberValue(
-        firstDefined(
-          item?.stabilityScore,
-          item?.stability
-        )
-      ),
+    rate60:
+      Number(item.rate60) || 0,
 
-    sampleReliability:
-      numberValue(
-        item?.sampleReliability
-      ),
+    samples60:
+      Number(item.samples60) || 0,
+
+    rate100:
+      Number(item.rate100) || 0,
+
+    samples100:
+      Number(item.samples100) || 0,
+
+    recentRate:
+      Number(item.recentRate) || 0,
+
+    recentSamples:
+      Number(item.recentSamples) || 0,
 
     recentStatus:
-      firstDefined(
-        item?.recentStatus,
-        item?.recent
-      ),
+      item.recentStatus ?? null,
 
-    independentConsensus:
-      numberValue(
-        firstDefined(
-          item?.independentConsensus,
-          item?.independent
-        )
-      ),
+    stabilityRange:
+      Number(item.stabilityRange) || 0,
 
-    strength:
-      firstDefined(
-        item?.strength,
-        item?.classification
-      ),
+    stabilityScore:
+      Number(item.stabilityScore) || 0,
 
-    score:
-      numberValue(
-        firstDefined(
-          item?.score,
-          item?.finalScore,
-          item?.baseScore
-        )
-      ),
+    sampleReliability:
+      Number(item.sampleReliability) || 0,
 
     rawScore:
-      numberValue(
-        item?.rawScore
-      )
+      Number(item.rawScore) || 0,
+
+    independentConsensus:
+      Number(item.independentConsensus) || 0,
+
+    relatedBridgeCount:
+      Number(item.relatedBridgeCount) || 0,
+
+    consensusBonus:
+      Number(item.consensusBonus) || 0,
+
+    correlationPenalty:
+      Number(item.correlationPenalty) || 0,
+
+    recentAdjustment:
+      Number(item.recentAdjustment) || 0,
+
+    score:
+      Number(item.score) || 0,
+
+    strength:
+      item.strength ?? null
   };
 }
 
 
 /*
 ========================================================
-GET RANKED RECOMMENDATIONS FROM PREDICT RESPONSE
+READ SAVED PAYLOAD
 ========================================================
 */
 
-function getRecommendations(
-  predict
-) {
-
-  /*
-  topNumbers là ranking thực tế
-  mà production đang hiển thị.
-  */
-
-  let ranked =
-    Array.isArray(
-      predict?.topNumbers
-    )
-      ?
-      predict.topNumbers
-      :
-      null;
+function readRecommendations(text) {
+  try {
+    const parsed =
+      JSON.parse(text || "[]");
 
 
-  if (
-    !ranked?.length &&
-    Array.isArray(
-      predict?.data?.recommendations
-    )
-  ) {
-
-    ranked =
-      predict.data.recommendations;
-  }
-
-
-  if (
-    !ranked?.length &&
-    Array.isArray(
-      predict?.recommendations
-    )
-  ) {
-
-    ranked =
-      predict.recommendations;
-  }
+    // Schema mới
+    if (
+      parsed &&
+      Array.isArray(
+        parsed.recommendations
+      )
+    ) {
+      return parsed.recommendations;
+    }
 
 
-  if (
-    !ranked?.length
-  ) {
+    // Tương thích row cũ
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+
+
+    return [];
+  } catch {
     return [];
   }
-
-
-  /*
-  Tìm detail đầy đủ theo number.
-  */
-
-  const detailSources = [
-
-    predict?.data?.recommendations,
-
-    predict?.recommendations,
-
-    predict?.topNumbers
-
-  ]
-    .filter(
-      Array.isArray
-    );
-
-
-  const detailMap =
-    new Map();
-
-
-  for (
-    const source
-    of detailSources
-  ) {
-
-    for (
-      const item
-      of source
-    ) {
-
-      const number =
-        normalizeNumber(
-          item?.number
-        );
-
-
-      if (!number) {
-        continue;
-      }
-
-
-      const old =
-        detailMap.get(
-          number
-        )
-        ||
-        {};
-
-
-      detailMap.set(
-        number,
-        {
-          ...old,
-          ...item
-        }
-      );
-    }
-  }
-
-
-  const seen =
-    new Set();
-
-
-  const result =
-    [];
-
-
-  for (
-    const item
-    of ranked
-  ) {
-
-    const number =
-      normalizeNumber(
-        item?.number
-      );
-
-
-    if (
-      !number ||
-      seen.has(number)
-    ) {
-      continue;
-    }
-
-
-    seen.add(
-      number
-    );
-
-
-    const detail =
-      detailMap.get(
-        number
-      )
-      ||
-      {};
-
-
-    result.push(
-      normalizeRecommendation(
-        {
-          ...detail,
-          ...item,
-          number
-        },
-        result.length + 1
-      )
-    );
-
-
-    if (
-      result.length >=
-      MAX_TRACK_NUMBERS
-    ) {
-      break;
-    }
-  }
-
-
-  return result;
 }
 
 
@@ -745,19 +432,14 @@ EVALUATE PENDING PREDICTIONS
 ========================================================
 */
 
-async function evaluatePending(
-  db
-) {
-
-  const pendingResult =
+async function evaluatePending(db) {
+  const query =
     await db
       .prepare(`
         SELECT
           id,
           prediction_date,
-          model,
           numbers,
-          pick_count,
           recommendations_json
 
         FROM prediction_tracking
@@ -774,21 +456,14 @@ async function evaluatePending(
       .all();
 
 
-  const pending =
-    pendingResult.results
-    ||
-    [];
+  const rows =
+    query.results || [];
 
 
-  let evaluatedNow =
-    0;
+  let evaluatedNow = 0;
 
 
-  for (
-    const prediction
-    of pending
-  ) {
-
+  for (const saved of rows) {
     const actual =
       await db
         .prepare(`
@@ -810,29 +485,26 @@ async function evaluatePending(
           LIMIT 1
         `)
         .bind(
-          prediction.prediction_date
+          saved.prediction_date
         )
         .first();
 
 
     /*
-    Target chưa xổ hoặc chưa import.
-    */
-
+     * Chưa có kết quả target.
+     */
     if (!actual) {
       continue;
     }
 
 
     const actualNumbers =
-      extractLotoNumbers(
+      extractUniqueLoto(
         actual
       );
 
 
-    if (
-      !actualNumbers.length
-    ) {
+    if (!actualNumbers.length) {
       continue;
     }
 
@@ -843,33 +515,21 @@ async function evaluatePending(
       );
 
 
-    let recommendations = [];
+    let recommendations =
+      readRecommendations(
+        saved.recommendations_json
+      );
 
 
-    try {
-
+    /*
+     * Fallback cho dữ liệu cũ.
+     */
+    if (!recommendations.length) {
       recommendations =
-        JSON.parse(
-          prediction.recommendations_json
-          ||
-          "[]"
-        );
-
-    }
-    catch {
-
-      recommendations =
-        String(
-          prediction.numbers
-          ||
-          ""
-        )
+        String(saved.numbers || "")
           .split(",")
           .map(
-            (
-              number,
-              index
-            ) => ({
+            (number, index) => ({
               rank:
                 index + 1,
 
@@ -885,10 +545,21 @@ async function evaluatePending(
     }
 
 
-    const evaluation =
+    recommendations =
+      recommendations
+        .filter(
+          x => x.number
+        )
+        .sort(
+          (a, b) =>
+            Number(a.rank) -
+            Number(b.rank)
+        );
+
+
+    const evaluated =
       recommendations.map(
         item => ({
-
           rank:
             item.rank,
 
@@ -903,51 +574,28 @@ async function evaluatePending(
       );
 
 
-    const pickCount =
-      evaluation.length;
-
-
     const top1 =
-      evaluation.slice(
-        0,
-        1
-      );
-
+      evaluated.slice(0, 1);
 
     const top3 =
-      evaluation.slice(
-        0,
-        3
-      );
-
+      evaluated.slice(0, 3);
 
     const top5 =
-      evaluation.slice(
-        0,
-        5
-      );
+      evaluated.slice(0, 5);
 
 
     const top1Hit =
-      top1.some(
-        x => x.hit
-      )
+      top1.some(x => x.hit)
         ? 1
         : 0;
-
 
     const top3Hit =
-      top3.some(
-        x => x.hit
-      )
+      top3.some(x => x.hit)
         ? 1
         : 0;
 
-
     const top5Hit =
-      top5.some(
-        x => x.hit
-      )
+      top5.some(x => x.hit)
         ? 1
         : 0;
 
@@ -959,30 +607,19 @@ async function evaluatePending(
     const baselineTop1 =
       randomHitProbability(
         uniqueCount,
-        Math.min(
-          1,
-          pickCount
-        )
+        top1.length
       );
-
 
     const baselineTop3 =
       randomHitProbability(
         uniqueCount,
-        Math.min(
-          3,
-          pickCount
-        )
+        top3.length
       );
-
 
     const baselineTop5 =
       randomHitProbability(
         uniqueCount,
-        Math.min(
-          5,
-          pickCount
-        )
+        top5.length
       );
 
 
@@ -991,19 +628,14 @@ async function evaluatePending(
         UPDATE prediction_tracking
 
         SET
-
           actual_unique_count = ?,
 
           top1_hit = ?,
-
           top3_hit = ?,
-
           top5_hit = ?,
 
           baseline_top1 = ?,
-
           baseline_top3 = ?,
-
           baseline_top5 = ?,
 
           evaluation_json = ?,
@@ -1016,28 +648,23 @@ async function evaluatePending(
           AND evaluated_at IS NULL
       `)
       .bind(
-
         uniqueCount,
 
         top1Hit,
-
         top3Hit,
-
         top5Hit,
 
         baselineTop1,
-
         baselineTop3,
-
         baselineTop5,
 
         JSON.stringify({
           actualNumbers,
           recommendations:
-            evaluation
+            evaluated
         }),
 
-        prediction.id
+        saved.id
       )
       .run();
 
@@ -1052,15 +679,12 @@ async function evaluatePending(
 
 /*
 ========================================================
-LIVE PERFORMANCE
+LIVE STATISTICS
 ========================================================
 */
 
-async function getLiveStatistics(
-  db
-) {
-
-  const row =
+async function getLiveStatistics(db) {
+  const stats =
     await db
       .prepare(`
         SELECT
@@ -1092,23 +716,7 @@ async function getLiveStatistics(
 
           AVG(
             baseline_top5
-          ) AS baseline_top5,
-
-          SUM(
-            CASE
-              WHEN pick_count >= 3
-              THEN 1
-              ELSE 0
-            END
-          ) AS full_top3_days,
-
-          SUM(
-            CASE
-              WHEN pick_count >= 5
-              THEN 1
-              ELSE 0
-            END
-          ) AS full_top5_days
+          ) AS baseline_top5
 
         FROM prediction_tracking
 
@@ -1122,7 +730,7 @@ async function getLiveStatistics(
       .first();
 
 
-  const trackedRow =
+  const totalRow =
     await db
       .prepare(`
         SELECT
@@ -1140,110 +748,76 @@ async function getLiveStatistics(
 
   const totalTracked =
     Number(
-      trackedRow?.total
-      ||
-      0
+      totalRow?.total || 0
     );
-
 
   const evaluated =
     Number(
-      row?.evaluated
-      ||
-      0
+      stats?.evaluated || 0
     );
-
 
   const top1Hits =
     Number(
-      row?.top1_hits
-      ||
-      0
+      stats?.top1_hits || 0
     );
-
 
   const top3Hits =
     Number(
-      row?.top3_hits
-      ||
-      0
+      stats?.top3_hits || 0
     );
-
 
   const top5Hits =
     Number(
-      row?.top5_hits
-      ||
-      0
+      stats?.top5_hits || 0
     );
 
 
-  const top1Rate =
-    evaluated
-      ?
-      top1Hits /
-      evaluated *
-      100
-      :
-      0;
+  const buildMetric =
+    (
+      hits,
+      baseline
+    ) => {
+
+      const hitRate =
+        evaluated
+          ?
+          hits /
+          evaluated *
+          100
+          :
+          0;
 
 
-  const top3Rate =
-    evaluated
-      ?
-      top3Hits /
-      evaluated *
-      100
-      :
-      0;
+      const baselineRate =
+        round2(
+          baseline
+        );
 
 
-  const top5Rate =
-    evaluated
-      ?
-      top5Hits /
-      evaluated *
-      100
-      :
-      0;
+      return {
+        hits,
 
+        tested:
+          evaluated,
 
-  const baselineTop1 =
-    round2(
-      row?.baseline_top1
-    );
+        hitRate:
+          round2(
+            hitRate
+          ),
 
+        baseline:
+          baselineRate,
 
-  const baselineTop3 =
-    round2(
-      row?.baseline_top3
-    );
-
-
-  const baselineTop5 =
-    round2(
-      row?.baseline_top5
-    );
-
-
-  const fullTop3Days =
-    Number(
-      row?.full_top3_days
-      ||
-      0
-    );
-
-
-  const fullTop5Days =
-    Number(
-      row?.full_top5_days
-      ||
-      0
-    );
+        lift:
+          round2(
+            hitRate -
+            baselineRate
+          )
+      };
+    };
 
 
   return {
-
     model:
       TRACK_MODEL,
 
@@ -1258,135 +832,76 @@ async function getLiveStatistics(
         evaluated
       ),
 
-    top1: {
-
-      hits:
+    top1:
+      buildMetric(
         top1Hits,
+        stats?.baseline_top1
+      ),
 
-      tested:
-        evaluated,
-
-      hitRate:
-        round2(
-          top1Rate
-        ),
-
-      baseline:
-        baselineTop1,
-
-      lift:
-        round2(
-          top1Rate -
-          baselineTop1
-        )
-    },
-
-    top3: {
-
-      hits:
+    top3:
+      buildMetric(
         top3Hits,
+        stats?.baseline_top3
+      ),
 
-      tested:
-        evaluated,
-
-      hitRate:
-        round2(
-          top3Rate
-        ),
-
-      baseline:
-        baselineTop3,
-
-      lift:
-        round2(
-          top3Rate -
-          baselineTop3
-        ),
-
-      fullPickDays:
-        fullTop3Days,
-
-      fullCoverage:
-        evaluated
-          ?
-          round2(
-            fullTop3Days /
-            evaluated *
-            100
-          )
-          :
-          0
-    },
-
-    top5: {
-
-      hits:
+    top5:
+      buildMetric(
         top5Hits,
-
-      tested:
-        evaluated,
-
-      hitRate:
-        round2(
-          top5Rate
-        ),
-
-      baseline:
-        baselineTop5,
-
-      lift:
-        round2(
-          top5Rate -
-          baselineTop5
-        ),
-
-      fullPickDays:
-        fullTop5Days,
-
-      fullCoverage:
-        evaluated
-          ?
-          round2(
-            fullTop5Days /
-            evaluated *
-            100
-          )
-          :
-          0
-    }
+        stats?.baseline_top5
+      )
   };
 }
 
 
 /*
 ========================================================
-GET
+GET CURRENT SNAPSHOT
 ========================================================
 */
 
-export async function onRequestGet(
-  context
+async function getSnapshot(
+  db,
+  predictionDate
 ) {
+  return db
+    .prepare(`
+      SELECT
+        *
 
+      FROM prediction_tracking
+
+      WHERE
+        prediction_date = ?
+        AND model = ?
+
+      LIMIT 1
+    `)
+    .bind(
+      predictionDate,
+      TRACK_MODEL
+    )
+    .first();
+}
+
+
+/*
+========================================================
+API GET
+========================================================
+*/
+
+export async function onRequestGet(context) {
   try {
-
     const db =
       context.env.DB;
 
 
     if (!db) {
-
       throw new Error(
-        "Không tìm thấy binding DB"
+        "Không tìm thấy D1 binding DB"
       );
     }
 
-
-    /*
-    ================================================
-    CREATE TRACKING TABLE
-    ================================================
-    */
 
     await ensureTrackingTable(
       db
@@ -1395,8 +910,7 @@ export async function onRequestGet(
 
     /*
     ================================================
-    STEP 1:
-    Chấm prediction cũ trước.
+    1. Chấm các prediction cũ
     ================================================
     */
 
@@ -1408,21 +922,26 @@ export async function onRequestGet(
 
     /*
     ================================================
-    STEP 2:
-    Lấy prediction V2.6.2 hiện tại.
+    2. GET V2.6.2 PREDICTION
+
+    Cấu trúc thực tế:
+
+    version
+    sourceDate
+    predictionDate
+    suggestions[]
     ================================================
     */
 
     const origin =
       new URL(
         context.request.url
-      )
-        .origin;
+      ).origin;
 
 
-    const response =
+    const predictResponse =
       await fetch(
-        `${origin}/api/predict?top=5&t=${Date.now()}`,
+        `${origin}/api/predict?top=12&t=${Date.now()}`,
         {
           headers: {
             Accept:
@@ -1432,348 +951,412 @@ export async function onRequestGet(
       );
 
 
-    if (
-      !response.ok
-    ) {
-
+    if (!predictResponse.ok) {
       throw new Error(
-        `Predict API HTTP ${response.status}`
+        `Predict API HTTP ${predictResponse.status}`
       );
     }
 
 
     const predict =
-      await response.json();
+      await predictResponse.json();
 
 
-    if (
-      !predict.success
-    ) {
-
+    if (!predict?.success) {
       throw new Error(
-        predict.message
-        ||
-        "Không lấy được dự đoán"
+        predict?.message ||
+        "Không lấy được prediction"
       );
     }
 
 
     /*
     ================================================
-    VERIFY MODEL
+    EXACT V2.6.2 SCHEMA
     ================================================
     */
 
     const model =
-      firstDefined(
-        predict.model,
-        predict?.data?.model,
-        predict?.version
-      );
+      predict.version;
+
+    const predictionDate =
+      predict.predictionDate;
+
+    const sourceDate =
+      predict.sourceDate;
 
 
-    if (
-      model !==
-      TRACK_MODEL
-    ) {
-
-      return jsonResponse(
+    if (model !== TRACK_MODEL) {
+      return json(
         {
           success: false,
 
           message:
-            "Không lưu prediction vì model hiện tại không phải V2.6.2.",
+            "Model hiện tại không phải V2.6.2. Không lưu Live Validation.",
 
           expectedModel:
             TRACK_MODEL,
 
           actualModel:
-            model
+            model || null
         },
         409
       );
     }
 
 
-    /*
-    ================================================
-    DATE
-    ================================================
-    */
-
-    const predictionDate =
-  predict?.data?.predictionDate ??
-  predict?.predictionDate;
-
-const sourceDate =
-  predict?.data?.sourceDate ??
-  predict?.data?.latestResult ??
-  predict?.latestResult ??
-  predict?.sourceDate;
-
-if (!predictionDate) {
-  throw new Error(
-    `Predict API không trả predictionDate. Keys: ${
-      Object.keys(predict || {}).join(", ")
-    }`
-  );
-}
-
-
-    /*
-    ================================================
-    TOP 5 SNAPSHOT
-    ================================================
-    */
-
-    const recommendations =
-      getRecommendations(
-        predict
-      );
-
-
-    if (
-      !recommendations.length
-    ) {
-
+    if (!predictionDate) {
       throw new Error(
-        "Không có recommendation để theo dõi"
+        "Predict API không trả predictionDate"
       );
     }
 
 
-    const numbers =
-      recommendations
-        .map(
-          x => x.number
-        )
-        .filter(Boolean);
-
-
-    const numbersText =
-      numbers.join(",");
+    if (!sourceDate) {
+      throw new Error(
+        "Predict API không trả sourceDate"
+      );
+    }
 
 
     /*
     ================================================
-    LEGACY TABLE
+    SUGGESTIONS
 
-    Giữ Top 2 như API cũ.
-
-    Khác duy nhất:
-    DO NOTHING thay vì UPDATE.
-
-    => prediction đầu tiên được LOCK.
+    Dùng đúng array predict.suggestions.
     ================================================
     */
 
-    const legacyNumbers =
-      numbers.slice(
-        0,
-        2
+    const sourceSuggestions =
+      Array.isArray(
+        predict.suggestions
+      )
+        ?
+        predict.suggestions
+        :
+        [];
+
+
+    if (!sourceSuggestions.length) {
+      throw new Error(
+        "V2.6.2 không có suggestions để lưu"
+      );
+    }
+
+
+    const suggestions =
+      sourceSuggestions
+        .slice(
+          0,
+          MAX_TRACK_RECOMMENDATIONS
+        )
+        .map(
+          (item, index) =>
+            normalizeSuggestion(
+              item,
+              index + 1
+            )
+        )
+        .filter(
+          item =>
+            item.number
+        );
+
+
+    if (!suggestions.length) {
+      throw new Error(
+        "Không lấy được số hợp lệ từ suggestions"
+      );
+    }
+
+
+    /*
+    ================================================
+    3. KIỂM TRA SNAPSHOT ĐÃ TỒN TẠI
+
+    Có rồi => tuyệt đối không regenerate.
+    ================================================
+    */
+
+    let snapshot =
+      await getSnapshot(
+        db,
+        predictionDate
       );
 
 
-    await db
-      .prepare(`
-        INSERT INTO prediction_daily (
-          prediction_date,
-          numbers,
-          points,
-          model
-        )
-
-        VALUES (?, ?, ?, ?)
-
-        ON CONFLICT(prediction_date)
-
-        DO NOTHING
-      `)
-      .bind(
-
-        predictionDate,
-
-        legacyNumbers.join(","),
-
-        1,
-
-        TRACK_MODEL
-      )
-      .run();
+    let savedNew =
+      false;
 
 
-    /*
-    ================================================
-    LIVE VALIDATION SNAPSHOT
+    if (!snapshot) {
 
-    ON CONFLICT DO NOTHING
-    = LOCKED FOREVER
-    ================================================
-    */
+      /*
+      ==============================================
+      PROSPECTIVE VALIDATION GUARD
 
-    const insertResult =
+      Nếu kết quả target đã tồn tại thì
+      KHÔNG cho tạo snapshot mới.
+
+      Như vậy không thể vô tình lưu prediction
+      sau khi đã biết kết quả.
+      ==============================================
+      */
+
+      const targetResult =
+        await db
+          .prepare(`
+            SELECT draw_date
+
+            FROM results
+
+            WHERE draw_date = ?
+
+            LIMIT 1
+          `)
+          .bind(
+            predictionDate
+          )
+          .first();
+
+
+      if (targetResult) {
+        return json(
+          {
+            success: false,
+
+            message:
+              `Kết quả ${predictionDate} đã tồn tại. ` +
+              "Không tạo snapshot Live Validation sau khi đã biết kết quả.",
+
+            predictionDate,
+
+            model:
+              TRACK_MODEL,
+
+            evaluatedNow,
+
+            livePerformance:
+              await getLiveStatistics(db)
+          },
+          409
+        );
+      }
+
+
+      const numbers =
+        suggestions.map(
+          item => item.number
+        );
+
+
+      /*
+      ==============================================
+      4. GIỮ prediction_daily CŨ
+
+      Chỉ Top2.
+      DO NOTHING = LOCK.
+      ==============================================
+      */
+
+      const legacyNumbers =
+        numbers.slice(0, 2);
+
+
       await db
         .prepare(`
-          INSERT INTO prediction_tracking (
-
+          INSERT INTO prediction_daily (
             prediction_date,
-
-            source_date,
-
-            model,
-
             numbers,
-
-            pick_count,
-
-            recommendations_json,
-
             points,
-
-            status
-          )
-
-          VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            'locked'
-          )
-
-          ON CONFLICT(
-            prediction_date,
             model
           )
+
+          VALUES (?, ?, ?, ?)
+
+          ON CONFLICT(prediction_date)
 
           DO NOTHING
         `)
         .bind(
-
           predictionDate,
-
-          sourceDate,
-
-          TRACK_MODEL,
-
-          numbersText,
-
-          numbers.length,
-
-          JSON.stringify(
-            recommendations
-          ),
-
-          1
+          legacyNumbers.join(","),
+          1,
+          TRACK_MODEL
         )
         .run();
 
 
-    const savedNew =
-      Number(
-        insertResult?.meta?.changes
-        ||
-        0
-      ) > 0;
+      /*
+      ==============================================
+      5. FULL V2.6.2 SNAPSHOT
+
+      recommendations_json lưu cả:
+      - metadata model
+      - rule
+      - rejected
+      - counts
+      - suggestions
+      ==============================================
+      */
+
+      const trackingPayload = {
+        meta: {
+          module:
+            predict.module,
+
+          version:
+            predict.version,
+
+          sourceDate:
+            predict.sourceDate,
+
+          predictionDate:
+            predict.predictionDate,
+
+          analyzedDraws:
+            predict.analyzedDraws,
+
+          baselineRate:
+            predict.baselineRate,
+
+          totalPositions:
+            predict.totalPositions,
+
+          activeCandidateCount:
+            predict.activeCandidateCount,
+
+          qualifiedCount:
+            predict.qualifiedCount,
+
+          recommendationCount:
+            predict.recommendationCount,
+
+          historicalOnlyCount:
+            predict.historicalOnlyCount,
+
+          returnedCount:
+            predict.returnedCount,
+
+          uniqueNumberCount:
+            predict.uniqueNumberCount,
+
+          rule:
+            predict.rule,
+
+          rejected:
+            predict.rejected,
+
+          counts:
+            predict.counts
+        },
+
+        recommendations:
+          suggestions
+      };
 
 
-    /*
-    ================================================
-    Đọc snapshot thật trong DB.
+      const insert =
+        await db
+          .prepare(`
+            INSERT INTO prediction_tracking (
 
-    Nếu API gọi lần thứ 2,
-    trả snapshot cũ chứ không trả
-    prediction mới vừa regenerate.
-    ================================================
-    */
+              prediction_date,
 
-    const snapshot =
-      await db
-        .prepare(`
-          SELECT
+              source_date,
 
-            prediction_date,
+              model,
 
-            source_date,
+              numbers,
 
-            model,
+              pick_count,
 
-            numbers,
+              recommendations_json,
 
-            pick_count,
+              points,
 
-            recommendations_json,
+              status
+            )
 
-            points,
+            VALUES (
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              'locked'
+            )
 
-            status,
+            ON CONFLICT(
+              prediction_date,
+              model
+            )
 
-            created_at,
+            DO NOTHING
+          `)
+          .bind(
+            predictionDate,
 
-            evaluated_at,
+            sourceDate,
 
-            actual_unique_count,
+            TRACK_MODEL,
 
-            top1_hit,
+            numbers.join(","),
 
-            top3_hit,
+            numbers.length,
 
-            top5_hit,
+            JSON.stringify(
+              trackingPayload
+            ),
 
-            baseline_top1,
-
-            baseline_top3,
-
-            baseline_top5,
-
-            evaluation_json
-
-          FROM prediction_tracking
-
-          WHERE
-            prediction_date = ?
-            AND model = ?
-
-          LIMIT 1
-        `)
-        .bind(
-          predictionDate,
-          TRACK_MODEL
-        )
-        .first();
+            1
+          )
+          .run();
 
 
-    let storedRecommendations =
-      [];
+      savedNew =
+        Number(
+          insert?.meta?.changes || 0
+        ) > 0;
 
 
-    try {
-
-      storedRecommendations =
-        JSON.parse(
-          snapshot
-            ?.recommendations_json
-          ||
-          "[]"
+      snapshot =
+        await getSnapshot(
+          db,
+          predictionDate
         );
-
-    }
-    catch {
-      storedRecommendations =
-        [];
     }
 
 
     /*
     ================================================
-    LIVE STATS
+    6. READ STORED SNAPSHOT
     ================================================
     */
 
-    const live =
+    const storedRecommendations =
+      readRecommendations(
+        snapshot?.recommendations_json
+      );
+
+
+    const numbers =
+      String(
+        snapshot?.numbers || ""
+      )
+        .split(",")
+        .filter(Boolean);
+
+
+    /*
+    ================================================
+    7. LIVE STATS
+    ================================================
+    */
+
+    const livePerformance =
       await getLiveStatistics(
         db
       );
@@ -1785,14 +1368,13 @@ if (!predictionDate) {
     ================================================
     */
 
-    return jsonResponse({
-
+    return json({
       success: true,
 
       module:
         "v2.6.2-live-validation",
 
-      model:
+      version:
         TRACK_MODEL,
 
       action:
@@ -1807,121 +1389,86 @@ if (!predictionDate) {
       evaluatedNow,
 
       prediction: {
+        sourceDate:
+          snapshot?.source_date,
 
         predictionDate:
-          snapshot
-            ?.prediction_date,
+          snapshot?.prediction_date,
 
-        sourceDate:
-          snapshot
-            ?.source_date,
+        numbers,
 
-        numbers:
-          String(
-            snapshot?.numbers
-            ||
-            ""
-          )
-            .split(",")
-            .filter(Boolean),
+        top1:
+          numbers.slice(0, 1),
 
-        pickCount:
-          Number(
-            snapshot?.pick_count
-            ||
-            0
-          ),
+        top2:
+          numbers.slice(0, 2),
 
-        points:
-          Number(
-            snapshot?.points
-            ||
-            1
-          ),
+        top3:
+          numbers.slice(0, 3),
 
-        model:
-          snapshot?.model,
+        top5:
+          numbers.slice(0, 5),
+
+        totalSuggestions:
+          numbers.length,
+
+        recommendations:
+          storedRecommendations,
 
         status:
           snapshot?.status,
 
         createdAt:
-          snapshot?.created_at,
-
-        recommendations:
-          storedRecommendations
+          snapshot?.created_at
       },
 
       evaluation: {
-
         evaluated:
           Boolean(
             snapshot?.evaluated_at
           ),
 
         evaluatedAt:
-          snapshot?.evaluated_at
-          ||
-          null,
+          snapshot?.evaluated_at || null,
 
         actualUniqueCount:
-          snapshot?.actual_unique_count
-          ??
-          null,
+          snapshot?.actual_unique_count ?? null,
 
         top1Hit:
-          snapshot?.top1_hit
-          ??
-          null,
+          snapshot?.top1_hit ?? null,
 
         top3Hit:
-          snapshot?.top3_hit
-          ??
-          null,
+          snapshot?.top3_hit ?? null,
 
         top5Hit:
-          snapshot?.top5_hit
-          ??
-          null,
+          snapshot?.top5_hit ?? null,
 
         baselineTop1:
-          snapshot?.baseline_top1
-          ??
-          null,
+          snapshot?.baseline_top1 ?? null,
 
         baselineTop3:
-          snapshot?.baseline_top3
-          ??
-          null,
+          snapshot?.baseline_top3 ?? null,
 
         baselineTop5:
-          snapshot?.baseline_top5
-          ??
-          null
+          snapshot?.baseline_top5 ?? null
       },
 
-      livePerformance:
-        live
+      livePerformance
     });
 
-  }
-  catch (
-    error
-  ) {
-
+  } catch (error) {
     console.error(
       "save-prediction:",
       error
     );
 
 
-    return jsonResponse(
+    return json(
       {
         success: false,
 
         message:
-          error?.message
-          ||
+          error?.message ||
           "Lỗi save prediction"
       },
       500
