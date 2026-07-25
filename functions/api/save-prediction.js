@@ -939,16 +939,79 @@ export async function onRequestGet(context) {
       ).origin;
 
 
-    const predictResponse =
-      await fetch(
-        `${origin}/api/predict?top=12&t=${Date.now()}`,
-        {
-          headers: {
-            Accept:
-              "application/json"
-          }
-        }
-      );
+    /*
+========================================================
+2. GET V2.6.2 PREDICTION
+========================================================
+*/
+
+const origin =
+  new URL(
+    context.request.url
+  ).origin;
+
+
+const predictResponse =
+  await fetch(
+    `${origin}/api/predict?t=${Date.now()}`,
+    {
+      headers: {
+        Accept:
+          "application/json"
+      }
+    }
+  );
+
+
+/*
+ * Đọc text trước để lấy được lỗi thật
+ * nếu /api/predict trả HTTP 500.
+ */
+
+const predictText =
+  await predictResponse.text();
+
+
+let predict;
+
+
+try {
+
+  predict =
+    JSON.parse(
+      predictText
+    );
+
+} catch {
+
+  throw new Error(
+    "Predict API không trả JSON: " +
+    predictText.slice(0, 500)
+  );
+}
+
+
+if (!predictResponse.ok) {
+
+  throw new Error(
+    predict?.message
+    ||
+    (
+      `Predict API HTTP ${predictResponse.status}: ` +
+      predictText.slice(0, 500)
+    )
+  );
+}
+
+
+if (!predict?.success) {
+
+  throw new Error(
+    predict?.message
+    ||
+    "Predict API trả success=false"
+  );
+}
 
 
     if (!predictResponse.ok) {
