@@ -1,14 +1,30 @@
 /*
 ========================================================
 XSMB ANALYTICS FRONTEND
-V2.6.2 SIMPLE UI + LIVE CARRY V2
+V2.6.2 + LIVE CARRY V2
+SIMPLE / USER-FOCUSED UI
+========================================================
 
-UI chính:
-1. Hiệu quả Live
-2. Live Validation / Carry
-3. 5 cầu ưu tiên V2.6.2
+TRANG CHỦ:
 
-Không hiển thị xếp hạng.
+1. Kết quả XSMB mới nhất
+
+2. Phân tích hôm nay
+   - Hiệu quả Live
+   - Live Validation / Carry
+   - Dàn số gợi ý
+
+3. Không hiển thị:
+   - Top số theo mô hình
+   - Score
+   - Wilson
+   - Edge
+   - Ranking #1 #2 #3...
+
+4. Giữ:
+   - Tracking
+   - Backtest
+   - Cầu 5 chữ số
 ========================================================
 */
 
@@ -16,6 +32,14 @@ Không hiển thị xếp hạng.
 document.addEventListener(
   "DOMContentLoaded",
   () => {
+
+    /*
+    Loại bỏ khu vực
+    "Top số theo mô hình"
+    khỏi trang chủ.
+    */
+    hideModelTopSection();
+
     loadDashboard();
   }
 );
@@ -33,49 +57,57 @@ async function loadDashboard() {
   );
 
 
+  const now =
+    Date.now();
+
+
   const [
     latestResult,
     statisticsResult,
     predictResult,
     liveResult
-  ] = await Promise.allSettled([
+  ] =
+    await Promise.allSettled([
 
-    fetch(
-      `/api/latest?t=${Date.now()}`,
-      {
-        cache: "no-store"
-      }
-    ),
+      fetch(
+        `/api/latest?t=${now}`,
+        {
+          cache: "no-store"
+        }
+      ),
 
-    fetch(
-      `/api/statistics?t=${Date.now()}`,
-      {
-        cache: "no-store"
-      }
-    ),
+      /*
+      Statistics vẫn được gọi
+      chỉ để lấy totalDraws.
 
-    fetch(
-      `/api/predict?t=${Date.now()}`,
-      {
-        cache: "no-store"
-      }
-    ),
+      Không render bảng
+      Top số theo mô hình.
+      */
+      fetch(
+        `/api/statistics?t=${now}`,
+        {
+          cache: "no-store"
+        }
+      ),
 
-    fetch(
-      `/api/live-validation?t=${Date.now()}`,
-      {
-        cache: "no-store"
-      }
-    )
+      fetch(
+        `/api/predict?t=${now}`,
+        {
+          cache: "no-store"
+        }
+      ),
 
-  ]);
+      fetch(
+        `/api/live-validation?t=${now}`,
+        {
+          cache: "no-store"
+        }
+      )
+
+    ]);
 
 
   let totalDraws = 0;
-
-  let predictData = null;
-
-  let liveData = null;
 
 
   /*
@@ -146,6 +178,7 @@ async function loadDashboard() {
   /*
   ====================================================
   STATISTICS
+  CHỈ LẤY SỐ KỲ DATA
   ====================================================
   */
 
@@ -192,9 +225,12 @@ async function loadDashboard() {
       );
 
 
-      renderStatistics(
-        data
-      );
+      /*
+      Không gọi:
+      renderStatistics(data)
+      */
+
+      hideModelTopSection();
 
     }
     catch (error) {
@@ -205,17 +241,13 @@ async function loadDashboard() {
       );
 
 
-      renderStatisticsError(
-        error.message
-      );
+      hideModelTopSection();
     }
 
   }
   else {
 
-    renderStatisticsError(
-      "Không kết nối được Statistics API."
-    );
+    hideModelTopSection();
   }
 
 
@@ -257,10 +289,6 @@ async function loadDashboard() {
       }
 
 
-      predictData =
-        data;
-
-
       renderPrediction(
         data,
         totalDraws
@@ -268,7 +296,16 @@ async function loadDashboard() {
 
 
       setSystemStatus(
-        `D1 ${totalDraws} kỳ • ${data.version || "bridge-v2.6.2"} • ${data.suggestions?.length || 0} gợi ý`,
+
+        `D1 ${totalDraws} kỳ • ` +
+
+        `${data.version || "bridge-v2.6.2"} • ` +
+
+        `${Math.min(
+          5,
+          data.suggestions?.length || 0
+        )} số gợi ý`,
+
         "success"
       );
 
@@ -347,16 +384,20 @@ async function loadDashboard() {
       }
 
 
-      liveData =
-        data;
+      /*
+      Thứ tự giao diện:
 
+      HIỆU QUẢ
+      LIVE VALIDATION
+      DÀN SỐ
+      */
 
-      renderLiveValidation(
+      renderLivePerformance(
         data
       );
 
 
-      renderLivePerformance(
+      renderLiveValidation(
         data
       );
 
@@ -369,12 +410,12 @@ async function loadDashboard() {
       );
 
 
-      renderLiveValidationError(
+      renderLivePerformanceError(
         error.message
       );
 
 
-      renderLivePerformanceError(
+      renderLiveValidationError(
         error.message
       );
     }
@@ -382,1225 +423,130 @@ async function loadDashboard() {
   }
   else {
 
+    renderLivePerformanceError(
+      "Không đọc được dữ liệu Live."
+    );
+
+
     renderLiveValidationError(
       "Không kết nối được Live Validation API."
     );
+  }
+}
 
 
-    renderLivePerformanceError(
-      "Không có dữ liệu hiệu quả Live."
+/* =====================================================
+   REMOVE "TOP SỐ THEO MÔ HÌNH"
+===================================================== */
+
+function hideModelTopSection() {
+
+  /*
+  Ẩn trực tiếp analysis-detail.
+  */
+
+  const detail =
+    document.getElementById(
+      "analysis-detail"
     );
+
+
+  if (detail) {
+
+    detail.style.display =
+      "none";
   }
 
 
   /*
-  ====================================================
-  TRƯỜNG HỢP LIVE CHƯA CÓ
-  ====================================================
+  Tìm heading:
+  "Top số theo mô hình"
+
+  Nếu tìm thấy thì ẩn cả section/card
+  chứa heading đó.
   */
 
-  if (
-    predictData &&
-    !liveData
-  ) {
-
-    renderLivePerformanceEmpty();
-  }
-}
-
-
-/* =====================================================
-   ANALYSIS UI ORDER
-
-   Phân tích hôm nay
-        ↓
-   Hiệu quả Live
-        ↓
-   Live Validation
-        ↓
-   Cầu ưu tiên
-===================================================== */
-
-function ensurePerformanceContainer() {
-
-  let container =
-    document.getElementById(
-      "analysis-performance-panel"
+  const elements =
+    document.querySelectorAll(
+      "h1, h2, h3, h4, .section-title, .card-title"
     );
 
 
-  if (container) {
-
-    return container;
-  }
-
-
-  const prediction =
-    document.getElementById(
-      "today-prediction"
-    );
-
-
-  if (!prediction) {
-
-    return null;
-  }
-
-
-  container =
-    document.createElement(
-      "div"
-    );
-
-
-  container.id =
-    "analysis-performance-panel";
-
-
-  prediction.insertAdjacentElement(
-    "beforebegin",
-    container
-  );
-
-
-  return container;
-}
-
-
-function ensureLiveValidationContainer() {
-
-  let container =
-    document.getElementById(
-      "live-validation-panel"
-    );
-
-
-  if (container) {
-
-    return container;
-  }
-
-
-  const prediction =
-    document.getElementById(
-      "today-prediction"
-    );
-
-
-  if (!prediction) {
-
-    return null;
-  }
-
-
-  container =
-    document.createElement(
-      "div"
-    );
-
-
-  container.id =
-    "live-validation-panel";
-
-
-  const performance =
-    ensurePerformanceContainer();
-
-
-  if (performance) {
-
-    performance.insertAdjacentElement(
-      "afterend",
-      container
-    );
-
-  }
-  else {
-
-    prediction.insertAdjacentElement(
-      "beforebegin",
-      container
-    );
-  }
-
-
-  return container;
-}
-
-
-/* =====================================================
-   LIVE PERFORMANCE
-===================================================== */
-
-function performanceValue(
-  metric
-) {
-
-  if (
-    !metric ||
-    !Number(metric.tested)
-  ) {
-
-    return "Chưa có dữ liệu";
-  }
-
-
-  return (
-    `${Number(metric.hits || 0)}` +
-    "/" +
-    `${Number(metric.tested || 0)}` +
-    ` • ${Number(metric.hitRate || 0)}%`
-  );
-}
-
-
-function renderLivePerformance(
-  data
-) {
-
-  const container =
-    ensurePerformanceContainer();
-
-
-  if (!container) {
-
-    return;
-  }
-
-
-  const base =
-    data.performance?.base ||
-    {};
-
-
-  const carry =
-    data.performance?.carry ||
-    {};
-
-
-  container.innerHTML = `
-
-    <div class="simple-performance-box">
-
-      <div class="simple-section-title">
-        HIỆU QUẢ LIVE
-      </div>
-
-
-      <div class="simple-performance-group">
-
-        <div class="simple-performance-name">
-          V2.6.2
-        </div>
-
-
-        <div class="simple-performance-values">
-
-          <span>
-            Top1:
-            <strong>
-              ${performanceValue(
-                base.top1
-              )}
-            </strong>
-          </span>
-
-
-          <span>
-            Top3:
-            <strong>
-              ${performanceValue(
-                base.top3
-              )}
-            </strong>
-          </span>
-
-
-          <span>
-            Top5:
-            <strong>
-              ${performanceValue(
-                base.top5
-              )}
-            </strong>
-          </span>
-
-        </div>
-
-
-        <div class="simple-performance-count">
-
-          Đã chấm:
-          <strong>
-            ${Number(base.tested || 0)}
-          </strong>
-
-          •
-
-          Đang chờ:
-          <strong>
-            ${Number(base.pending || 0)}
-          </strong>
-
-        </div>
-
-      </div>
-
-
-      <div class="simple-performance-group">
-
-        <div class="simple-performance-name">
-          CARRY
-        </div>
-
-
-        <div class="simple-performance-values">
-
-          <span>
-            Top1:
-            <strong>
-              ${performanceValue(
-                carry.top1
-              )}
-            </strong>
-          </span>
-
-
-          <span>
-            Top3:
-            <strong>
-              ${performanceValue(
-                carry.top3
-              )}
-            </strong>
-          </span>
-
-
-          <span>
-            Top5:
-            <strong>
-              ${performanceValue(
-                carry.top5
-              )}
-            </strong>
-          </span>
-
-        </div>
-
-
-        <div class="simple-performance-count">
-
-          Đã chấm:
-          <strong>
-            ${Number(carry.tested || 0)}
-          </strong>
-
-          •
-
-          Đang chờ:
-          <strong>
-            ${Number(carry.pending || 0)}
-          </strong>
-
-        </div>
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-function renderLivePerformanceEmpty() {
-
-  const container =
-    ensurePerformanceContainer();
-
-
-  if (!container) {
-
-    return;
-  }
-
-
-  container.innerHTML = `
-
-    <div class="simple-performance-box">
-
-      <div class="simple-section-title">
-        HIỆU QUẢ LIVE
-      </div>
-
-      <div class="simple-empty">
-        Chưa có dữ liệu Live Validation.
-      </div>
-
-    </div>
-  `;
-}
-
-
-function renderLivePerformanceError(
-  message
-) {
-
-  const container =
-    ensurePerformanceContainer();
-
-
-  if (!container) {
-
-    return;
-  }
-
-
-  container.innerHTML = `
-
-    <div class="simple-performance-box">
-
-      <div class="simple-section-title">
-        HIỆU QUẢ LIVE
-      </div>
-
-      <div class="simple-empty">
-
-        ${escapeHtml(
-          message
-        )}
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-/* =====================================================
-   LIVE VALIDATION
-===================================================== */
-
-function carryStatusLabel(
-  status
-) {
-
-  if (
-    status === "hit"
-  ) {
-
-    return `
-      <span class="simple-hit">
-        ✓ HIT
-      </span>
-    `;
-  }
-
-
-  if (
-    status === "miss"
-  ) {
-
-    return `
-      <span class="simple-miss">
-        MISS
-      </span>
-    `;
-  }
-
-
-  return `
-    <span class="simple-pending">
-      Đang chờ
-    </span>
-  `;
-}
-
-
-/*
-========================================================
-CARRY HISTORY
-
-Hiện tại:
-
-25/07 : 94 ✓ HIT
-26/07 : 77 Đang chờ
-========================================================
-*/
-
-function buildCarryDisplayHistory(
-  item,
-  currentCarry
-) {
-
-  /*
-  API tương lai có history đầy đủ.
-  */
-
-  if (
-    Array.isArray(
-      item.history
-    ) &&
-    item.history.length
-  ) {
-
-    return item.history
-      .map(
-        row => `
-
-          <div class="simple-history-line">
-
-            ${formatDateShort(
-              row.date ||
-              row.targetDate
-            )}
-
-            :
-
-            <strong>
-              ${escapeHtml(
-                row.number
-              )}
-            </strong>
-
-            ${carryStatusLabel(
-              row.status
-            )}
-
-          </div>
-        `
-      )
-      .join("");
-  }
-
-
-  /*
-  Schema Carry V2 hiện tại.
-  */
-
-  let html = "";
-
-
-  if (
-    item.previousNumber &&
-    item.previousHitDate
-  ) {
-
-    html += `
-
-      <div class="simple-history-line">
-
-        ${formatDateShort(
-          item.previousHitDate
-        )}
-
-        :
-
-        <strong>
-          ${escapeHtml(
-            item.previousNumber
-          )}
-        </strong>
-
-        <span class="simple-hit">
-          ✓ HIT
-        </span>
-
-      </div>
-    `;
-  }
-
-
-  if (
-    item.currentNumber &&
-    currentCarry?.predictionDate
-  ) {
-
-    html += `
-
-      <div class="simple-history-line">
-
-        ${formatDateShort(
-          currentCarry.predictionDate
-        )}
-
-        :
-
-        <strong>
-          ${escapeHtml(
-            item.currentNumber
-          )}
-        </strong>
-
-        ${carryStatusLabel(
-          item.status
-        )}
-
-      </div>
-    `;
-  }
-
-
-  if (!html) {
-
-    html = `
-
-      <div class="simple-history-empty">
-        Chưa có lịch sử Carry.
-      </div>
-    `;
-  }
-
-
-  return html;
-}
-
-
-/*
-========================================================
-LIVE VALIDATION SIMPLE
-
-KHÔNG HIỂN THỊ XẾP HẠNG.
-========================================================
-*/
-
-function renderLiveValidation(
-  data
-) {
-
-  const container =
-    ensureLiveValidationContainer();
-
-
-  if (!container) {
-
-    return;
-  }
-
-
-  const currentCarry =
-    data.currentCarry ||
-    null;
-
-
-  const promoted =
-    Array.isArray(
-      currentCarry?.promoted
-    )
-      ?
-      currentCarry.promoted
-      :
-      [];
-
-
-  if (
-    !promoted.length
-  ) {
-
-    container.innerHTML = `
-
-      <div class="simple-live-box">
-
-        <div class="simple-section-title">
-          LIVE VALIDATION
-        </div>
-
-
-        <div class="simple-empty">
-          Hiện chưa có cầu Carry đang theo.
-        </div>
-
-      </div>
-    `;
-
-    return;
-  }
-
-
-  /*
-  Chỉ dùng cầu Carry đầu tiên.
-  Không hiển thị chữ #1.
-  */
-
-  const item =
-    promoted[0];
-
-
-  const history =
-    buildCarryDisplayHistory(
-      item,
-      currentCarry
-    );
-
-
-  const streak =
-    Number(
-      item.carryHitStreak || 1
-    );
-
-
-  container.innerHTML = `
-
-    <div class="simple-live-box">
-
-      <div class="simple-section-title">
-        LIVE VALIDATION
-      </div>
-
-
-      <div class="simple-live-label">
-        CARRY ƯU TIÊN
-      </div>
-
-
-      <div class="simple-live-number">
-
-        ${escapeHtml(
-          item.currentNumber
-        )}
-
-      </div>
-
-
-      <div class="simple-bridge">
-
-        ${escapeHtml(
-          item.bridge || "-"
-        )}
-
-      </div>
-
-
-      <div class="simple-label">
-        Lịch sử cầu chạy
-      </div>
-
-
-      <div class="simple-history">
-
-        ${history}
-
-      </div>
-
-
-      <div class="simple-streak">
-
-        Số ngày cầu chạy:
-
-        <strong>
-          ${streak} ngày
-        </strong>
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-function renderLiveValidationError(
-  message
-) {
-
-  const container =
-    ensureLiveValidationContainer();
-
-
-  if (!container) {
-
-    return;
-  }
-
-
-  container.innerHTML = `
-
-    <div class="simple-live-box">
-
-      <div class="simple-section-title">
-        LIVE VALIDATION
-      </div>
-
-
-      <div class="simple-empty">
-
-        ${escapeHtml(
-          message
-        )}
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-/* =====================================================
-   PREDICT HELPERS
-===================================================== */
-
-function strengthName(
-  value
-) {
-
-  if (
-    value === "very-strong"
-  ) {
-
-    return "RẤT MẠNH";
-  }
-
-
-  if (
-    value === "strong"
-  ) {
-
-    return "MẠNH";
-  }
-
-
-  if (
-    value === "qualified"
-  ) {
-
-    return "ĐẠT CHUẨN";
-  }
-
-
-  if (
-    value === "carry"
-  ) {
-
-    return "CARRY";
-  }
-
-
-  return String(
-    value ||
-    "ĐẠT CHUẨN"
-  )
-    .toUpperCase();
-}
-
-
-function strengthClass(
-  value
-) {
-
-  if (
-    value === "very-strong"
-  ) {
-
-    return "very-strong";
-  }
-
-
-  if (
-    value === "strong"
-  ) {
-
-    return "strong";
-  }
-
-
-  return "qualified";
-}
-
-
-/* =====================================================
-   BASE BRIDGE HISTORY
-===================================================== */
-
-function renderSimpleBridgeHistory(
-  history
-) {
-
-  if (
-    !Array.isArray(
-      history
-    ) ||
-    !history.length
-  ) {
-
-    return `
-
-      <div class="simple-history-empty">
-        Chưa có lịch sử cầu.
-      </div>
-    `;
-  }
-
-
-  const sorted =
-    [...history]
-
-      .filter(
-        item =>
-          item &&
-          item.number !== undefined &&
-          item.number !== null
-      )
-
-      .sort(
-        (
-          a,
-          b
-        ) =>
-          String(
-            a.targetDate || ""
-          )
-            .localeCompare(
-              String(
-                b.targetDate || ""
-              )
-            )
-      );
-
-
-  if (
-    !sorted.length
-  ) {
-
-    return `
-
-      <div class="simple-history-empty">
-        Chưa có lịch sử cầu.
-      </div>
-    `;
-  }
-
-
-  return `
-
-    <div class="simple-history">
-
-      ${
-        sorted
-          .map(
-            item => `
-
-              <div class="simple-history-line">
-
-                ${formatDateShort(
-                  item.sourceDate
-                )}
-
-                →
-
-                ${formatDateShort(
-                  item.targetDate
-                )}
-
-                :
-
-                <strong>
-                  ${escapeHtml(
-                    item.number
-                  )}
-                </strong>
-
-                <span class="simple-hit">
-                  ✓
-                </span>
-
-              </div>
-            `
-          )
-          .join("")
+  elements.forEach(
+    element => {
+
+      const text =
+        String(
+          element.textContent || ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      if (
+        !text.includes(
+          "top số theo mô hình"
+        )
+      ) {
+
+        return;
       }
 
-    </div>
-  `;
-}
+
+      const section =
+        element.closest(
+          "section, .card, .panel, .content-card"
+        );
 
 
-/* =====================================================
-   ONE SUGGESTION CARD
+      if (section) {
 
-   Không có ranking.
-===================================================== */
+        section.style.display =
+          "none";
 
-function renderSimpleSuggestion(
-  item
-) {
+      }
+      else {
 
-  const streak =
-    Number(
-      item.streak || 0
-    );
-
-
-  return `
-
-    <div class="simple-suggestion-card">
+        element.style.display =
+          "none";
+      }
+    }
+  );
 
 
-      <div class="simple-suggestion-header">
+  /*
+  Nếu bottom navigation
+  có nút "Thống kê",
+  ẩn nó để tránh bấm vào
+  section đã bỏ.
+  */
 
-        <div
-          class="
-            simple-strength
-            ${strengthClass(
-              item.strength
-            )}
-          "
-        >
-
-          ${strengthName(
-            item.strength
-          )}
-
-        </div>
-
-
-        <div class="simple-number">
-
-          ${escapeHtml(
-            item.number
-          )}
-
-        </div>
-
-      </div>
-
-
-      <div class="simple-bridge">
-
-        ${escapeHtml(
-          item.bridge || "-"
-        )}
-
-      </div>
-
-
-      <div class="simple-label">
-        Lịch sử cầu chạy
-      </div>
-
-
-      ${renderSimpleBridgeHistory(
-        item.history
-      )}
-
-
-      <div class="simple-streak">
-
-        Số ngày cầu chạy:
-
-        <strong>
-          ${streak} ngày
-        </strong>
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-/* =====================================================
-   PREDICT V2.6.2
-
-   Chỉ 5 cầu.
-   Không ranking.
-   Không score.
-===================================================== */
-
-function renderPrediction(
-  data,
-  totalDraws = 0
-) {
-
-  const container =
-    document.getElementById(
-      "today-prediction"
-    );
-
-
-  if (!container) {
-
-    return;
-  }
-
-
-  const suggestions =
-    Array.isArray(
-      data.suggestions
+  document
+    .querySelectorAll(
+      ".bottom-nav .nav-item"
     )
-      ?
-      data.suggestions
-      :
-      [];
+    .forEach(
+      element => {
+
+        const text =
+          String(
+            element.textContent || ""
+          )
+            .trim()
+            .toLowerCase();
 
 
-  const top5 =
-    suggestions.slice(
-      0,
-      5
-    );
+        if (
+          text.includes(
+            "thống kê"
+          )
+        ) {
 
-
-  if (
-    !top5.length
-  ) {
-
-    container.innerHTML = `
-
-      <div class="simple-priority-box">
-
-        <div class="simple-analysis-head">
-
-          <strong>
-            CẦU ƯU TIÊN
-          </strong>
-
-
-          <span class="simple-analysis-date">
-
-            ${formatDateShort(
-              data.sourceDate
-            )}
-
-            →
-
-            ${formatDateShort(
-              data.predictionDate
-            )}
-
-          </span>
-
-        </div>
-
-
-        <div class="simple-empty">
-
-          Hôm nay chưa có cầu
-          đủ tiêu chuẩn V2.6.2.
-
-        </div>
-
-      </div>
-    `;
-
-    return;
-  }
-
-
-  container.innerHTML = `
-
-    <div class="simple-priority-box">
-
-
-      <div class="simple-analysis-head">
-
-        <div>
-          <strong>
-            CẦU ƯU TIÊN
-          </strong>
-        </div>
-
-
-        <div class="simple-analysis-date">
-
-          ${formatDateShort(
-            data.sourceDate
-          )}
-
-          →
-
-          <strong>
-            ${formatDateShort(
-              data.predictionDate
-            )}
-          </strong>
-
-        </div>
-
-      </div>
-
-
-      <div class="simple-suggestion-list">
-
-        ${
-          top5
-            .map(
-              item =>
-                renderSimpleSuggestion(
-                  item
-                )
-            )
-            .join("")
+          element.style.display =
+            "none";
         }
-
-      </div>
-
-
-      <div class="simple-model-info">
-
-        V2.6.2
-
-        •
-
-        DATA:
-        ${totalDraws} kỳ
-
-        •
-
-        ${top5.length}
-        cầu đang theo
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-function renderPredictionError(
-  message,
-  totalDraws = 0
-) {
-
-  const container =
-    document.getElementById(
-      "today-prediction"
+      }
     );
-
-
-  if (!container) {
-
-    return;
-  }
-
-
-  container.innerHTML = `
-
-    <div class="simple-priority-box">
-
-      <div class="simple-analysis-head">
-
-        <strong>
-          CẦU ƯU TIÊN
-        </strong>
-
-      </div>
-
-
-      <div class="simple-empty">
-
-        ${escapeHtml(
-          message
-        )}
-
-      </div>
-
-
-      <div class="simple-model-info">
-
-        DATA:
-        ${totalDraws} kỳ
-
-      </div>
-
-    </div>
-  `;
 }
 
 
@@ -1848,262 +794,181 @@ function renderLatestError(
 
 
 /* =====================================================
-   STATISTICS
+   PHÂN TÍCH HÔM NAY
+   CONTAINERS
 ===================================================== */
 
-function renderStatistics(
-  data
-) {
+function ensurePerformanceContainer() {
 
-  const container =
+  let container =
     document.getElementById(
-      "analysis-detail"
+      "analysis-performance-panel"
     );
 
 
-  if (!container) {
+  if (container) {
 
-    return;
+    return container;
   }
 
 
-  const numbers =
-    Array.isArray(
-      data.numbers
-    )
-      ?
-      data.numbers
-      :
-      [];
+  const prediction =
+    document.getElementById(
+      "today-prediction"
+    );
 
+
+  if (!prediction) {
+
+    return null;
+  }
+
+
+  container =
+    document.createElement(
+      "div"
+    );
+
+
+  container.id =
+    "analysis-performance-panel";
+
+
+  prediction.insertAdjacentElement(
+    "beforebegin",
+    container
+  );
+
+
+  return container;
+}
+
+
+function ensureLiveValidationContainer() {
+
+  let container =
+    document.getElementById(
+      "live-validation-panel"
+    );
+
+
+  if (container) {
+
+    return container;
+  }
+
+
+  const prediction =
+    document.getElementById(
+      "today-prediction"
+    );
+
+
+  if (!prediction) {
+
+    return null;
+  }
+
+
+  container =
+    document.createElement(
+      "div"
+    );
+
+
+  container.id =
+    "live-validation-panel";
+
+
+  const performance =
+    ensurePerformanceContainer();
+
+
+  if (performance) {
+
+    performance.insertAdjacentElement(
+      "afterend",
+      container
+    );
+
+  }
+  else {
+
+    prediction.insertAdjacentElement(
+      "beforebegin",
+      container
+    );
+  }
+
+
+  return container;
+}
+
+
+/* =====================================================
+   LIVE PERFORMANCE
+===================================================== */
+
+function performanceValue(
+  metric
+) {
 
   if (
-    !numbers.length
+    !metric ||
+    !Number(
+      metric.tested
+    )
   ) {
 
-    container.innerHTML = `
-
-      <div class="loading-box">
-        Chưa có dữ liệu thống kê.
-      </div>
+    return `
+      <strong>--</strong>
+      <small>Chưa đủ dữ liệu</small>
     `;
-
-    return;
   }
 
 
-  const ranked =
-    numbers
+  return `
 
-      .map(
-        item => ({
+    <strong>
+      ${Number(
+        metric.hitRate || 0
+      )}%
+    </strong>
 
-          ...item,
+    <small>
 
-          score:
-            Number(
-              (
-                Number(
-                  item.freq7 || 0
-                ) * 5
+      ${Number(
+        metric.hits || 0
+      )}
 
-                +
+      /
 
-                Number(
-                  item.freq30 || 0
-                ) * 2
+      ${Number(
+        metric.tested || 0
+      )}
 
-                +
+      kỳ
 
-                Number(
-                  item.freq100 || 0
-                ) * 0.2
-              )
-                .toFixed(1)
-            )
-        })
-      )
-
-      .sort(
-        (
-          a,
-          b
-        ) =>
-          b.score -
-          a.score
-      )
-
-      .slice(
-        0,
-        10
-      );
-
-
-  const rows =
-    ranked
-      .map(
-        (
-          item,
-          index
-        ) => {
-
-          const number =
-            String(
-              item.number ??
-              ""
-            )
-              .padStart(
-                2,
-                "0"
-              );
-
-
-          const reverse =
-            number
-              .split("")
-              .reverse()
-              .join("");
-
-
-          return `
-
-            <tr>
-
-              <td>
-                ${index + 1}
-              </td>
-
-
-              <td class="number-cell">
-
-                ${escapeHtml(
-                  number
-                )}
-
-              </td>
-
-
-              <td>
-                ${item.score}
-              </td>
-
-
-              <td>
-                ${item.gan ?? 0}
-              </td>
-
-
-              <td>
-                ${item.freq7 ?? 0}
-              </td>
-
-
-              <td>
-                ${item.freq30 ?? 0}
-              </td>
-
-
-              <td>
-
-                ${escapeHtml(
-                  reverse
-                )}
-
-              </td>
-
-            </tr>
-          `;
-        }
-      )
-      .join("");
-
-
-  container.innerHTML = `
-
-    <div class="table-wrapper">
-
-      <table class="analysis-table">
-
-        <thead>
-
-          <tr>
-
-            <th>#</th>
-            <th>Số</th>
-            <th>Điểm</th>
-            <th>Gan</th>
-            <th>7 kỳ</th>
-            <th>30 kỳ</th>
-            <th>Đảo</th>
-
-          </tr>
-
-        </thead>
-
-
-        <tbody>
-
-          ${rows}
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-
-    <div class="warning-box">
-
-      DATA:
-
-      <strong>
-        ${data.totalDraws || 0} kỳ
-      </strong>
-
-
-      ${
-        data.latestDate
-
-          ?
-
-          `• đến <strong>${
-            formatDate(
-              data.latestDate
-            )
-          }</strong>`
-
-          :
-
-          ""
-      }
-
-    </div>
+    </small>
   `;
 }
 
 
-function renderStatisticsError(
-  message
+function performanceMetric(
+  title,
+  metric
 ) {
 
-  const container =
-    document.getElementById(
-      "analysis-detail"
-    );
+  return `
 
+    <div class="live-metric">
 
-  if (!container) {
+      <span class="live-metric-title">
+        ${title}
+      </span>
 
-    return;
-  }
-
-
-  container.innerHTML = `
-
-    <div class="loading-box">
-
-      ${escapeHtml(
-        message
+      ${performanceValue(
+        metric
       )}
 
     </div>
@@ -2111,8 +976,1221 @@ function renderStatisticsError(
 }
 
 
+function renderLivePerformance(
+  data
+) {
+
+  const container =
+    ensurePerformanceContainer();
+
+
+  if (!container) {
+
+    return;
+  }
+
+
+  const base =
+    data.performance?.base ||
+    {};
+
+
+  const carry =
+    data.performance?.carry ||
+    {};
+
+
+  container.innerHTML = `
+
+    <section class="live-performance-panel">
+
+      <div class="live-performance-header">
+
+        <div>
+
+          <div class="simple-section-title">
+            HIỆU QUẢ LIVE
+          </div>
+
+          <div class="live-performance-subtitle">
+            Theo dõi kết quả thực tế
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="live-performance-model">
+
+        <div class="live-performance-model-name">
+
+          V2.6.2
+
+          <span>
+            ${Number(
+              base.tested || 0
+            )} kỳ đã chấm
+          </span>
+
+        </div>
+
+
+        <div class="live-performance-grid">
+
+          ${performanceMetric(
+            "1 số",
+            base.top1
+          )}
+
+          ${performanceMetric(
+            "3 số",
+            base.top3
+          )}
+
+          ${performanceMetric(
+            "5 số",
+            base.top5
+          )}
+
+        </div>
+
+      </div>
+
+
+      <div class="live-performance-model carry-performance">
+
+        <div class="live-performance-model-name">
+
+          CARRY
+
+          <span>
+
+            ${Number(
+              carry.tested || 0
+            )} kỳ đã chấm
+
+            ${
+              Number(
+                carry.pending || 0
+              )
+                ?
+                `• ${Number(
+                  carry.pending
+                )} đang chờ`
+                :
+                ""
+            }
+
+          </span>
+
+        </div>
+
+
+        <div class="live-performance-grid">
+
+          ${performanceMetric(
+            "1 số",
+            carry.top1
+          )}
+
+          ${performanceMetric(
+            "3 số",
+            carry.top3
+          )}
+
+          ${performanceMetric(
+            "5 số",
+            carry.top5
+          )}
+
+        </div>
+
+      </div>
+
+    </section>
+  `;
+}
+
+
+function renderLivePerformanceError(
+  message
+) {
+
+  const container =
+    ensurePerformanceContainer();
+
+
+  if (!container) {
+
+    return;
+  }
+
+
+  container.innerHTML = `
+
+    <section class="live-performance-panel">
+
+      <div class="simple-section-title">
+        HIỆU QUẢ LIVE
+      </div>
+
+      <div class="simple-empty">
+
+        ${escapeHtml(
+          message
+        )}
+
+      </div>
+
+    </section>
+  `;
+}
+
+
 /* =====================================================
-   SYSTEM STATUS
+   LIVE VALIDATION
+===================================================== */
+
+function carryStatusLabel(
+  status
+) {
+
+  if (
+    status === "hit"
+  ) {
+
+    return `
+      <span class="carry-status hit">
+        ✓ HIT
+      </span>
+    `;
+  }
+
+
+  if (
+    status === "miss"
+  ) {
+
+    return `
+      <span class="carry-status miss">
+        MISS
+      </span>
+    `;
+  }
+
+
+  return `
+    <span class="carry-status pending">
+      ĐANG CHỜ
+    </span>
+  `;
+}
+
+
+function buildCarryDisplayHistory(
+  item,
+  currentCarry
+) {
+
+  /*
+  API tương lai có history
+  đầy đủ thì ưu tiên sử dụng.
+  */
+
+  if (
+    Array.isArray(
+      item.history
+    ) &&
+    item.history.length
+  ) {
+
+    return item.history
+      .map(
+        row => `
+
+          <div class="carry-history-row">
+
+            <span>
+
+              ${formatDateShort(
+                row.date ||
+                row.targetDate
+              )}
+
+            </span>
+
+            <strong>
+
+              ${escapeHtml(
+                row.number
+              )}
+
+            </strong>
+
+            ${carryStatusLabel(
+              row.status
+            )}
+
+          </div>
+        `
+      )
+      .join("");
+  }
+
+
+  /*
+  Schema Carry V2 hiện tại.
+  */
+
+  let html =
+    "";
+
+
+  if (
+    item.previousNumber &&
+    item.previousHitDate
+  ) {
+
+    html += `
+
+      <div class="carry-history-row">
+
+        <span>
+
+          ${formatDateShort(
+            item.previousHitDate
+          )}
+
+        </span>
+
+        <strong>
+
+          ${escapeHtml(
+            item.previousNumber
+          )}
+
+        </strong>
+
+        <span class="carry-status hit">
+          ✓ HIT
+        </span>
+
+      </div>
+    `;
+  }
+
+
+  if (
+    item.currentNumber &&
+    currentCarry?.predictionDate
+  ) {
+
+    html += `
+
+      <div class="carry-history-row">
+
+        <span>
+
+          ${formatDateShort(
+            currentCarry.predictionDate
+          )}
+
+        </span>
+
+        <strong>
+
+          ${escapeHtml(
+            item.currentNumber
+          )}
+
+        </strong>
+
+        ${carryStatusLabel(
+          item.status
+        )}
+
+      </div>
+    `;
+  }
+
+
+  return (
+    html ||
+    `
+
+      <div class="simple-empty">
+        Chưa có lịch sử Carry.
+      </div>
+    `
+  );
+}
+
+
+function renderLiveValidation(
+  data
+) {
+
+  const container =
+    ensureLiveValidationContainer();
+
+
+  if (!container) {
+
+    return;
+  }
+
+
+  const currentCarry =
+    data.currentCarry ||
+    null;
+
+
+  const promoted =
+    Array.isArray(
+      currentCarry?.promoted
+    )
+      ?
+      currentCarry.promoted
+      :
+      [];
+
+
+  if (
+    !promoted.length
+  ) {
+
+    container.innerHTML = `
+
+      <section class="carry-panel">
+
+        <div class="simple-section-title">
+          LIVE VALIDATION
+        </div>
+
+
+        <div class="simple-empty">
+
+          Hiện chưa có cầu Carry
+          đang được ưu tiên.
+
+        </div>
+
+      </section>
+    `;
+
+    return;
+  }
+
+
+  /*
+  Chỉ hiển thị cầu Carry
+  ưu tiên đầu tiên.
+
+  Không hiển thị ranking #1.
+  */
+
+  const item =
+    promoted[0];
+
+
+  const history =
+    buildCarryDisplayHistory(
+      item,
+      currentCarry
+    );
+
+
+  const streak =
+    Number(
+      item.carryHitStreak || 1
+    );
+
+
+  container.innerHTML = `
+
+    <section class="carry-panel">
+
+
+      <div class="carry-header">
+
+        <div>
+
+          <div class="simple-section-title">
+            LIVE VALIDATION
+          </div>
+
+          <div class="carry-header-subtitle">
+            Cầu đang được tiếp tục sau khi HIT
+          </div>
+
+        </div>
+
+
+        <div class="carry-badge">
+          CARRY
+        </div>
+
+      </div>
+
+
+      <div class="carry-main">
+
+        <div class="carry-main-label">
+          SỐ ƯU TIÊN
+        </div>
+
+
+        <div class="carry-number">
+
+          ${escapeHtml(
+            item.currentNumber
+          )}
+
+        </div>
+
+
+        <div class="carry-date">
+
+          Dự đoán
+
+          <strong>
+
+            ${formatDate(
+              currentCarry?.predictionDate
+            )}
+
+          </strong>
+
+        </div>
+
+      </div>
+
+
+      <div class="carry-bridge-box">
+
+        <span>
+          Vị trí cầu
+        </span>
+
+        <strong>
+
+          ${escapeHtml(
+            item.bridge || "-"
+          )}
+
+        </strong>
+
+      </div>
+
+
+      <div class="carry-history-title">
+        LỊCH SỬ CẦU CHẠY
+      </div>
+
+
+      <div class="carry-history">
+
+        ${history}
+
+      </div>
+
+
+      <div class="carry-streak">
+
+        <span>
+          Cầu đã chạy
+        </span>
+
+        <strong>
+          ${streak} ngày
+        </strong>
+
+      </div>
+
+    </section>
+  `;
+}
+
+
+function renderLiveValidationError(
+  message
+) {
+
+  const container =
+    ensureLiveValidationContainer();
+
+
+  if (!container) {
+
+    return;
+  }
+
+
+  container.innerHTML = `
+
+    <section class="carry-panel">
+
+      <div class="simple-section-title">
+        LIVE VALIDATION
+      </div>
+
+      <div class="simple-empty">
+
+        ${escapeHtml(
+          message
+        )}
+
+      </div>
+
+    </section>
+  `;
+}
+
+
+/* =====================================================
+   DÀN SỐ GỢI Ý
+===================================================== */
+
+function strengthName(
+  value
+) {
+
+  if (
+    value === "very-strong"
+  ) {
+
+    return "RẤT MẠNH";
+  }
+
+
+  if (
+    value === "strong"
+  ) {
+
+    return "MẠNH";
+  }
+
+
+  if (
+    value === "qualified"
+  ) {
+
+    return "ĐÁNG CHÚ Ý";
+  }
+
+
+  return "GỢI Ý";
+}
+
+
+function strengthClass(
+  value
+) {
+
+  if (
+    value === "very-strong"
+  ) {
+
+    return "pick-strength-max";
+  }
+
+
+  if (
+    value === "strong"
+  ) {
+
+    return "pick-strength-strong";
+  }
+
+
+  return "pick-strength-normal";
+}
+
+
+/*
+========================================================
+LỊCH SỬ NGẮN CỦA CẦU
+
+Ví dụ:
+
+24/07   82 ✓
+25/07   69 ✓
+========================================================
+*/
+
+function renderPickHistory(
+  history
+) {
+
+  if (
+    !Array.isArray(
+      history
+    ) ||
+    !history.length
+  ) {
+
+    return `
+
+      <div class="pick-history-empty">
+        Chưa có lịch sử cầu.
+      </div>
+    `;
+  }
+
+
+  const rows =
+    [...history]
+
+      .filter(
+        item =>
+          item &&
+          item.number !== undefined &&
+          item.number !== null
+      )
+
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          String(
+            a.targetDate || ""
+          )
+            .localeCompare(
+              String(
+                b.targetDate || ""
+              )
+            )
+      );
+
+
+  if (
+    !rows.length
+  ) {
+
+    return `
+
+      <div class="pick-history-empty">
+        Chưa có lịch sử cầu.
+      </div>
+    `;
+  }
+
+
+  return `
+
+    <div class="pick-history">
+
+      ${
+        rows
+          .map(
+            item => `
+
+              <div class="pick-history-chip">
+
+                <span class="pick-history-date">
+
+                  ${formatDateShort(
+                    item.targetDate
+                  )}
+
+                </span>
+
+
+                <strong>
+
+                  ${escapeHtml(
+                    item.number
+                  )}
+
+                </strong>
+
+
+                <span class="pick-history-hit">
+                  ✓
+                </span>
+
+              </div>
+            `
+          )
+          .join("")
+      }
+
+    </div>
+  `;
+}
+
+
+/*
+========================================================
+GỢI Ý CHÍNH
+
+Không ghi #1.
+
+Sử dụng kích thước số lớn
+để người dùng nhận biết
+ngay số đáng chú ý nhất.
+========================================================
+*/
+
+function renderPrimaryPick(
+  item
+) {
+
+  const number =
+    normalizeDisplayNumber(
+      item.number
+    );
+
+
+  return `
+
+    <article class="pick-primary">
+
+
+      <div class="pick-primary-top">
+
+        <span class="pick-primary-label">
+          GỢI Ý CHÍNH
+        </span>
+
+
+        <span
+          class="
+            pick-strength
+            ${strengthClass(
+              item.strength
+            )}
+          "
+        >
+
+          ${strengthName(
+            item.strength
+          )}
+
+        </span>
+
+      </div>
+
+
+      <div class="pick-primary-number">
+
+        ${escapeHtml(
+          number
+        )}
+
+      </div>
+
+
+      <div class="pick-primary-message">
+
+        Số đáng chú ý nhất
+        trong nhóm gợi ý hôm nay
+
+      </div>
+
+
+      <div class="pick-primary-bridge">
+
+        <span>
+          Vị trí cầu
+        </span>
+
+        <strong>
+
+          ${escapeHtml(
+            item.bridge || "-"
+          )}
+
+        </strong>
+
+      </div>
+
+
+      <div class="pick-section-label">
+        Lịch sử cầu chạy
+      </div>
+
+
+      ${renderPickHistory(
+        item.history
+      )}
+
+
+      <div class="pick-primary-streak">
+
+        <span>
+          Cầu chạy
+        </span>
+
+        <strong>
+
+          ${Number(
+            item.streak || 0
+          )}
+          ngày
+
+        </strong>
+
+      </div>
+
+    </article>
+  `;
+}
+
+
+/*
+========================================================
+CÁC SỐ GỢI Ý CÒN LẠI
+========================================================
+*/
+
+function renderSecondaryPick(
+  item
+) {
+
+  const number =
+    normalizeDisplayNumber(
+      item.number
+    );
+
+
+  return `
+
+    <article class="pick-card">
+
+
+      <div class="pick-card-top">
+
+        <span
+          class="
+            pick-strength
+            ${strengthClass(
+              item.strength
+            )}
+          "
+        >
+
+          ${strengthName(
+            item.strength
+          )}
+
+        </span>
+
+      </div>
+
+
+      <div class="pick-number">
+
+        ${escapeHtml(
+          number
+        )}
+
+      </div>
+
+
+      <div class="pick-card-bridge">
+
+        ${escapeHtml(
+          item.bridge || "-"
+        )}
+
+      </div>
+
+
+      ${renderPickHistory(
+        item.history
+      )}
+
+
+      <div class="pick-card-streak">
+
+        Cầu chạy
+
+        <strong>
+
+          ${Number(
+            item.streak || 0
+          )}
+          ngày
+
+        </strong>
+
+      </div>
+
+    </article>
+  `;
+}
+
+
+/* =====================================================
+   RENDER PREDICTION
+
+   TOP 5 THEO THỨ TỰ MODEL
+   NHƯNG KHÔNG HIỂN THỊ RANK.
+===================================================== */
+
+function renderPrediction(
+  data,
+  totalDraws = 0
+) {
+
+  const container =
+    document.getElementById(
+      "today-prediction"
+    );
+
+
+  if (!container) {
+
+    return;
+  }
+
+
+  const suggestions =
+    Array.isArray(
+      data.suggestions
+    )
+      ?
+      data.suggestions
+      :
+      [];
+
+
+  const top5 =
+    suggestions.slice(
+      0,
+      5
+    );
+
+
+  if (
+    !top5.length
+  ) {
+
+    container.innerHTML = `
+
+      <section class="pick-panel">
+
+        <div class="pick-panel-header">
+
+          <div>
+
+            <div class="pick-panel-title">
+              DÀN SỐ GỢI Ý
+            </div>
+
+
+            <div class="pick-panel-subtitle">
+
+              ${formatDate(
+                data.predictionDate
+              )}
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div class="simple-empty">
+
+          Hôm nay chưa có cầu
+          đủ điều kiện lựa chọn.
+
+        </div>
+
+      </section>
+    `;
+
+    return;
+  }
+
+
+  const primary =
+    top5[0];
+
+
+  const secondary =
+    top5.slice(
+      1
+    );
+
+
+  container.innerHTML = `
+
+    <section class="pick-panel">
+
+
+      <div class="pick-panel-header">
+
+        <div>
+
+          <div class="pick-panel-title">
+            DÀN SỐ GỢI Ý
+          </div>
+
+
+          <div class="pick-panel-subtitle">
+
+            Dự đoán ngày
+
+            <strong>
+
+              ${formatDate(
+                data.predictionDate
+              )}
+
+            </strong>
+
+          </div>
+
+        </div>
+
+
+        <div class="pick-count-badge">
+
+          ${top5.length}
+          SỐ
+
+        </div>
+
+      </div>
+
+
+      ${renderPrimaryPick(
+        primary
+      )}
+
+
+      ${
+        secondary.length
+          ?
+          `
+
+            <div class="pick-secondary-title">
+
+              CÁC SỐ ĐÁNG CHÚ Ý KHÁC
+
+            </div>
+
+
+            <div class="pick-grid">
+
+              ${
+                secondary
+                  .map(
+                    item =>
+                      renderSecondaryPick(
+                        item
+                      )
+                  )
+                  .join("")
+              }
+
+            </div>
+          `
+          :
+          ""
+      }
+
+
+      <div class="pick-footer">
+
+        <span>
+
+          Nguồn
+
+          <strong>
+
+            ${formatDateShort(
+              data.sourceDate
+            )}
+
+          </strong>
+
+          →
+
+          <strong>
+
+            ${formatDateShort(
+              data.predictionDate
+            )}
+
+          </strong>
+
+        </span>
+
+
+        <span>
+
+          V2.6.2
+
+          •
+
+          ${totalDraws}
+          kỳ dữ liệu
+
+        </span>
+
+      </div>
+
+    </section>
+  `;
+}
+
+
+function renderPredictionError(
+  message,
+  totalDraws = 0
+) {
+
+  const container =
+    document.getElementById(
+      "today-prediction"
+    );
+
+
+  if (!container) {
+
+    return;
+  }
+
+
+  container.innerHTML = `
+
+    <section class="pick-panel">
+
+      <div class="pick-panel-title">
+        DÀN SỐ GỢI Ý
+      </div>
+
+
+      <div class="simple-empty">
+
+        ${escapeHtml(
+          message
+        )}
+
+      </div>
+
+
+      <div class="pick-footer">
+
+        DATA:
+        ${totalDraws} kỳ
+
+      </div>
+
+    </section>
+  `;
+}
+
+
+/* =====================================================
+   STATUS
 ===================================================== */
 
 function setSystemStatus(
@@ -2142,8 +2220,26 @@ function setSystemStatus(
 
 
 /* =====================================================
-   DATE / HTML HELPERS
+   HELPERS
 ===================================================== */
+
+function datePart(
+  value
+) {
+
+  if (!value) {
+
+    return "";
+  }
+
+
+  return String(
+    value
+  )
+    .split("T")[0]
+    .split(" ")[0];
+}
+
 
 function formatDate(
   value
@@ -2155,16 +2251,11 @@ function formatDate(
   }
 
 
-  const date =
-    String(
+  const parts =
+    datePart(
       value
     )
-      .split("T")[0]
-      .split(" ")[0];
-
-
-  const parts =
-    date.split("-");
+      .split("-");
 
 
   if (
@@ -2195,16 +2286,11 @@ function formatDateShort(
   }
 
 
-  const date =
-    String(
+  const parts =
+    datePart(
       value
     )
-      .split("T")[0]
-      .split(" ")[0];
-
-
-  const parts =
-    date.split("-");
+      .split("-");
 
 
   if (
@@ -2221,6 +2307,37 @@ function formatDateShort(
     `${parts[2]}/` +
     `${parts[1]}`
   );
+}
+
+
+function normalizeDisplayNumber(
+  value
+) {
+
+  const digits =
+    String(
+      value ?? ""
+    )
+      .replace(
+        /\D/g,
+        ""
+      );
+
+
+  if (!digits) {
+
+    return "--";
+  }
+
+
+  return digits
+    .padStart(
+      2,
+      "0"
+    )
+    .slice(
+      -2
+    );
 }
 
 
@@ -2259,6 +2376,7 @@ function money(
 ) {
 
   return (
+
     `${new Intl.NumberFormat(
       "vi-VN"
     )
@@ -2272,7 +2390,7 @@ function money(
 
 
 /* =====================================================
-   REFRESH
+   REFRESH ANALYSIS
 ===================================================== */
 
 window.refreshAnalysis =
@@ -2344,6 +2462,12 @@ function setActiveNav(
 }
 
 
+/*
+========================================================
+PHÂN TÍCH
+========================================================
+*/
+
 window.showPrediction =
   function () {
 
@@ -2352,33 +2476,44 @@ window.showPrediction =
     );
 
 
-    document
-      .getElementById(
+    const target =
+
+      document.getElementById(
         "analysis-performance-panel"
       )
-      ?.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
-      });
+
+      ||
+
+      document.getElementById(
+        "today-prediction"
+      );
+
+
+    target?.scrollIntoView({
+
+      behavior:
+        "smooth",
+
+      block:
+        "start"
+    });
   };
 
+
+/*
+========================================================
+GIỮ TƯƠNG THÍCH INDEX CŨ
+
+Top số theo mô hình đã bỏ.
+Nếu index.html còn gọi showStatistics()
+thì đưa người dùng về Phân tích hôm nay.
+========================================================
+*/
 
 window.showStatistics =
   function () {
 
-    setActiveNav(
-      1
-    );
-
-
-    document
-      .getElementById(
-        "analysis-detail"
-      )
-      ?.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
-      });
+    window.showPrediction();
   };
 
 
@@ -2395,13 +2530,13 @@ window.showBacktest =
 window.showHistory =
   function () {
 
-    const tracking =
+    const section =
       document.getElementById(
         "tracking-section"
       );
 
 
-    if (tracking) {
+    if (section) {
 
       window.showTracking();
 
@@ -2443,8 +2578,12 @@ window.showTracking =
 
 
     section.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
+
+      behavior:
+        "smooth",
+
+      block:
+        "start"
     });
   };
 
@@ -2558,9 +2697,11 @@ async function loadPredictionHistory() {
           </small>
 
           <strong>
+
             ${money(
               s.totalCost || 0
             )}
+
           </strong>
 
         </div>
@@ -2573,9 +2714,11 @@ async function loadPredictionHistory() {
           </small>
 
           <strong>
+
             ${money(
               s.totalPayout || 0
             )}
+
           </strong>
 
         </div>
@@ -2675,12 +2818,18 @@ async function loadPredictionHistory() {
 
 
                     return (
-                      `${escapeHtml(number)}: ` +
+
+                      `${escapeHtml(
+                        number
+                      )}: ` +
+
                       `${count} lần`
                     );
                   }
                 )
-                .join("<br>");
+                .join(
+                  "<br>"
+                );
 
 
             const pending =
@@ -2699,9 +2848,11 @@ async function loadPredictionHistory() {
               <tr>
 
                 <td>
+
                   ${formatDate(
                     row.date
                   )}
+
                 </td>
 
 
@@ -2714,7 +2865,9 @@ async function loadPredictionHistory() {
                         .map(
                           escapeHtml
                         )
-                        .join(" - ")
+                        .join(
+                          " - "
+                        )
                     }
 
                   </strong>
@@ -2749,9 +2902,11 @@ async function loadPredictionHistory() {
 
 
                 <td>
+
                   ${money(
                     row.cost
                   )}
+
                 </td>
 
 
@@ -2791,7 +2946,9 @@ async function loadPredictionHistory() {
                           "+"
                           :
                           ""
-                      }${money(profit)}`
+                      }${money(
+                        profit
+                      )}`
                   }
 
                 </td>
@@ -2813,13 +2970,33 @@ async function loadPredictionHistory() {
 
             <tr>
 
-              <th>Ngày</th>
-              <th>Dàn số</th>
-              <th>Kết quả</th>
-              <th>Lần về</th>
-              <th>Tiền đánh</th>
-              <th>Tiền nhận</th>
-              <th>Lãi/Lỗ</th>
+              <th>
+                Ngày
+              </th>
+
+              <th>
+                Dàn số
+              </th>
+
+              <th>
+                Kết quả
+              </th>
+
+              <th>
+                Lần về
+              </th>
+
+              <th>
+                Tiền đánh
+              </th>
+
+              <th>
+                Tiền nhận
+              </th>
+
+              <th>
+                Lãi/Lỗ
+              </th>
 
             </tr>
 
@@ -2866,6 +3043,7 @@ async function loadPredictionHistory() {
 
 /* =====================================================
    CẦU 5 CHỮ SỐ
+   MODULE ĐỘC LẬP
 ===================================================== */
 
 window.showFiveDigitBridge =
@@ -2891,8 +3069,12 @@ window.showFiveDigitBridge =
 
 
     section.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
+
+      behavior:
+        "smooth",
+
+      block:
+        "start"
     });
   };
 
@@ -2920,7 +3102,9 @@ async function loadFiveDigitBridge() {
   container.innerHTML = `
 
     <div class="loading-box">
+
       Đang phân tích cầu 5 chữ số...
+
     </div>
   `;
 
@@ -3028,9 +3212,11 @@ function renderFiveDigitBridge(
       <div class="warning-box">
 
         <strong>
+
           ${formatDate(
             data.sourceDate
           )}
+
         </strong>
 
         không có tín hiệu cầu
@@ -3039,7 +3225,9 @@ function renderFiveDigitBridge(
         <br>
 
         Đã đọc
+
         ${data.analyzedDraws || 0}
+
         kỳ.
 
       </div>
@@ -3076,6 +3264,7 @@ function renderFiveDigitBridge(
         signal => {
 
           const status =
+
             signal.streak >= 2
               ?
               "Cầu chạy 2 ngày"
@@ -3154,7 +3343,9 @@ function renderFiveDigitBridge(
 
 
               <div class="score">
+
                 ${status}
+
               </div>
 
             </div>
@@ -3171,17 +3362,21 @@ function renderFiveDigitBridge(
       Nguồn:
 
       <strong>
+
         ${formatDate(
           data.sourceDate
         )}
+
       </strong>
 
       • Dự đoán:
 
       <strong>
+
         ${formatDate(
           data.predictionDate
         )}
+
       </strong>
 
     </div>
@@ -3191,8 +3386,11 @@ function renderFiveDigitBridge(
       topNumbers
         ?
         `
+
           <div class="secondary-numbers">
+
             ${topNumbers}
+
           </div>
         `
         :
