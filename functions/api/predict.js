@@ -1,35 +1,40 @@
 /*
 ========================================================
-XSMB BRIDGE PREDICT V2.6.1 CALIBRATION
+XSMB BRIDGE PREDICT V2.6.2
+RECENT EVIDENCE CALIBRATION
 ========================================================
 
-Mỗi cầu:
-
-position A cố định
+Mỗi cầu =
+vị trí A cố định
 +
-position B cố định
+vị trí B cố định
 +
-direction cố định
+chiều ghép cố định.
 
+Pipeline:
 
-Mục tiêu V2.6.1:
-
-- Giảm cầu giả
-- Tăng yêu cầu sample
-- So sánh với baseline
-- Dùng Wilson Edge
-- Giảm ảnh hưởng consensus
-- Không cho consensus cứu một cầu yếu
-- Strength dựa trên bằng chứng,
-  không chỉ Final Score
-
-SCORE KHÔNG PHẢI XÁC SUẤT.
+1. Cầu hiện tại phải còn sống.
+2. Streak hiện tại 2-5.
+3. Backtest đúng cầu đó.
+4. Sample >= 10.
+5. Rate >= 40%.
+6. Edge >= +10%.
+7. Wilson Edge >= 0.
+8. Kiểm tra 30 / 60 / 100 kỳ.
+9. Phân loại bằng chứng gần:
+   active
+   limited
+   historical-only
+10. Historical-only KHÔNG đưa vào
+    suggestions hôm nay.
+11. Consensus chỉ cộng điểm nhỏ.
+12. Score KHÔNG phải xác suất.
 ========================================================
 */
 
 
 const VERSION =
-  "bridge-v2.6.1";
+  "bridge-v2.6.2";
 
 
 const PRIZES = [
@@ -56,11 +61,9 @@ const LABELS = {
 };
 
 
-/*
-========================================================
-CALIBRATION
-========================================================
-*/
+/* =====================================================
+   CONFIG
+===================================================== */
 
 const MIN_CURRENT_STREAK = 2;
 
@@ -74,72 +77,52 @@ const DEFAULT_HISTORY_DRAWS = 200;
 const MAX_HISTORY_DRAWS = 300;
 
 
-/*
-V2.6:
-5
-
-V2.6.1:
-10
-*/
-
 const DEFAULT_MIN_SAMPLES = 10;
 
-
-/*
-V2.6:
-30%
-
-V2.6.1:
-40%
-*/
-
 const DEFAULT_MIN_RATE = 40;
-
-
-/*
-Raw continuation rate phải
-ít nhất hơn baseline 10 điểm %.
-
-Có thể override bằng query.
-*/
 
 const DEFAULT_MIN_EDGE = 10;
 
 
 /*
-Wilson Edge:
+V2.6.1 = -5
+V2.6.2 = 0
 
-Wilson lower bound
--
-baseline.
-
-Mặc định cho phép >= -5
-để Strong vẫn có thể tồn tại,
-nhưng Very Strong bắt buộc > 0.
+Wilson lower bound phải
+ít nhất vượt baseline.
 */
 
-const DEFAULT_MIN_WILSON_EDGE = -5;
+const DEFAULT_MIN_WILSON_EDGE = 0;
 
 
 /*
-Giảm output.
+Recent evidence dựa trên 60 kỳ.
 */
 
-const MAX_RETURNED_SUGGESTIONS = 15;
+const RECENT_ACTIVE_SAMPLES = 5;
+
+const RECENT_LIMITED_SAMPLES = 3;
 
 
 /*
-========================================================
-UTIL
-========================================================
+Chỉ trả tối đa 12 cầu
+cho prediction chính.
 */
+
+const MAX_RECOMMENDATIONS = 12;
+
+const MAX_HISTORICAL = 10;
+
+
+/* =====================================================
+   BASIC
+===================================================== */
 
 function clamp(
   value,
   minimum,
   maximum
 ) {
-
   return Math.max(
     minimum,
     Math.min(
@@ -151,11 +134,9 @@ function clamp(
 
 
 function average(values) {
-
   if (!values.length) {
     return 0;
   }
-
 
   return (
     values.reduce(
@@ -170,11 +151,9 @@ function average(values) {
 
 
 function splitPrize(value) {
-
   if (!value) {
     return [];
   }
-
 
   return String(value)
     .trim()
@@ -186,14 +165,11 @@ function splitPrize(value) {
 }
 
 
-/*
-========================================================
-VALID ROW
-========================================================
-*/
+/* =====================================================
+   VALID DRAW
+===================================================== */
 
 function validRow(row) {
-
   if (!row) {
     return false;
   }
@@ -239,71 +215,51 @@ function validRow(row) {
 
 
   return (
-
     special.every(
       x => /^\d{5}$/.test(x)
     )
-
     &&
-
     g1.every(
       x => /^\d{5}$/.test(x)
     )
-
     &&
-
     g2.every(
       x => /^\d{5}$/.test(x)
     )
-
     &&
-
     g3.every(
       x => /^\d{5}$/.test(x)
     )
-
     &&
-
     g4.every(
       x => /^\d{4}$/.test(x)
     )
-
     &&
-
     g5.every(
       x => /^\d{4}$/.test(x)
     )
-
     &&
-
     g6.every(
       x => /^\d{3}$/.test(x)
     )
-
     &&
-
     g7.every(
       x => /^\d{2}$/.test(x)
     )
-
   );
 }
 
 
-/*
-========================================================
-LOTO
-========================================================
-*/
+/* =====================================================
+   LOTO SET
+===================================================== */
 
 function getLotoSet(row) {
-
-  const result =
+  const set =
     new Set();
 
 
   for (const prize of PRIZES) {
-
     const numbers =
       splitPrize(
         row[prize]
@@ -311,31 +267,26 @@ function getLotoSet(row) {
 
 
     for (const number of numbers) {
-
-      result.add(
+      set.add(
         number.slice(-2)
       );
     }
   }
 
 
-  return result;
+  return set;
 }
 
 
-/*
-========================================================
-POSITIONS
-========================================================
-*/
+/* =====================================================
+   POSITIONS
+===================================================== */
 
 function getPositions(row) {
-
   const result = [];
 
 
   for (const prize of PRIZES) {
-
     const numbers =
       splitPrize(
         row[prize]
@@ -353,22 +304,16 @@ function getPositions(row) {
           digitIndex < number.length;
           digitIndex++
         ) {
-
           result.push({
-
             prize,
-
             numberIndex,
-
             digitIndex,
 
             key:
               `${prize}:` +
               `${numberIndex}:` +
               `${digitIndex}`
-
           });
-
         }
 
       }
@@ -384,6 +329,10 @@ function getDigit(
   row,
   position
 ) {
+  if (!row) {
+    return null;
+  }
+
 
   const numbers =
     splitPrize(
@@ -416,7 +365,6 @@ function makeNumber(
   positionB,
   reverse
 ) {
-
   const a =
     getDigit(
       row,
@@ -435,7 +383,6 @@ function makeNumber(
     a === null ||
     b === null
   ) {
-
     return null;
   }
 
@@ -447,7 +394,6 @@ function makeNumber(
 
 
 function positionName(position) {
-
   return (
     `${LABELS[position.prize]}` +
     `[${position.numberIndex + 1}]` +
@@ -457,7 +403,6 @@ function positionName(position) {
 
 
 function nextDate(dateString) {
-
   const date =
     new Date(
       `${dateString}T00:00:00Z`
@@ -475,16 +420,13 @@ function nextDate(dateString) {
 }
 
 
-/*
-========================================================
-BASELINE
-========================================================
-*/
+/* =====================================================
+   BASELINE
+===================================================== */
 
 function calculateBaseline(
   lotoSets
 ) {
-
   const rates = [];
 
 
@@ -493,7 +435,6 @@ function calculateBaseline(
     i < lotoSets.length;
     i++
   ) {
-
     rates.push(
       lotoSets[i].size
       /
@@ -511,20 +452,15 @@ function calculateBaseline(
 }
 
 
-/*
-========================================================
-WILSON
-========================================================
-*/
+/* =====================================================
+   WILSON LOWER BOUND
+===================================================== */
 
 function wilsonLowerBound(
   successes,
   total
 ) {
-
-  if (
-    total <= 0
-  ) {
+  if (total <= 0) {
     return 0;
   }
 
@@ -556,7 +492,6 @@ function wilsonLowerBound(
   const adjustment =
     z *
     Math.sqrt(
-
       (
         p *
         (
@@ -565,9 +500,7 @@ function wilsonLowerBound(
         /
         total
       )
-
       +
-
       (
         z * z /
         (
@@ -576,7 +509,6 @@ function wilsonLowerBound(
           total
         )
       )
-
     );
 
 
@@ -589,11 +521,9 @@ function wilsonLowerBound(
 }
 
 
-/*
-========================================================
-CURRENT STREAK
-========================================================
-*/
+/* =====================================================
+   CURRENT STREAK
+===================================================== */
 
 function getCurrentStreak(
   rows,
@@ -602,7 +532,6 @@ function getCurrentStreak(
   positionB,
   reverse
 ) {
-
   let streak = 0;
 
   const history = [];
@@ -616,7 +545,6 @@ function getCurrentStreak(
 
     i--
   ) {
-
     const number =
       makeNumber(
         rows[i],
@@ -635,7 +563,6 @@ function getCurrentStreak(
       !lotoSets[i + 1]
         .has(number)
     ) {
-
       break;
     }
 
@@ -646,9 +573,7 @@ function getCurrentStreak(
     if (
       history.length < 5
     ) {
-
       history.push({
-
         sourceDate:
           rows[i].draw_date,
 
@@ -657,16 +582,19 @@ function getCurrentStreak(
             .draw_date,
 
         number
-
       });
     }
 
+
+    /*
+    6+ không dùng làm
+    prediction hiện tại.
+    */
 
     if (
       streak >=
       CURRENT_REJECT_FROM
     ) {
-
       break;
     }
   }
@@ -679,11 +607,9 @@ function getCurrentStreak(
 }
 
 
-/*
-========================================================
-HIT SERIES
-========================================================
-*/
+/* =====================================================
+   HIT SERIES
+===================================================== */
 
 function buildHitSeries(
   rows,
@@ -692,8 +618,7 @@ function buildHitSeries(
   positionB,
   reverse
 ) {
-
-  const result = [];
+  const series = [];
 
 
   for (
@@ -701,7 +626,6 @@ function buildHitSeries(
     i < rows.length - 1;
     i++
   ) {
-
     const number =
       makeNumber(
         rows[i],
@@ -711,7 +635,7 @@ function buildHitSeries(
       );
 
 
-    result.push(
+    series.push(
       number
         ?
         lotoSets[i + 1]
@@ -722,46 +646,47 @@ function buildHitSeries(
   }
 
 
-  return result;
+  return series;
 }
 
 
-/*
-========================================================
-BACKTEST WINDOW
-========================================================
-*/
+/* =====================================================
+   BACKTEST WINDOW
+===================================================== */
 
 function backtestWindow(
   hitSeries,
-  currentStreak,
+  streak,
   maxTransitions
 ) {
+  /*
+  Không dùng streak hiện tại
+  để tự kiểm định chính nó.
+  */
 
   const historicalEnd =
     Math.max(
       0,
       hitSeries.length -
-      currentStreak
+      streak
     );
 
 
   const start =
     maxTransitions === null
-
-      ? 0
-
-      : Math.max(
-          0,
-          historicalEnd -
-          maxTransitions
-        );
+      ?
+      0
+      :
+      Math.max(
+        0,
+        historicalEnd -
+        maxTransitions
+      );
 
 
   let opportunities = 0;
 
   let continued = 0;
-
 
   let weightedTotal = 0;
 
@@ -771,7 +696,7 @@ function backtestWindow(
   for (
     let i =
       Math.max(
-        currentStreak,
+        streak,
         start
       );
 
@@ -779,38 +704,35 @@ function backtestWindow(
 
     i++
   ) {
-
     if (
-      i - currentStreak <
+      i - streak <
       start
     ) {
       continue;
     }
 
 
-    let valid = true;
+    let validRun = true;
 
 
     for (
       let j = 1;
-      j <= currentStreak;
+      j <= streak;
       j++
     ) {
-
       if (
         hitSeries[
           i - j
         ] !== true
       ) {
-
-        valid = false;
+        validRun = false;
 
         break;
       }
     }
 
 
-    if (!valid) {
+    if (!validRun) {
       continue;
     }
 
@@ -844,7 +766,6 @@ function backtestWindow(
 
 
     if (hit) {
-
       weightedHits +=
         weight;
     }
@@ -852,31 +773,26 @@ function backtestWindow(
 
 
   const rate =
-    opportunities
-
-      ? (
-          continued /
-          opportunities *
-          100
-        )
-
-      : 0;
+    opportunities > 0
+      ?
+      continued /
+      opportunities *
+      100
+      :
+      0;
 
 
   const weightedRate =
-    weightedTotal
-
-      ? (
-          weightedHits /
-          weightedTotal *
-          100
-        )
-
-      : 0;
+    weightedTotal > 0
+      ?
+      weightedHits /
+      weightedTotal *
+      100
+      :
+      0;
 
 
   return {
-
     opportunities,
 
     continued,
@@ -891,23 +807,46 @@ function backtestWindow(
         weightedRate
           .toFixed(2)
       )
-
   };
 }
 
 
-/*
-========================================================
-HISTORICAL PERFORMANCE
-========================================================
-*/
+/* =====================================================
+   RECENT STATUS
+===================================================== */
+
+function getRecentStatus(
+  samples60
+) {
+  if (
+    samples60 >=
+    RECENT_ACTIVE_SAMPLES
+  ) {
+    return "active";
+  }
+
+
+  if (
+    samples60 >=
+    RECENT_LIMITED_SAMPLES
+  ) {
+    return "limited";
+  }
+
+
+  return "historical-only";
+}
+
+
+/* =====================================================
+   PERFORMANCE
+===================================================== */
 
 function analyzePerformance(
   hitSeries,
   streak,
   baseline
 ) {
-
   const all =
     backtestWindow(
       hitSeries,
@@ -954,11 +893,6 @@ function analyzePerformance(
     baseline;
 
 
-  /*
-  V2.6.1:
-  Wilson Edge.
-  */
-
   const wilsonEdge =
     wilson -
     baseline;
@@ -979,11 +913,9 @@ function analyzePerformance(
       all
     ]
   ) {
-
     if (
       item.opportunities >= 3
     ) {
-
       validRates.push(
         item.rate
       );
@@ -997,7 +929,6 @@ function analyzePerformance(
   if (
     validRates.length >= 2
   ) {
-
     stabilityRange =
       Math.max(
         ...validRates
@@ -1020,115 +951,91 @@ function analyzePerformance(
 
   /*
   Sample reliability.
-
-  20 samples = 100.
   */
 
   const sampleReliability =
     clamp(
-
       Math.sqrt(
         all.opportunities /
         20
       )
       *
       100,
-
       0,
-
       100
     );
 
 
   /*
-  Recent rate.
+  Recent evidence.
   */
+
+  const recentStatus =
+    getRecentStatus(
+      w60.opportunities
+    );
+
 
   let recentRate =
     all.rate;
 
 
   if (
-    w30.opportunities >= 3 &&
+    w30.opportunities >= 3
+    &&
     w60.opportunities >= 3
   ) {
-
     recentRate =
-
       w30.rate * 0.6
-
       +
-
       w60.rate * 0.4;
-
   }
   else if (
     w60.opportunities >= 3
   ) {
-
     recentRate =
       w60.rate;
-
   }
   else if (
     w30.opportunities >= 3
   ) {
-
     recentRate =
       w30.rate;
   }
 
 
-  /*
-  ======================================================
-  RAW SCORE V2.6.1
-
-  Wilson tăng trọng số.
-
-  Consensus chưa được cộng ở đây.
-
-  Wilson          35%
-  Edge            20%
-  Recent          15%
-  Stability       15%
-  Sample          15%
-  ======================================================
-  */
-
-
   const normalizedEdge =
     clamp(
       50 +
-      edge *
-      1.5,
+      edge * 1.5,
       0,
       100
     );
 
 
+  /*
+  Raw score.
+
+  Wilson       35%
+  Edge         20%
+  Recent       15%
+  Stability    15%
+  Sample       15%
+  */
+
   const rawScore =
-
     wilson * 0.35
-
     +
-
     normalizedEdge * 0.20
-
     +
-
     recentRate * 0.15
-
     +
-
     stabilityScore * 0.15
-
     +
-
     sampleReliability * 0.15;
 
 
   return {
-
     opportunities:
       all.opportunities,
 
@@ -1141,17 +1048,17 @@ function analyzePerformance(
     weightedRate:
       all.weightedRate,
 
-    wilsonLowerBound:
-      Number(
-        wilson.toFixed(2)
-      ),
-
     baselineRate:
       baseline,
 
     edge:
       Number(
         edge.toFixed(2)
+      ),
+
+    wilsonLowerBound:
+      Number(
+        wilson.toFixed(2)
       ),
 
     wilsonEdge:
@@ -1180,8 +1087,14 @@ function analyzePerformance(
 
     recentRate:
       Number(
-        recentRate.toFixed(2)
+        recentRate
+          .toFixed(2)
       ),
+
+    recentSamples:
+      w60.opportunities,
+
+    recentStatus,
 
     stabilityRange:
       Number(
@@ -1205,21 +1118,17 @@ function analyzePerformance(
       Number(
         rawScore.toFixed(2)
       )
-
   };
 }
 
 
-/*
-========================================================
-INDEPENDENT CONSENSUS
-========================================================
-*/
+/* =====================================================
+   INDEPENDENT CONSENSUS
+===================================================== */
 
 function calculateIndependent(
   candidates
 ) {
-
   const sorted =
     [...candidates]
       .sort(
@@ -1232,7 +1141,7 @@ function calculateIndependent(
       );
 
 
-  const used =
+  const usedPositions =
     new Set();
 
 
@@ -1243,17 +1152,15 @@ function calculateIndependent(
     const candidate
     of sorted
   ) {
-
     if (
-      used.has(
+      usedPositions.has(
         candidate.positionAKey
       )
       ||
-      used.has(
+      usedPositions.has(
         candidate.positionBKey
       )
     ) {
-
       continue;
     }
 
@@ -1263,12 +1170,12 @@ function calculateIndependent(
     );
 
 
-    used.add(
+    usedPositions.add(
       candidate.positionAKey
     );
 
 
-    used.add(
+    usedPositions.add(
       candidate.positionBKey
     );
   }
@@ -1278,27 +1185,121 @@ function calculateIndependent(
 }
 
 
-/*
-========================================================
-API
-========================================================
-*/
+/* =====================================================
+   STRENGTH
+===================================================== */
+
+function classifyStrength(
+  item,
+  independent,
+  finalScore
+) {
+  /*
+  VERY STRONG:
+
+  Sample lớn.
+  Rate tốt.
+  Wilson vượt baseline rõ.
+  Edge mạnh.
+  Stability cao.
+  Recent evidence active.
+  Có >=2 cầu độc lập.
+  */
+
+  if (
+    item.opportunities >= 15
+    &&
+    item.continuationRate >= 50
+    &&
+    item.wilsonEdge >= 5
+    &&
+    item.edge >= 20
+    &&
+    item.stabilityScore >= 70
+    &&
+    item.recentStatus === "active"
+    &&
+    independent >= 2
+    &&
+    finalScore >= 60
+  ) {
+    return "very-strong";
+  }
+
+
+  /*
+  STRONG:
+
+  Wilson phải thực sự
+  vượt baseline.
+  */
+
+  if (
+    item.opportunities >= 10
+    &&
+    item.continuationRate >= 40
+    &&
+    item.wilsonEdge > 0
+    &&
+    item.edge >= 10
+    &&
+    item.stabilityScore >= 60
+    &&
+    item.recentStatus !==
+      "historical-only"
+    &&
+    finalScore >= 50
+  ) {
+    return "strong";
+  }
+
+
+  /*
+  Historical:
+
+  Lịch sử tốt nhưng
+  60 kỳ gần không đủ mẫu.
+
+  KHÔNG đưa vào prediction.
+  */
+
+  if (
+    item.opportunities >= 10
+    &&
+    item.continuationRate >= 40
+    &&
+    item.wilsonEdge > 0
+    &&
+    item.edge >= 10
+    &&
+    item.stabilityScore >= 60
+    &&
+    item.recentStatus ===
+      "historical-only"
+  ) {
+    return "historical";
+  }
+
+
+  return "qualified";
+}
+
+
+/* =====================================================
+   API
+===================================================== */
 
 export async function onRequestGet(
   context
 ) {
-
   try {
-
     const DB =
       context.env.DB;
 
 
     if (!DB) {
-
       return Response.json(
         {
-
           success: false,
 
           module:
@@ -1309,7 +1310,6 @@ export async function onRequestGet(
 
           message:
             "Không tìm thấy DB."
-
         },
         {
           status: 500
@@ -1326,7 +1326,6 @@ export async function onRequestGet(
 
     const historyDraws =
       clamp(
-
         Number(
           url.searchParams.get(
             "days"
@@ -1334,16 +1333,13 @@ export async function onRequestGet(
           ||
           DEFAULT_HISTORY_DRAWS
         ),
-
         50,
-
         MAX_HISTORY_DRAWS
       );
 
 
     const minSamples =
       clamp(
-
         Number(
           url.searchParams.get(
             "minSamples"
@@ -1351,16 +1347,13 @@ export async function onRequestGet(
           ||
           DEFAULT_MIN_SAMPLES
         ),
-
         1,
-
         50
       );
 
 
     const minRate =
       clamp(
-
         Number(
           url.searchParams.get(
             "minRate"
@@ -1368,16 +1361,13 @@ export async function onRequestGet(
           ||
           DEFAULT_MIN_RATE
         ),
-
         0,
-
         100
       );
 
 
     const minEdge =
       clamp(
-
         Number(
           url.searchParams.get(
             "minEdge"
@@ -1385,16 +1375,13 @@ export async function onRequestGet(
           ??
           DEFAULT_MIN_EDGE
         ),
-
         -100,
-
         100
       );
 
 
     const minWilsonEdge =
       clamp(
-
         Number(
           url.searchParams.get(
             "minWilsonEdge"
@@ -1402,40 +1389,27 @@ export async function onRequestGet(
           ??
           DEFAULT_MIN_WILSON_EDGE
         ),
-
         -100,
-
         100
       );
 
 
     /*
-    ====================================================
     DATA
-    ====================================================
     */
 
     const query =
       await DB
         .prepare(`
           SELECT
-
             draw_date,
-
             special,
-
             g1,
-
             g2,
-
             g3,
-
             g4,
-
             g5,
-
             g6,
-
             g7
 
           FROM results
@@ -1444,11 +1418,9 @@ export async function onRequestGet(
 
           LIMIT ?
         `)
-
         .bind(
           historyDraws
         )
-
         .all();
 
 
@@ -1457,20 +1429,16 @@ export async function onRequestGet(
         query.results ||
         []
       )
-
         .filter(
           validRow
         )
-
         .reverse();
 
 
     if (
       rows.length < 30
     ) {
-
       return Response.json({
-
         success: false,
 
         module:
@@ -1484,7 +1452,6 @@ export async function onRequestGet(
 
         validDraws:
           rows.length
-
       });
     }
 
@@ -1528,7 +1495,6 @@ export async function onRequestGet(
       a < positions.length;
       a++
     ) {
-
       const positionA =
         positions[a];
 
@@ -1538,7 +1504,6 @@ export async function onRequestGet(
         b < positions.length;
         b++
       ) {
-
         const positionB =
           positions[b];
 
@@ -1547,7 +1512,6 @@ export async function onRequestGet(
           positionA.prize ===
           positionB.prize
         ) {
-
           continue;
         }
 
@@ -1556,7 +1520,6 @@ export async function onRequestGet(
           const reverse
           of [false, true]
         ) {
-
           const current =
             getCurrentStreak(
               rows,
@@ -1574,7 +1537,6 @@ export async function onRequestGet(
             current.streak >
               MAX_CURRENT_STREAK
           ) {
-
             continue;
           }
 
@@ -1612,7 +1574,6 @@ export async function onRequestGet(
 
 
           active.push({
-
             number,
 
             streak:
@@ -1643,19 +1604,15 @@ export async function onRequestGet(
 
             bridge:
               reverse
-
-                ? `${nameB} + ${nameA}`
-
-                : `${nameA} + ${nameB}`,
+                ?
+                `${nameB} + ${nameA}`
+                :
+                `${nameA} + ${nameB}`,
 
             bridgeKey:
-
               `${positionA.key}|` +
-
               `${positionB.key}|` +
-
               `${direction}`
-
           });
         }
       }
@@ -1665,7 +1622,7 @@ export async function onRequestGet(
     /*
     ====================================================
     PHASE 2
-    BACKTEST + FILTER
+    BACKTEST
     ====================================================
     */
 
@@ -1673,7 +1630,6 @@ export async function onRequestGet(
 
 
     const rejected = {
-
       insufficientSamples: 0,
 
       lowRate: 0,
@@ -1681,7 +1637,6 @@ export async function onRequestGet(
       lowEdge: 0,
 
       lowWilsonEdge: 0
-
     };
 
 
@@ -1689,8 +1644,7 @@ export async function onRequestGet(
       const candidate
       of active
     ) {
-
-      const hitSeries =
+      const series =
         buildHitSeries(
           rows,
           lotoSets,
@@ -1702,7 +1656,7 @@ export async function onRequestGet(
 
       const performance =
         analyzePerformance(
-          hitSeries,
+          series,
           candidate.streak,
           baselineRate
         );
@@ -1712,7 +1666,6 @@ export async function onRequestGet(
         performance.opportunities <
         minSamples
       ) {
-
         rejected
           .insufficientSamples++;
 
@@ -1724,7 +1677,6 @@ export async function onRequestGet(
         performance.continuationRate <
         minRate
       ) {
-
         rejected.lowRate++;
 
         continue;
@@ -1735,7 +1687,6 @@ export async function onRequestGet(
         performance.edge <
         minEdge
       ) {
-
         rejected.lowEdge++;
 
         continue;
@@ -1746,7 +1697,6 @@ export async function onRequestGet(
         performance.wilsonEdge <
         minWilsonEdge
       ) {
-
         rejected
           .lowWilsonEdge++;
 
@@ -1755,11 +1705,8 @@ export async function onRequestGet(
 
 
       tested.push({
-
         ...candidate,
-
         ...performance
-
       });
     }
 
@@ -1770,7 +1717,7 @@ export async function onRequestGet(
     ====================================================
     */
 
-    const groups =
+    const numberGroups =
       new Map();
 
 
@@ -1778,21 +1725,19 @@ export async function onRequestGet(
       const item
       of tested
     ) {
-
       if (
-        !groups.has(
+        !numberGroups.has(
           item.number
         )
       ) {
-
-        groups.set(
+        numberGroups.set(
           item.number,
           []
         );
       }
 
 
-      groups
+      numberGroups
         .get(item.number)
         .push(item);
     }
@@ -1813,9 +1758,8 @@ export async function onRequestGet(
         number,
         items
       ]
-      of groups
+      of numberGroups
     ) {
-
       const independent =
         calculateIndependent(
           items
@@ -1825,13 +1769,11 @@ export async function onRequestGet(
       consensusMap.set(
         number,
         {
-
           related:
             items.length,
 
           independent:
             independent.length
-
         }
       );
     }
@@ -1839,14 +1781,13 @@ export async function onRequestGet(
 
     /*
     ====================================================
-    FINAL SCORE
+    FINAL CALIBRATION
     ====================================================
     */
 
-    const accepted =
+    const allQualified =
       tested.map(
         item => {
-
           const consensus =
             consensusMap.get(
               item.number
@@ -1864,21 +1805,7 @@ export async function onRequestGet(
 
 
           /*
-          =================================================
-          CONSENSUS V2.6.1
-
-          V2.6:
-          max +15
-
-          V2.6.1:
-          max +8
-
-          1 independent = +0
-          2 = +2
-          3 = +4
-          4 = +6
-          5+ = +8
-          =================================================
+          Bonus tối đa 8.
           */
 
           const consensusBonus =
@@ -1893,11 +1820,6 @@ export async function onRequestGet(
             );
 
 
-          /*
-          Correlation penalty vẫn giữ,
-          tối đa 10.
-          */
-
           const independentRatio =
             independent /
             related;
@@ -1905,117 +1827,65 @@ export async function onRequestGet(
 
           const correlationPenalty =
             related > 1
+              ?
+              (
+                1 -
+                independentRatio
+              )
+              *
+              10
+              :
+              0;
 
-              ? (
-                  1 -
-                  independentRatio
-                )
-                *
-                10
 
-              : 0;
+          /*
+          Recent adjustment.
+
+          active          +4
+          limited          0
+          historical-only -6
+          */
+
+          let recentAdjustment = 0;
+
+
+          if (
+            item.recentStatus ===
+            "active"
+          ) {
+            recentAdjustment = 4;
+          }
+          else if (
+            item.recentStatus ===
+            "historical-only"
+          ) {
+            recentAdjustment = -6;
+          }
 
 
           const finalScore =
             clamp(
-
               item.rawScore
-
               +
-
               consensusBonus
-
               -
-
-              correlationPenalty,
-
+              correlationPenalty
+              +
+              recentAdjustment,
               0,
-
               100
             );
 
 
-          /*
-          =================================================
-          STRENGTH V2.6.1
-          =================================================
-          */
-
-
-          let strength =
-            "qualified";
-
-
-          /*
-          VERY STRONG
-
-          Không chỉ nhìn score.
-          */
-
-          if (
-            item.opportunities >= 15
-
-            &&
-
-            item.continuationRate >= 50
-
-            &&
-
-            item.wilsonEdge > 0
-
-            &&
-
-            item.edge >= 15
-
-            &&
-
-            item.stabilityScore >= 60
-
-            &&
-
-            independent >= 2
-
-            &&
-
-            finalScore >= 60
-          ) {
-
-            strength =
-              "very-strong";
-          }
-
-
-          /*
-          STRONG
-          */
-
-          else if (
-            item.opportunities >= 10
-
-            &&
-
-            item.continuationRate >= 40
-
-            &&
-
-            item.edge >= 10
-
-            &&
-
-            item.stabilityScore >= 40
-
-            &&
-
-            finalScore >= 50
-          ) {
-
-            strength =
-              "strong";
-          }
+          const strength =
+            classifyStrength(
+              item,
+              independent,
+              finalScore
+            );
 
 
           return {
-
             bridgeKey:
               item.bridgeKey,
 
@@ -2082,6 +1952,15 @@ export async function onRequestGet(
             recentRate:
               item.recentRate,
 
+            recentSamples:
+              item.recentSamples,
+
+            recentStatus:
+              item.recentStatus,
+
+            stabilityRange:
+              item.stabilityRange,
+
             stabilityScore:
               item.stabilityScore,
 
@@ -2109,6 +1988,8 @@ export async function onRequestGet(
                   .toFixed(2)
               ),
 
+            recentAdjustment,
+
             score:
               Number(
                 finalScore
@@ -2119,7 +2000,6 @@ export async function onRequestGet(
 
             history:
               item.history
-
           };
         }
       );
@@ -2128,67 +2008,54 @@ export async function onRequestGet(
     /*
     ====================================================
     SORT
+
+    Strength
+    → Final Score
+    → Wilson Edge
+    → Sample
+    → Stability
     ====================================================
     */
 
-    accepted.sort(
+    const strengthRank = {
+      "very-strong": 4,
+      "strong": 3,
+      "historical": 2,
+      "qualified": 1
+    };
+
+
+    allQualified.sort(
       (
         a,
         b
       ) => {
 
-        /*
-        Very Strong trước.
-        */
-
-        const rank = {
-
-          "very-strong": 3,
-
-          "strong": 2,
-
-          "qualified": 1
-
-        };
-
-
         if (
-          rank[b.strength] !==
-          rank[a.strength]
+          strengthRank[
+            b.strength
+          ]
+          !==
+          strengthRank[
+            a.strength
+          ]
         ) {
-
           return (
-            rank[b.strength] -
-            rank[a.strength]
+            strengthRank[
+              b.strength
+            ]
+            -
+            strengthRank[
+              a.strength
+            ]
           );
         }
 
-
-        /*
-        Sau đó Wilson Edge.
-        */
-
-        if (
-          b.wilsonEdge !==
-          a.wilsonEdge
-        ) {
-
-          return (
-            b.wilsonEdge -
-            a.wilsonEdge
-          );
-        }
-
-
-        /*
-        Sau đó score.
-        */
 
         if (
           b.score !==
           a.score
         ) {
-
           return (
             b.score -
             a.score
@@ -2196,16 +2063,98 @@ export async function onRequestGet(
         }
 
 
-        /*
-        Sample.
-        */
+        if (
+          b.wilsonEdge !==
+          a.wilsonEdge
+        ) {
+          return (
+            b.wilsonEdge -
+            a.wilsonEdge
+          );
+        }
+
+
+        if (
+          b.opportunities !==
+          a.opportunities
+        ) {
+          return (
+            b.opportunities -
+            a.opportunities
+          );
+        }
+
 
         return (
-          b.opportunities -
-          a.opportunities
+          b.stabilityScore -
+          a.stabilityScore
         );
       }
     );
+
+
+    /*
+    Historical-only KHÔNG phải
+    prediction hôm nay.
+    */
+
+    const historicalOnly =
+      allQualified.filter(
+        item =>
+          item.recentStatus ===
+          "historical-only"
+      );
+
+
+    const recommendations =
+      allQualified.filter(
+        item =>
+          item.recentStatus !==
+          "historical-only"
+      );
+
+
+    const veryStrong =
+      recommendations.filter(
+        item =>
+          item.strength ===
+          "very-strong"
+      );
+
+
+    const strong =
+      recommendations.filter(
+        item =>
+          item.strength ===
+          "strong"
+      );
+
+
+    const qualified =
+      recommendations.filter(
+        item =>
+          item.strength ===
+          "qualified"
+      );
+
+
+    /*
+    ====================================================
+    UNIQUE NUMBERS
+
+    Chỉ recommendations thật.
+    ====================================================
+    */
+
+    const recommendedNumbers =
+      [
+        ...new Set(
+          recommendations.map(
+            item =>
+              item.number
+          )
+        )
+      ];
 
 
     /*
@@ -2218,46 +2167,28 @@ export async function onRequestGet(
 
 
     for (
-      const [
-        number,
-        items
-      ]
-      of groups
+      const number
+      of recommendedNumbers
     ) {
-
-      const finalItems =
-        accepted
-          .filter(
-            item =>
-              item.number ===
-              number
-          );
-
-
-      if (!finalItems.length) {
-
-        continue;
-      }
-
-
-      const best =
-        finalItems[0];
-
-
-      const consensus =
-        consensusMap.get(
-          number
+      const items =
+        recommendations.filter(
+          item =>
+            item.number ===
+            number
         );
 
 
-      numberSummary.push({
+      const best =
+        items[0];
 
+
+      numberSummary.push({
         number,
 
-        bestScore:
+        score:
           best.score,
 
-        bestStrength:
+        strength:
           best.strength,
 
         bestBridge:
@@ -2270,12 +2201,10 @@ export async function onRequestGet(
           best.continuationRate,
 
         independentCount:
-          consensus
-            ?.independent || 1,
+          best.independentConsensus,
 
-        relatedCount:
+        bridgeCount:
           items.length
-
       });
     }
 
@@ -2286,77 +2215,33 @@ export async function onRequestGet(
         b
       ) => {
 
-        const rank = {
-
-          "very-strong": 3,
-
-          "strong": 2,
-
-          "qualified": 1
-
-        };
-
-
         if (
-          rank[b.bestStrength] !==
-          rank[a.bestStrength]
+          strengthRank[
+            b.strength
+          ]
+          !==
+          strengthRank[
+            a.strength
+          ]
         ) {
-
           return (
-            rank[b.bestStrength] -
-            rank[a.bestStrength]
-          );
-        }
-
-
-        if (
-          b.bestWilsonEdge !==
-          a.bestWilsonEdge
-        ) {
-
-          return (
-            b.bestWilsonEdge -
-            a.bestWilsonEdge
+            strengthRank[
+              b.strength
+            ]
+            -
+            strengthRank[
+              a.strength
+            ]
           );
         }
 
 
         return (
-          b.bestScore -
-          a.bestScore
+          b.score -
+          a.score
         );
       }
     );
-
-
-    /*
-    ====================================================
-    GROUPS
-    ====================================================
-    */
-
-    const veryStrong =
-      accepted.filter(
-        item =>
-          item.strength ===
-          "very-strong"
-      );
-
-
-    const strong =
-      accepted.filter(
-        item =>
-          item.strength ===
-          "strong"
-      );
-
-
-    const qualified =
-      accepted.filter(
-        item =>
-          item.strength ===
-          "qualified"
-      );
 
 
     /*
@@ -2366,7 +2251,6 @@ export async function onRequestGet(
     */
 
     return Response.json({
-
       success: true,
 
       module:
@@ -2394,21 +2278,35 @@ export async function onRequestGet(
       activeCandidateCount:
         active.length,
 
+      /*
+      Qua statistical filters,
+      bao gồm historical-only.
+      */
+
       qualifiedCount:
-        accepted.length,
+        allQualified.length,
+
+      /*
+      Thực sự dùng làm prediction.
+      */
+
+      recommendationCount:
+        recommendations.length,
+
+      historicalOnlyCount:
+        historicalOnly.length,
 
       returnedCount:
         Math.min(
-          accepted.length,
-          MAX_RETURNED_SUGGESTIONS
+          recommendations.length,
+          MAX_RECOMMENDATIONS
         ),
 
       uniqueNumberCount:
-        numberSummary.length,
+        recommendedNumbers.length,
 
 
       rule: {
-
         currentStreaks: [
           2,
           3,
@@ -2426,24 +2324,29 @@ export async function onRequestGet(
 
         minWilsonEdge,
 
-        baselineComparison:
-          true,
+        recentWindow:
+          60,
 
-        wilsonEdge:
-          true,
+        recentActiveSamples:
+          RECENT_ACTIVE_SAMPLES,
 
-        reducedConsensusBonus:
+        recentLimitedSamples:
+          RECENT_LIMITED_SAMPLES,
+
+        historicalOnlyExcluded:
           true,
 
         strictStrengthRules:
           true,
 
-        maxReturned:
-          MAX_RETURNED_SUGGESTIONS,
+        ranking:
+          "strength-score-wilson-sample-stability",
+
+        maxRecommendations:
+          MAX_RECOMMENDATIONS,
 
         scoreIsProbability:
           false
-
       },
 
 
@@ -2451,7 +2354,6 @@ export async function onRequestGet(
 
 
       counts: {
-
         veryStrong:
           veryStrong.length,
 
@@ -2461,16 +2363,33 @@ export async function onRequestGet(
         qualified:
           qualified.length,
 
-        total:
-          accepted.length
+        historical:
+          historicalOnly.length,
 
+        recommendations:
+          recommendations.length
       },
 
 
+      /*
+      Prediction thật.
+      */
+
       suggestions:
-        accepted.slice(
+        recommendations.slice(
           0,
-          MAX_RETURNED_SUGGESTIONS
+          MAX_RECOMMENDATIONS
+        ),
+
+
+      /*
+      Chỉ nghiên cứu.
+      */
+
+      historicalCandidates:
+        historicalOnly.slice(
+          0,
+          MAX_HISTORICAL
         ),
 
 
@@ -2482,45 +2401,47 @@ export async function onRequestGet(
 
 
       groups: {
-
         veryStrong:
           veryStrong.slice(
             0,
-            15
+            12
           ),
 
         strong:
           strong.slice(
             0,
-            15
+            12
           ),
 
         qualified:
           qualified.slice(
             0,
-            15
-          )
+            12
+          ),
 
+        historical:
+          historicalOnly.slice(
+            0,
+            10
+          )
       },
 
 
       note:
-        "V2.6.1 Calibration tăng minSamples lên 10, minRate lên 40%, yêu cầu edge tối thiểu 10%, bổ sung Wilson Edge, giảm consensus bonus và dùng điều kiện Strength chặt hơn."
-
+        "V2.6.2 loại cầu historical-only khỏi gợi ý hiện tại, yêu cầu Wilson Edge không âm, thêm recent evidence và xếp hạng theo Strength, Final Score, Wilson Edge, sample và stability. Score không phải xác suất trúng."
     });
 
 
   } catch (error) {
 
     console.error(
-      "Predict V2.6.1:",
+      "Predict V2.6.2:",
       error
     );
 
 
     return Response.json(
       {
-
         success: false,
 
         module:
@@ -2531,8 +2452,7 @@ export async function onRequestGet(
 
         message:
           error?.message ||
-          "Lỗi Predict V2.6.1."
-
+          "Lỗi Predict V2.6.2."
       },
       {
         status: 500

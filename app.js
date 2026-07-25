@@ -459,6 +459,545 @@ PREDICTION
 
 function renderPrediction(
   data,
+  totalDraws = 0
+) {
+  const container =
+    document.getElementById(
+      "today-prediction"
+    );
+
+
+  if (!container) {
+    return;
+  }
+
+
+  const suggestions =
+    Array.isArray(
+      data.suggestions
+    )
+      ? data.suggestions
+      : [];
+
+
+  const strengthName =
+    value => {
+
+      if (
+        value === "very-strong"
+      ) {
+        return "RẤT MẠNH";
+      }
+
+
+      if (
+        value === "strong"
+      ) {
+        return "MẠNH";
+      }
+
+
+      return "ĐẠT CHUẨN";
+    };
+
+
+  const recentName =
+    value => {
+
+      if (
+        value === "active"
+      ) {
+        return "Gần đây: tốt";
+      }
+
+
+      if (
+        value === "limited"
+      ) {
+        return "Gần đây: ít mẫu";
+      }
+
+
+      return "Chỉ mạnh lịch sử";
+    };
+
+
+  /*
+  Không có prediction đủ chuẩn.
+  */
+
+  if (!suggestions.length) {
+
+    container.innerHTML = `
+
+      <div class="loading-box">
+
+        Hôm nay chưa có cầu đủ
+        tiêu chuẩn dự đoán V2.6.2.
+
+      </div>
+
+
+      <div class="warning-box">
+
+        Cầu đang sống:
+
+        <strong>
+          ${data.activeCandidateCount || 0}
+        </strong>
+
+        <br>
+
+        Qua kiểm định:
+
+        <strong>
+          ${data.qualifiedCount || 0}
+        </strong>
+
+        <br>
+
+        Chỉ có giá trị lịch sử:
+
+        <strong>
+          ${data.historicalOnlyCount || 0}
+        </strong>
+
+        <br>
+
+        Gợi ý hiện tại:
+
+        <strong>
+          0
+        </strong>
+
+      </div>
+
+    `;
+
+    return;
+  }
+
+
+  const top =
+    suggestions.slice(
+      0,
+      10
+    );
+
+
+  const best =
+    top[0];
+
+
+  const list =
+    top
+      .map(
+        (
+          item,
+          index
+        ) => `
+
+          <div class="suggestion-row">
+
+            <div>
+
+              <strong>
+
+                #${index + 1}
+
+                &nbsp;
+
+                <span class="number-cell">
+
+                  ${escapeHtml(
+                    item.number
+                  )}
+
+                </span>
+
+              </strong>
+
+              &nbsp;
+
+              ${strengthName(
+                item.strength
+              )}
+
+            </div>
+
+
+            <div>
+
+              ${escapeHtml(
+                item.bridge
+              )}
+
+            </div>
+
+
+            <div>
+
+              Cầu:
+
+              <strong>
+                ${item.streak} kỳ
+              </strong>
+
+              • ${recentName(
+                item.recentStatus
+              )}
+
+              • mẫu 60 kỳ:
+              ${item.recentSamples}
+
+            </div>
+
+
+            <div>
+
+              Lịch sử:
+
+              <strong>
+
+                ${item.continued}
+                /
+                ${item.opportunities}
+
+              </strong>
+
+              =
+              ${item.continuationRate}%
+
+            </div>
+
+
+            <div>
+
+              Baseline:
+              ${item.baselineRate}%
+
+              • Edge:
+
+              <strong>
+
+                ${
+                  item.edge >= 0
+                    ? "+"
+                    : ""
+                }
+
+                ${item.edge}%
+
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              Wilson:
+              ${item.wilsonLowerBound}%
+
+              • Wilson Edge:
+
+              <strong>
+
+                ${
+                  item.wilsonEdge >= 0
+                    ? "+"
+                    : ""
+                }
+
+                ${item.wilsonEdge}%
+
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              30 kỳ:
+              ${item.rate30}%
+              (${item.samples30})
+
+              • 60:
+              ${item.rate60}%
+              (${item.samples60})
+
+              • 100:
+              ${item.rate100}%
+              (${item.samples100})
+
+            </div>
+
+
+            <div>
+
+              Stability:
+              ${item.stabilityScore}
+
+              • Independent:
+              ${item.independentConsensus}
+
+              • Score:
+
+              <strong>
+                ${item.score}
+              </strong>
+
+            </div>
+
+
+            ${renderBridgeHistory(
+              item.history
+            )}
+
+          </div>
+        `
+      )
+      .join("");
+
+
+  container.innerHTML = `
+
+    <div class="prediction-grid">
+
+
+      <div
+        class="
+          prediction-card
+          highlight
+        "
+      >
+
+        <div class="prediction-title">
+
+          Cầu ưu tiên #1
+
+        </div>
+
+
+        <div class="big-number">
+
+          ${escapeHtml(
+            best.number
+          )}
+
+        </div>
+
+
+        <div class="score">
+
+          ${strengthName(
+            best.strength
+          )}
+
+        </div>
+
+
+        <div class="score">
+
+          ${escapeHtml(
+            best.bridge
+          )}
+
+        </div>
+
+
+        <div class="score">
+
+          Cầu hiện tại:
+
+          <strong>
+            ${best.streak} kỳ
+          </strong>
+
+        </div>
+
+
+        <div class="score">
+
+          ${recentName(
+            best.recentStatus
+          )}
+
+          • ${best.recentSamples}
+          mẫu / 60 kỳ
+
+        </div>
+
+
+        <div class="score">
+
+          ${best.continued}
+          /
+          ${best.opportunities}
+
+          =
+
+          <strong>
+            ${best.continuationRate}%
+          </strong>
+
+        </div>
+
+
+        <div class="score">
+
+          Wilson Edge:
+
+          <strong>
+
+            ${
+              best.wilsonEdge >= 0
+                ? "+"
+                : ""
+            }
+
+            ${best.wilsonEdge}%
+
+          </strong>
+
+        </div>
+
+
+        <div class="score">
+
+          Score:
+
+          <strong>
+            ${best.score}
+          </strong>
+
+        </div>
+
+      </div>
+
+
+      <div class="prediction-card">
+
+        <div class="prediction-title">
+          Rất mạnh
+        </div>
+
+        <div class="big-number">
+
+          ${data.counts?.veryStrong || 0}
+
+        </div>
+
+      </div>
+
+
+      <div class="prediction-card">
+
+        <div class="prediction-title">
+          Mạnh
+        </div>
+
+        <div class="big-number">
+
+          ${data.counts?.strong || 0}
+
+        </div>
+
+      </div>
+
+
+      <div class="prediction-card">
+
+        <div class="prediction-title">
+          Gợi ý
+        </div>
+
+        <div class="big-number">
+
+          ${data.recommendationCount || 0}
+
+        </div>
+
+        <div class="score">
+
+          Historical loại:
+          ${data.historicalOnlyCount || 0}
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="top-suggestion-list">
+
+      ${list}
+
+    </div>
+
+
+    <div class="warning-box">
+
+      <strong>
+        Predict V2.6.2
+      </strong>
+
+      <br><br>
+
+      Nguồn:
+
+      <strong>
+        ${formatDate(
+          data.sourceDate
+        )}
+      </strong>
+
+      • dự đoán:
+
+      <strong>
+        ${formatDate(
+          data.predictionDate
+        )}
+      </strong>
+
+      <br>
+
+      Database:
+      ${totalDraws} kỳ
+
+      • kiểm định:
+      ${data.analyzedDraws} kỳ
+
+      • baseline:
+      ${data.baselineRate}%
+
+      <br><br>
+
+      Điều kiện mặc định:
+
+      ≥ ${data.rule?.minSamples} mẫu
+
+      • rate ≥
+      ${data.rule?.minContinuationRate}%
+
+      • edge ≥
+      ${data.rule?.minEdgeVsBaseline}%
+
+      • Wilson Edge ≥
+      ${data.rule?.minWilsonEdge}%
+
+      <br>
+
+      Cầu không đủ bằng chứng trong
+      60 kỳ gần nhất được chuyển sang
+      nhóm lịch sử và không dùng
+      làm gợi ý hôm nay.
+
+    </div>
+
+  `;
+}
+  data,
   totalDraws
 ) {
 
