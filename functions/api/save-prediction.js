@@ -1502,29 +1502,22 @@ export async function onRequestGet(
     */
 
     const predictionDate =
-      firstDefined(
-        predict?.data?.predictionDate,
-        predict?.predictionDate
-      );
+  predict?.data?.predictionDate ??
+  predict?.predictionDate;
 
+const sourceDate =
+  predict?.data?.sourceDate ??
+  predict?.data?.latestResult ??
+  predict?.latestResult ??
+  predict?.sourceDate;
 
-    const sourceDate =
-      firstDefined(
-        predict?.data?.sourceDate,
-        predict?.data?.latestResult,
-        predict?.latestResult,
-        predict?.sourceDate
-      );
-
-
-    if (
-      !predictionDate
-    ) {
-
-      throw new Error(
-        "Predict API không trả predictionDate"
-      );
-    }
+if (!predictionDate) {
+  throw new Error(
+    `Predict API không trả predictionDate. Keys: ${
+      Object.keys(predict || {}).join(", ")
+    }`
+  );
+}
 
 
     /*
