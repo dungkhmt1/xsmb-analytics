@@ -1055,3 +1055,161 @@ button {
   }
 
 }
+/* =====================================================
+   SIMPLE TODAY ANALYSIS
+===================================================== */
+
+.simple-section-title,
+.simple-analysis-head {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.simple-analysis-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+
+  margin-bottom: 10px;
+}
+
+.simple-analysis-date {
+  font-size: 13px;
+  font-weight: 400;
+  opacity: .75;
+}
+
+
+/* LIVE */
+
+.simple-live-box {
+  padding: 14px;
+  margin-bottom: 14px;
+
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 12px;
+
+  background: var(--card-bg, #fff);
+}
+
+.simple-live-priority {
+  margin-top: 12px;
+
+  font-size: 12px;
+  font-weight: 700;
+
+  opacity: .65;
+}
+
+.simple-live-number {
+  margin-top: 4px;
+
+  font-size: 42px;
+  line-height: 1;
+
+  font-weight: 800;
+}
+
+.simple-live-bridge {
+  margin-top: 10px;
+
+  font-size: 14px;
+  font-weight: 600;
+}
+
+
+/* TOP 5 */
+
+.simple-suggestion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.simple-suggestion-card {
+  padding: 12px;
+
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 12px;
+
+  background: var(--card-bg, #fff);
+}
+
+.simple-suggestion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.simple-rank {
+  font-weight: 700;
+}
+
+.simple-strength {
+  margin-left: 6px;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  opacity: .65;
+}
+
+.simple-number {
+  font-size: 30px;
+  line-height: 1;
+
+  font-weight: 800;
+}
+
+.simple-bridge {
+  margin-top: 7px;
+
+  font-size: 14px;
+  font-weight: 600;
+}
+
+
+/* HISTORY */
+
+.simple-label {
+  margin-top: 10px;
+  margin-bottom: 4px;
+
+  font-size: 12px;
+  font-weight: 600;
+
+  opacity: .6;
+}
+
+.simple-history {
+  font-size: 13px;
+}
+
+.simple-history-line {
+  padding: 2px 0;
+}
+
+.simple-history-empty {
+  font-size: 13px;
+  opacity: .6;
+}
+
+.simple-hit {
+  font-weight: 700;
+}
+
+.simple-miss {
+  font-weight: 700;
+}
+
+.simple-pending {
+  font-size: 12px;
+  opacity: .65;
+}
+
+.simple-streak {
+  margin-top: 8px;
+
+  font-size: 13px;
+}
