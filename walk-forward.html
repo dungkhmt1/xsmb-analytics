@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
+
   <meta charset="UTF-8">
 
   <meta
@@ -9,10 +11,11 @@
   >
 
   <title>
-    XSMB Walk-forward V2.7.1
+    XSMB Walk-forward V2.7.2
   </title>
 
   <style>
+
     * {
       box-sizing: border-box;
     }
@@ -21,6 +24,7 @@
       margin: 0;
       background: #f5f6f8;
       color: #202124;
+
       font-family:
         -apple-system,
         BlinkMacSystemFont,
@@ -30,74 +34,80 @@
     }
 
     .page {
-      width: min(1100px, 100%);
+      width: min(1180px, 100%);
       margin: 0 auto;
       padding: 16px;
     }
 
-    .header {
-      background: white;
+    .panel {
+      background: #fff;
       border-radius: 14px;
-      padding: 18px;
+      padding: 16px;
       margin-bottom: 14px;
+
       box-shadow:
         0 2px 10px
         rgba(0, 0, 0, 0.06);
     }
 
-    .header h1 {
-      margin: 0 0 8px;
-      font-size: 24px;
+    h1,
+    h2 {
+      margin-top: 0;
     }
 
-    .header p {
-      margin: 5px 0;
+    h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+
+    p {
+      margin: 6px 0;
       color: #5f6368;
       line-height: 1.5;
     }
 
-    .panel {
-      background: white;
-      border-radius: 14px;
-      padding: 16px;
-      margin-bottom: 14px;
-      box-shadow:
-        0 2px 10px
-        rgba(0, 0, 0, 0.06);
-    }
-
     .controls {
       display: grid;
+
       grid-template-columns:
         repeat(
           auto-fit,
-          minmax(160px, 1fr)
+          minmax(150px, 1fr)
         );
-      gap: 12px;
+
+      gap: 10px;
       align-items: end;
     }
 
     label {
       display: block;
-      font-size: 13px;
-      color: #5f6368;
       margin-bottom: 5px;
+      color: #5f6368;
+      font-size: 13px;
     }
 
     select,
-    input,
     button {
       width: 100%;
       min-height: 42px;
+
       border-radius: 9px;
       border: 1px solid #dadce0;
+
       padding: 8px 10px;
       font-size: 15px;
+
+      background: #fff;
     }
 
     button {
       cursor: pointer;
-      font-weight: 600;
+      font-weight: 700;
     }
 
     button:disabled {
@@ -107,19 +117,18 @@
 
     .primary {
       background: #202124;
-      color: white;
+      color: #fff;
       border-color: #202124;
     }
 
     .danger {
-      background: white;
       color: #b3261e;
       border-color: #b3261e;
     }
 
     .status {
       margin-top: 14px;
-      min-height: 24px;
+      min-height: 22px;
       font-size: 14px;
     }
 
@@ -132,19 +141,23 @@
     }
 
     .progress {
+      width: 0;
       height: 100%;
-      width: 0%;
       background: #202124;
-      transition: width 0.2s;
+
+      transition:
+        width 0.15s ease;
     }
 
     .metric-grid {
       display: grid;
+
       grid-template-columns:
         repeat(
           auto-fit,
           minmax(210px, 1fr)
         );
+
       gap: 12px;
     }
 
@@ -156,40 +169,35 @@
 
     .metric-title {
       font-size: 14px;
-      font-weight: 700;
-      margin-bottom: 10px;
+      font-weight: 800;
+      margin-bottom: 8px;
     }
 
     .metric-value {
-      font-size: 27px;
-      font-weight: 750;
+      font-size: 28px;
+      font-weight: 800;
       margin-bottom: 8px;
     }
 
     .metric-line {
       font-size: 13px;
-      margin: 4px 0;
       color: #5f6368;
+      margin: 4px 0;
     }
 
     .positive {
       color: #137333;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .negative {
       color: #b3261e;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .neutral {
       color: #5f6368;
-      font-weight: 700;
-    }
-
-    .section-title {
-      margin: 0 0 12px;
-      font-size: 18px;
+      font-weight: 800;
     }
 
     .table-wrap {
@@ -200,17 +208,18 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 650px;
+      min-width: 720px;
     }
 
     th,
     td {
       border-bottom:
         1px solid #eceff1;
-      padding: 10px 8px;
+
+      padding: 9px 8px;
       text-align: left;
-      font-size: 13px;
       vertical-align: top;
+      font-size: 13px;
     }
 
     th {
@@ -220,13 +229,19 @@
 
     .number {
       display: inline-block;
+
       min-width: 31px;
+
       text-align: center;
+
       padding: 4px 6px;
       margin: 2px;
+
       border-radius: 7px;
+
       background: #f1f3f4;
-      font-weight: 700;
+
+      font-weight: 800;
     }
 
     .number.hit {
@@ -236,92 +251,121 @@
 
     .hit-text {
       color: #137333;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .miss-text {
       color: #b3261e;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .small {
       color: #5f6368;
       font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .warning {
+      margin-top: 10px;
+      padding: 10px;
+
+      border-radius: 9px;
+
+      background: #fff8e1;
+      color: #7a5b00;
+
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .error {
+      margin-top: 10px;
+      padding: 10px;
+
+      border-radius: 9px;
+
+      background: #fce8e6;
+      color: #b3261e;
+
+      font-size: 13px;
     }
 
     .hidden {
       display: none;
     }
 
-    .error-box {
-      padding: 10px;
-      margin-top: 10px;
-      border-radius: 9px;
-      background: #fce8e6;
-      color: #b3261e;
-      font-size: 13px;
-    }
-
     @media (
       max-width: 600px
     ) {
+
       .page {
         padding: 10px;
       }
 
-      .header h1 {
+      h1 {
         font-size: 20px;
       }
 
       .metric-value {
-        font-size: 23px;
+        font-size: 24px;
       }
     }
+
   </style>
+
 </head>
+
 
 <body>
 
 <div class="page">
 
-  <div class="header">
+
+  <!-- ===============================================
+       HEADER
+  ================================================ -->
+
+  <div class="panel">
 
     <h1>
-      Walk-forward V2.7.1
+      Walk-forward V2.7.2
     </h1>
 
     <p>
-      Kiểm định Bridge V2.6.2 bằng dữ liệu
-      chưa được nhìn thấy tại thời điểm dự đoán.
+      Bridge V2.6.2 được kiểm định hoàn toàn
+      trên trình duyệt.
     </p>
 
     <p>
-      Mỗi ngày được xử lý bằng một request riêng
-      để giảm tải Cloudflare.
+      Cloudflare chỉ đọc dữ liệu D1 một lần;
+      không chạy backtest nặng trên Worker.
     </p>
 
   </div>
 
 
-  <!-- =================================================
+  <!-- ===============================================
        CONTROLS
-  ================================================== -->
+  ================================================ -->
 
   <div class="panel">
 
     <div class="controls">
 
+
       <div>
+
         <label>
           Số ngày kiểm tra
         </label>
 
         <select id="test-days">
+
           <option value="5">
             5 ngày
           </option>
 
-          <option value="10" selected>
+          <option value="10">
             10 ngày
           </option>
 
@@ -329,23 +373,34 @@
             20 ngày
           </option>
 
-          <option value="30">
+          <option
+            value="30"
+            selected
+          >
             30 ngày
           </option>
 
           <option value="60">
             60 ngày
           </option>
+
+          <option value="90">
+            90 ngày
+          </option>
+
         </select>
+
       </div>
 
 
       <div>
+
         <label>
-          Window lịch sử
+          Window lịch sử tối đa
         </label>
 
-        <select id="history-window">
+        <select id="model-window">
+
           <option value="120">
             120 kỳ
           </option>
@@ -354,55 +409,80 @@
             150 kỳ
           </option>
 
-          <option value="200" selected>
+          <option value="180">
+            180 kỳ
+          </option>
+
+          <option
+            value="200"
+            selected
+          >
             200 kỳ
           </option>
+
         </select>
+
       </div>
 
 
       <div>
+
         <label>
-          Nghỉ giữa request
+          Train tối thiểu
         </label>
 
-        <select id="request-delay">
-          <option value="200">
-            0.2 giây
+        <select id="min-train">
+
+          <option value="80">
+            80 kỳ
           </option>
 
-          <option value="400" selected>
-            0.4 giây
+          <option
+            value="100"
+            selected
+          >
+            100 kỳ
           </option>
 
-          <option value="800">
-            0.8 giây
+          <option value="120">
+            120 kỳ
           </option>
+
         </select>
+
       </div>
 
 
       <div>
+
         <button
           id="start-button"
           class="primary"
           onclick="startWalkForward()"
         >
-          Chạy Walk-forward
+
+          Chạy V2.7.2
+
         </button>
+
       </div>
 
 
       <div>
+
         <button
           id="stop-button"
           class="danger"
           onclick="stopWalkForward()"
           disabled
         >
+
           Dừng
+
         </button>
+
       </div>
+
 
     </div>
 
@@ -411,31 +491,42 @@
       id="status"
       class="status"
     >
+
       Sẵn sàng.
+
     </div>
 
 
     <div class="progress-wrap">
+
       <div
         id="progress"
         class="progress"
       ></div>
+
     </div>
+
+
+    <div
+      id="data-info"
+      class="small"
+      style="margin-top:10px"
+    ></div>
 
   </div>
 
 
-  <!-- =================================================
+  <!-- ===============================================
        SUMMARY
-  ================================================== -->
+  ================================================ -->
 
   <div
     id="summary-panel"
     class="panel hidden"
   >
 
-    <h2 class="section-title">
-      Tổng hợp Top 1 / Top 3 / Top 5
+    <h2>
+      Top 1 / Top 3 / Top 5
     </h2>
 
     <div
@@ -443,19 +534,32 @@
       class="metric-grid"
     ></div>
 
+
+    <div class="warning">
+
+      Lift = Hit rate của model − baseline
+      ngẫu nhiên tương ứng với số lượng số đã chọn.
+
+      <br>
+
+      Score V2.6.2 là điểm xếp hạng,
+      không phải xác suất trúng.
+
+    </div>
+
   </div>
 
 
-  <!-- =================================================
+  <!-- ===============================================
        RANK
-  ================================================== -->
+  ================================================ -->
 
   <div
     id="rank-panel"
     class="panel hidden"
   >
 
-    <h2 class="section-title">
+    <h2>
       Hiệu quả từng thứ hạng
     </h2>
 
@@ -467,16 +571,16 @@
   </div>
 
 
-  <!-- =================================================
+  <!-- ===============================================
        STREAK
-  ================================================== -->
+  ================================================ -->
 
   <div
     id="streak-panel"
     class="panel hidden"
   >
 
-    <h2 class="section-title">
+    <h2>
       Hiệu quả theo Streak
     </h2>
 
@@ -488,16 +592,16 @@
   </div>
 
 
-  <!-- =================================================
+  <!-- ===============================================
        STRENGTH
-  ================================================== -->
+  ================================================ -->
 
   <div
     id="strength-panel"
     class="panel hidden"
   >
 
-    <h2 class="section-title">
+    <h2>
       Hiệu quả theo Strength
     </h2>
 
@@ -509,16 +613,16 @@
   </div>
 
 
-  <!-- =================================================
-       RECENT STATUS
-  ================================================== -->
+  <!-- ===============================================
+       RECENT
+  ================================================ -->
 
   <div
     id="recent-panel"
     class="panel hidden"
   >
 
-    <h2 class="section-title">
+    <h2>
       Hiệu quả theo Recent Evidence
     </h2>
 
@@ -530,16 +634,16 @@
   </div>
 
 
-  <!-- =================================================
+  <!-- ===============================================
        DAILY
-  ================================================== -->
+  ================================================ -->
 
   <div
     id="daily-panel"
     class="panel hidden"
   >
 
-    <h2 class="section-title">
+    <h2>
       Chi tiết từng ngày
     </h2>
 
@@ -551,27 +655,92 @@
   </div>
 
 
-  <!-- =================================================
-       ERRORS
-  ================================================== -->
+  <!-- ===============================================
+       ERROR
+  ================================================ -->
 
   <div
     id="error-panel"
     class="panel hidden"
   >
 
-    <h2 class="section-title">
-      Request lỗi
+    <h2>
+      Lỗi
     </h2>
 
-    <div id="errors"></div>
+    <div
+      id="error-text"
+      class="error"
+    ></div>
 
   </div>
+
 
 </div>
 
 
 <script>
+
+/*
+========================================================
+VERSION / MODEL CONFIG
+========================================================
+*/
+
+const VERSION =
+  "walk-forward-v2.7.2";
+
+const MODEL_VERSION =
+  "bridge-v2.6.2";
+
+
+const PRIZES = [
+  "special",
+  "g1",
+  "g2",
+  "g3",
+  "g4",
+  "g5",
+  "g6",
+  "g7"
+];
+
+
+const LABELS = {
+  special: "ĐB",
+  g1: "G1",
+  g2: "G2",
+  g3: "G3",
+  g4: "G4",
+  g5: "G5",
+  g6: "G6",
+  g7: "G7"
+};
+
+
+const MIN_CURRENT_STREAK = 2;
+
+const MAX_CURRENT_STREAK = 5;
+
+const REJECT_STREAK_FROM = 6;
+
+
+const MIN_SAMPLES = 10;
+
+const MIN_RATE = 40;
+
+const MIN_EDGE = 10;
+
+const MIN_WILSON_EDGE = 0;
+
+
+const RECENT_ACTIVE_SAMPLES = 5;
+
+const RECENT_LIMITED_SAMPLES = 3;
+
+
+const MAX_RECOMMENDATIONS = 12;
+
 
 /*
 ========================================================
@@ -583,26 +752,29 @@ let running = false;
 
 let stopRequested = false;
 
-let currentController = null;
+let engine = null;
 
-let successfulResults = [];
-
-let failedResults = [];
+let dailyResults = [];
 
 
 /*
 ========================================================
-HELPERS
+BASIC HELPERS
 ========================================================
 */
 
-function sleep(ms) {
-  return new Promise(
-    resolve =>
-      setTimeout(
-        resolve,
-        ms
-      )
+function clamp(
+  value,
+  min,
+  max
+) {
+
+  return Math.max(
+    min,
+    Math.min(
+      max,
+      Number(value)
+    )
   );
 }
 
@@ -611,13 +783,16 @@ function round(
   value,
   digits = 2
 ) {
+
   const p =
     10 ** digits;
+
 
   return (
     Math.round(
       (
-        Number(value) +
+        Number(value)
+        +
         Number.EPSILON
       )
       *
@@ -629,19 +804,37 @@ function round(
 }
 
 
-function percent(value) {
-  return (
-    round(
-      value,
-      2
-    )
-    +
-    "%"
+function sleep(ms) {
+
+  return new Promise(
+    resolve =>
+      setTimeout(
+        resolve,
+        ms
+      )
   );
 }
 
 
+function splitPrize(value) {
+
+  if (!value) {
+    return [];
+  }
+
+
+  return String(value)
+    .trim()
+    .split(/\s+/)
+    .filter(
+      value =>
+        /^\d+$/.test(value)
+    );
+}
+
+
 function escapeHtml(value) {
+
   return String(
     value ?? ""
   )
@@ -669,19 +862,26 @@ function escapeHtml(value) {
 
 
 function formatDate(value) {
+
   if (!value) {
     return "--";
   }
+
 
   const parts =
     String(value)
       .split("-");
 
+
   if (
     parts.length !== 3
   ) {
-    return escapeHtml(value);
+
+    return escapeHtml(
+      value
+    );
   }
+
 
   return (
     `${parts[2]}/` +
@@ -691,7 +891,19 @@ function formatDate(value) {
 }
 
 
+function percent(value) {
+
+  return (
+    `${round(
+      value,
+      2
+    )}%`
+  );
+}
+
+
 function setStatus(message) {
+
   document
     .getElementById(
       "status"
@@ -702,33 +914,79 @@ function setStatus(message) {
 
 
 function updateProgress(
-  completed,
+  done,
   total
 ) {
-  const percentage =
+
+  const value =
     total > 0
       ?
-      completed /
+      done /
       total *
       100
       :
       0;
+
 
   document
     .getElementById(
       "progress"
     )
     .style.width =
-      `${percentage}%`;
+      `${value}%`;
+}
+
+
+function showError(message) {
+
+  document
+    .getElementById(
+      "error-text"
+    )
+    .textContent =
+      message;
+
+
+  document
+    .getElementById(
+      "error-panel"
+    )
+    .classList
+    .remove(
+      "hidden"
+    );
+}
+
+
+function clearError() {
+
+  document
+    .getElementById(
+      "error-panel"
+    )
+    .classList
+    .add(
+      "hidden"
+    );
+
+
+  document
+    .getElementById(
+      "error-text"
+    )
+    .textContent =
+      "";
 }
 
 
 function liftClass(value) {
+
   if (
     value > 0
   ) {
     return "positive";
   }
+
 
   if (
     value < 0
@@ -736,168 +994,2733 @@ function liftClass(value) {
     return "negative";
   }
 
+
   return "neutral";
 }
 
 
 /*
 ========================================================
-FETCH ONE DAY
+VALIDATE / NORMALIZE
 ========================================================
 */
 
-async function fetchOffset(
-  offset,
-  historyWindow
-) {
-  let lastError = null;
+function validRow(row) {
+
+  if (!row) {
+    return false;
+  }
+
+
+  const special =
+    splitPrize(
+      row.special
+    );
+
+  const g1 =
+    splitPrize(
+      row.g1
+    );
+
+  const g2 =
+    splitPrize(
+      row.g2
+    );
+
+  const g3 =
+    splitPrize(
+      row.g3
+    );
+
+  const g4 =
+    splitPrize(
+      row.g4
+    );
+
+  const g5 =
+    splitPrize(
+      row.g5
+    );
+
+  const g6 =
+    splitPrize(
+      row.g6
+    );
+
+  const g7 =
+    splitPrize(
+      row.g7
+    );
+
+
+  return (
+
+    special.length === 1
+
+    &&
+
+    g1.length === 1
+
+    &&
+
+    g2.length === 2
+
+    &&
+
+    g3.length === 6
+
+    &&
+
+    g4.length === 4
+
+    &&
+
+    g5.length === 6
+
+    &&
+
+    g6.length === 3
+
+    &&
+
+    g7.length === 4
+
+    &&
+
+    special.every(
+      x =>
+        /^\d{5}$/.test(x)
+    )
+
+    &&
+
+    g1.every(
+      x =>
+        /^\d{5}$/.test(x)
+    )
+
+    &&
+
+    g2.every(
+      x =>
+        /^\d{5}$/.test(x)
+    )
+
+    &&
+
+    g3.every(
+      x =>
+        /^\d{5}$/.test(x)
+    )
+
+    &&
+
+    g4.every(
+      x =>
+        /^\d{4}$/.test(x)
+    )
+
+    &&
+
+    g5.every(
+      x =>
+        /^\d{4}$/.test(x)
+    )
+
+    &&
+
+    g6.every(
+      x =>
+        /^\d{3}$/.test(x)
+    )
+
+    &&
+
+    g7.every(
+      x =>
+        /^\d{2}$/.test(x)
+    )
+  );
+}
+
+
+function normalizeRow(row) {
+
+  const prizes = {};
+
+
+  for (
+    const prize
+    of PRIZES
+  ) {
+
+    prizes[prize] =
+      splitPrize(
+        row[prize]
+      );
+  }
 
 
   /*
-  Thử tối đa 2 lần.
+  Loto flags 00-99.
   */
 
+  const lotoFlags =
+    new Uint8Array(
+      100
+    );
+
+
+  let lotoCount = 0;
+
+
   for (
-    let attempt = 1;
-    attempt <= 2;
-    attempt++
+    const prize
+    of PRIZES
   ) {
-    if (
-      stopRequested
+
+    for (
+      const number
+      of prizes[prize]
     ) {
-      throw new Error(
-        "Đã dừng."
-      );
-    }
 
-
-    currentController =
-      new AbortController();
-
-
-    try {
-
-      const url =
-        `/api/walk-forward-v27` +
-        `?offset=${offset}` +
-        `&window=${historyWindow}` +
-        `&t=${Date.now()}`;
-
-
-      const response =
-        await fetch(
-          url,
-          {
-            cache:
-              "no-store",
-
-            signal:
-              currentController.signal
-          }
+      const value =
+        Number(
+          number.slice(-2)
         );
 
 
-      const text =
-        await response.text();
-
-
-      let data = null;
-
-
-      try {
-        data =
-          JSON.parse(text);
-      }
-      catch {
-        data = null;
-      }
-
-
       if (
-        !response.ok
+        !lotoFlags[
+          value
+        ]
       ) {
 
-        let message =
-          data?.message
-          ||
-          `HTTP ${response.status}`;
+        lotoFlags[
+          value
+        ] = 1;
 
 
-        if (
-          text.includes(
-            "1102"
-          )
-        ) {
-          message =
-            "Cloudflare 1102";
-        }
-
-
-        throw new Error(
-          message
-        );
-      }
-
-
-      if (
-        !data
-        ||
-        !data.success
-      ) {
-        throw new Error(
-          data?.message
-          ||
-          "Response không hợp lệ."
-        );
-      }
-
-
-      return data;
-
-    }
-    catch (error) {
-
-      lastError =
-        error;
-
-
-      if (
-        error.name ===
-        "AbortError"
-      ) {
-        throw error;
-      }
-
-
-      /*
-      Trước lần retry thứ 2
-      nghỉ lâu hơn.
-      */
-
-      if (
-        attempt < 2
-      ) {
-        await sleep(
-          1200
-        );
+        lotoCount++;
       }
     }
   }
 
 
-  throw (
-    lastError
-    ||
-    new Error(
-      "Request thất bại."
-    )
+  return {
+
+    draw_date:
+      row.draw_date,
+
+    prizes,
+
+    lotoFlags,
+
+    lotoCount
+  };
+}
+
+
+/*
+========================================================
+POSITIONS
+========================================================
+*/
+
+function buildPositions(row) {
+
+  const positions = [];
+
+
+  for (
+    const prize
+    of PRIZES
+  ) {
+
+    const numbers =
+      row.prizes[
+        prize
+      ];
+
+
+    numbers.forEach(
+      (
+        number,
+        numberIndex
+      ) => {
+
+        for (
+          let digitIndex = 0;
+          digitIndex <
+            number.length;
+          digitIndex++
+        ) {
+
+          positions.push({
+
+            index:
+              positions.length,
+
+            prize,
+
+            numberIndex,
+
+            digitIndex,
+
+            key:
+              `${prize}:` +
+              `${numberIndex}:` +
+              `${digitIndex}`
+          });
+        }
+      }
+    );
+  }
+
+
+  return positions;
+}
+
+
+function positionName(
+  position
+) {
+
+  return (
+
+    `${LABELS[
+      position.prize
+    ]}`
+
+    +
+
+    `[${position.numberIndex + 1}]`
+
+    +
+
+    `.D${position.digitIndex + 1}`
   );
 }
 
 
 /*
 ========================================================
-START
+DIGIT MATRIX
+========================================================
+*/
+
+function buildDigitRows(
+  rows,
+  positions
+) {
+
+  return rows.map(
+    row => {
+
+      const digits =
+        new Uint8Array(
+          positions.length
+        );
+
+
+      for (
+        const position
+        of positions
+      ) {
+
+        const number =
+          row.prizes[
+            position.prize
+          ][
+            position.numberIndex
+          ];
+
+
+        digits[
+          position.index
+        ] =
+          number.charCodeAt(
+            position.digitIndex
+          )
+          -
+          48;
+      }
+
+
+      return digits;
+    }
+  );
+}
+
+
+/*
+========================================================
+BUILD RULES
+========================================================
+*/
+
+function buildRules(
+  positions
+) {
+
+  const rules = [];
+
+
+  for (
+    let a = 0;
+    a < positions.length;
+    a++
+  ) {
+
+    const positionA =
+      positions[a];
+
+
+    for (
+      let b = a + 1;
+      b < positions.length;
+      b++
+    ) {
+
+      const positionB =
+        positions[b];
+
+
+      /*
+      Giống V2.6.2:
+      bỏ cặp trong cùng giải.
+      */
+
+      if (
+        positionA.prize ===
+        positionB.prize
+      ) {
+        continue;
+      }
+
+
+      const nameA =
+        positionName(
+          positionA
+        );
+
+
+      const nameB =
+        positionName(
+          positionB
+        );
+
+
+      /*
+      A+B
+      */
+
+      rules.push({
+
+        a,
+
+        b,
+
+        reverse:
+          false,
+
+        positionAKey:
+          positionA.key,
+
+        positionBKey:
+          positionB.key,
+
+        bridgeKey:
+          `${positionA.key}|` +
+          `${positionB.key}|A+B`,
+
+        bridge:
+          `${nameA} + ${nameB}`
+      });
+
+
+      /*
+      B+A
+      */
+
+      rules.push({
+
+        a,
+
+        b,
+
+        reverse:
+          true,
+
+        positionAKey:
+          positionA.key,
+
+        positionBKey:
+          positionB.key,
+
+        bridgeKey:
+          `${positionA.key}|` +
+          `${positionB.key}|B+A`,
+
+        bridge:
+          `${nameB} + ${nameA}`
+      });
+
+    }
+  }
+
+
+  return rules;
+}
+
+
+function numberForRule(
+  digits,
+  rule
+) {
+
+  const a =
+    digits[
+      rule.a
+    ];
+
+
+  const b =
+    digits[
+      rule.b
+    ];
+
+
+  return rule.reverse
+    ?
+    b * 10 + a
+    :
+    a * 10 + b;
+}
+
+
+function numberText(value) {
+
+  return String(value)
+    .padStart(
+      2,
+      "0"
+    );
+}
+
+
+/*
+========================================================
+PRECOMPUTE HIT MATRIX
+========================================================
+*/
+
+function buildHitMatrix(
+  rows,
+  digitRows,
+  rules
+) {
+
+  const transitions =
+    rows.length - 1;
+
+
+  /*
+  Khoảng:
+  9422 rule × 200 transition
+  ≈ 1.9 triệu byte.
+  */
+
+  const hits =
+    new Uint8Array(
+      rules.length *
+      transitions
+    );
+
+
+  for (
+    let ruleIndex = 0;
+    ruleIndex <
+      rules.length;
+    ruleIndex++
+  ) {
+
+    const rule =
+      rules[
+        ruleIndex
+      ];
+
+
+    const base =
+      ruleIndex *
+      transitions;
+
+
+    for (
+      let t = 0;
+      t < transitions;
+      t++
+    ) {
+
+      const number =
+        numberForRule(
+          digitRows[t],
+          rule
+        );
+
+
+      hits[
+        base + t
+      ] =
+        rows[
+          t + 1
+        ]
+          .lotoFlags[
+            number
+          ]
+          ?
+          1
+          :
+          0;
+    }
+  }
+
+
+  return {
+
+    hits,
+
+    transitions
+  };
+}
+
+
+/*
+========================================================
+WILSON
+========================================================
+*/
+
+function wilsonLowerBound(
+  successes,
+  total
+) {
+
+  if (
+    total <= 0
+  ) {
+    return 0;
+  }
+
+
+  const z = 1.96;
+
+
+  const p =
+    successes /
+    total;
+
+
+  const denominator =
+    1 +
+    z * z /
+    total;
+
+
+  const centre =
+    p +
+    z * z /
+    (
+      2 *
+      total
+    );
+
+
+  const adjustment =
+    z *
+    Math.sqrt(
+
+      p *
+      (
+        1 - p
+      )
+      /
+      total
+
+      +
+
+      z * z /
+      (
+        4 *
+        total *
+        total
+      )
+    );
+
+
+  return (
+    centre -
+    adjustment
+  )
+  /
+  denominator;
+}
+
+
+/*
+========================================================
+BASELINE
+========================================================
+*/
+
+function baselineForRange(
+  rows,
+  trainStart,
+  sourceIndex
+) {
+
+  let total = 0;
+
+  let count = 0;
+
+
+  /*
+  Giống V2.6.2:
+  bỏ kỳ đầu vì không có transition trước nó.
+  */
+
+  for (
+    let i =
+      trainStart + 1;
+
+    i <= sourceIndex;
+
+    i++
+  ) {
+
+    total +=
+      rows[i]
+        .lotoCount;
+
+
+    count++;
+  }
+
+
+  return count
+    ?
+    total / count
+    :
+    0;
+}
+
+
+/*
+========================================================
+CURRENT STREAK
+========================================================
+*/
+
+function currentStreak(
+  engine,
+  ruleIndex,
+  trainStart,
+  sourceIndex
+) {
+
+  const {
+    hits,
+    transitions
+  } =
+    engine;
+
+
+  const base =
+    ruleIndex *
+    transitions;
+
+
+  let streak = 0;
+
+
+  /*
+  sourceIndex là kỳ nguồn.
+
+  Transition cuối đã biết:
+  sourceIndex - 1
+  */
+
+  for (
+    let t =
+      sourceIndex - 1;
+
+    t >= trainStart;
+
+    t--
+  ) {
+
+    if (
+      !hits[
+        base + t
+      ]
+    ) {
+      break;
+    }
+
+
+    streak++;
+
+
+    if (
+      streak >=
+      REJECT_STREAK_FROM
+    ) {
+      break;
+    }
+  }
+
+
+  return streak;
+}
+
+
+/*
+========================================================
+SINGLE PASS HISTORICAL ANALYSIS
+========================================================
+*/
+
+function analyzeRule(
+
+  engine,
+
+  ruleIndex,
+
+  trainStart,
+
+  sourceIndex,
+
+  streak,
+
+  baselineRate
+
+) {
+
+  const {
+    hits,
+    transitions
+  } =
+    engine;
+
+
+  const base =
+    ruleIndex *
+    transitions;
+
+
+  /*
+  Loại current streak
+  khỏi phần backtest lịch sử.
+  */
+
+  const historicalEndExclusive =
+    sourceIndex -
+    streak;
+
+
+  const all = {
+    opportunities: 0,
+    continued: 0
+  };
+
+
+  const w30 = {
+    opportunities: 0,
+    continued: 0
+  };
+
+
+  const w60 = {
+    opportunities: 0,
+    continued: 0
+  };
+
+
+  const w100 = {
+    opportunities: 0,
+    continued: 0
+  };
+
+
+  const start30 =
+    Math.max(
+      trainStart,
+      historicalEndExclusive -
+      30
+    );
+
+
+  const start60 =
+    Math.max(
+      trainStart,
+      historicalEndExclusive -
+      60
+    );
+
+
+  const start100 =
+    Math.max(
+      trainStart,
+      historicalEndExclusive -
+      100
+    );
+
+
+  let consecutiveBefore = 0;
+
+
+  let weightedTotal = 0;
+
+  let weightedHits = 0;
+
+
+  /*
+  Một lần quét duy nhất.
+
+  Không backtest 4 lần
+  như phiên bản Worker cũ.
+  */
+
+  for (
+    let t =
+      trainStart;
+
+    t <
+      historicalEndExclusive;
+
+    t++
+  ) {
+
+    if (
+      consecutiveBefore >=
+      streak
+    ) {
+
+      const hit =
+        hits[
+          base + t
+        ] === 1;
+
+
+      all.opportunities++;
+
+
+      if (hit) {
+        all.continued++;
+      }
+
+
+      /*
+      30 kỳ
+      */
+
+      if (
+        t - streak >=
+        start30
+      ) {
+
+        w30.opportunities++;
+
+
+        if (hit) {
+          w30.continued++;
+        }
+      }
+
+
+      /*
+      60 kỳ
+      */
+
+      if (
+        t - streak >=
+        start60
+      ) {
+
+        w60.opportunities++;
+
+
+        if (hit) {
+          w60.continued++;
+        }
+      }
+
+
+      /*
+      100 kỳ
+      */
+
+      if (
+        t - streak >=
+        start100
+      ) {
+
+        w100.opportunities++;
+
+
+        if (hit) {
+          w100.continued++;
+        }
+      }
+
+
+      /*
+      Recent weighting.
+      */
+
+      const age =
+        historicalEndExclusive -
+        1 -
+        t;
+
+
+      const weight =
+        Math.exp(
+          -age / 60
+        );
+
+
+      weightedTotal +=
+        weight;
+
+
+      if (hit) {
+
+        weightedHits +=
+          weight;
+      }
+    }
+
+
+    /*
+    Update run cho transition hiện tại.
+    */
+
+    if (
+      hits[
+        base + t
+      ]
+    ) {
+
+      consecutiveBefore++;
+
+    }
+    else {
+
+      consecutiveBefore = 0;
+    }
+  }
+
+
+  const rate =
+    bucket => {
+
+      return (
+        bucket.opportunities
+          ?
+          bucket.continued /
+          bucket.opportunities *
+          100
+          :
+          0
+      );
+    };
+
+
+  const rateAll =
+    rate(all);
+
+
+  const rate30 =
+    rate(w30);
+
+
+  const rate60 =
+    rate(w60);
+
+
+  const rate100 =
+    rate(w100);
+
+
+  const wilson =
+    wilsonLowerBound(
+      all.continued,
+      all.opportunities
+    )
+    *
+    100;
+
+
+  const edge =
+    rateAll -
+    baselineRate;
+
+
+  const wilsonEdge =
+    wilson -
+    baselineRate;
+
+
+  /*
+  Stability
+  */
+
+  const validRates = [];
+
+
+  for (
+    const item
+    of [
+
+      {
+        samples:
+          w30.opportunities,
+
+        rate:
+          rate30
+      },
+
+      {
+        samples:
+          w60.opportunities,
+
+        rate:
+          rate60
+      },
+
+      {
+        samples:
+          w100.opportunities,
+
+        rate:
+          rate100
+      },
+
+      {
+        samples:
+          all.opportunities,
+
+        rate:
+          rateAll
+      }
+
+    ]
+  ) {
+
+    if (
+      item.samples >= 3
+    ) {
+
+      validRates.push(
+        item.rate
+      );
+    }
+  }
+
+
+  let stabilityRange =
+    30;
+
+
+  if (
+    validRates.length >= 2
+  ) {
+
+    stabilityRange =
+      Math.max(
+        ...validRates
+      )
+      -
+      Math.min(
+        ...validRates
+      );
+  }
+
+
+  const stabilityScore =
+    clamp(
+      100 -
+      stabilityRange * 2,
+      0,
+      100
+    );
+
+
+  /*
+  Sample reliability
+  */
+
+  const sampleReliability =
+    clamp(
+
+      Math.sqrt(
+        all.opportunities /
+        20
+      )
+      *
+      100,
+
+      0,
+
+      100
+    );
+
+
+  /*
+  Recent rate
+  */
+
+  let recentRate =
+    rateAll;
+
+
+  if (
+    w30.opportunities >= 3
+    &&
+    w60.opportunities >= 3
+  ) {
+
+    recentRate =
+      rate30 * 0.6
+      +
+      rate60 * 0.4;
+
+  }
+  else if (
+    w60.opportunities >= 3
+  ) {
+
+    recentRate =
+      rate60;
+
+  }
+  else if (
+    w30.opportunities >= 3
+  ) {
+
+    recentRate =
+      rate30;
+  }
+
+
+  /*
+  Recent status
+  */
+
+  const recentStatus =
+
+    w60.opportunities >=
+      RECENT_ACTIVE_SAMPLES
+
+      ?
+
+      "active"
+
+      :
+
+      w60.opportunities >=
+        RECENT_LIMITED_SAMPLES
+
+        ?
+
+        "limited"
+
+        :
+
+        "historical-only";
+
+
+  /*
+  Raw score V2.6.2
+  */
+
+  const normalizedEdge =
+    clamp(
+
+      50 +
+      edge * 1.5,
+
+      0,
+
+      100
+    );
+
+
+  const rawScore =
+
+    wilson *
+    0.35
+
+    +
+
+    normalizedEdge *
+    0.20
+
+    +
+
+    recentRate *
+    0.15
+
+    +
+
+    stabilityScore *
+    0.15
+
+    +
+
+    sampleReliability *
+    0.15;
+
+
+  return {
+
+    opportunities:
+      all.opportunities,
+
+    continued:
+      all.continued,
+
+    continuationRate:
+      round(
+        rateAll
+      ),
+
+    weightedRate:
+      round(
+
+        weightedTotal > 0
+          ?
+          weightedHits /
+          weightedTotal *
+          100
+          :
+          0
+      ),
+
+    baselineRate:
+      round(
+        baselineRate
+      ),
+
+    edge:
+      round(
+        edge
+      ),
+
+    wilsonLowerBound:
+      round(
+        wilson
+      ),
+
+    wilsonEdge:
+      round(
+        wilsonEdge
+      ),
+
+    rate30:
+      round(
+        rate30
+      ),
+
+    samples30:
+      w30.opportunities,
+
+    rate60:
+      round(
+        rate60
+      ),
+
+    samples60:
+      w60.opportunities,
+
+    rate100:
+      round(
+        rate100
+      ),
+
+    samples100:
+      w100.opportunities,
+
+    recentRate:
+      round(
+        recentRate
+      ),
+
+    recentSamples:
+      w60.opportunities,
+
+    recentStatus,
+
+    stabilityRange:
+      round(
+        stabilityRange
+      ),
+
+    stabilityScore:
+      round(
+        stabilityScore
+      ),
+
+    sampleReliability:
+      round(
+        sampleReliability
+      ),
+
+    rawScore:
+      round(
+        rawScore
+      )
+  };
+}
+
+
+/*
+========================================================
+CONSENSUS
+========================================================
+*/
+
+function calculateIndependent(
+  candidates
+) {
+
+  const sorted =
+    [...candidates]
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          b.rawScore -
+          a.rawScore
+      );
+
+
+  const used =
+    new Set();
+
+
+  let count = 0;
+
+
+  for (
+    const candidate
+    of sorted
+  ) {
+
+    if (
+
+      used.has(
+        candidate.positionAKey
+      )
+
+      ||
+
+      used.has(
+        candidate.positionBKey
+      )
+
+    ) {
+
+      continue;
+    }
+
+
+    used.add(
+      candidate.positionAKey
+    );
+
+
+    used.add(
+      candidate.positionBKey
+    );
+
+
+    count++;
+  }
+
+
+  return count;
+}
+
+
+/*
+========================================================
+STRENGTH
+========================================================
+*/
+
+function classifyStrength(
+
+  item,
+
+  independent,
+
+  finalScore
+
+) {
+
+  /*
+  VERY STRONG
+  */
+
+  if (
+
+    item.opportunities >= 15
+
+    &&
+
+    item.continuationRate >= 50
+
+    &&
+
+    item.wilsonEdge >= 5
+
+    &&
+
+    item.edge >= 20
+
+    &&
+
+    item.stabilityScore >= 70
+
+    &&
+
+    item.recentStatus ===
+      "active"
+
+    &&
+
+    independent >= 2
+
+    &&
+
+    finalScore >= 60
+
+  ) {
+
+    return "very-strong";
+  }
+
+
+  /*
+  STRONG
+  */
+
+  if (
+
+    item.opportunities >= 10
+
+    &&
+
+    item.continuationRate >= 40
+
+    &&
+
+    item.wilsonEdge > 0
+
+    &&
+
+    item.edge >= 10
+
+    &&
+
+    item.stabilityScore >= 60
+
+    &&
+
+    item.recentStatus !==
+      "historical-only"
+
+    &&
+
+    finalScore >= 50
+
+  ) {
+
+    return "strong";
+  }
+
+
+  /*
+  HISTORICAL
+  */
+
+  if (
+
+    item.opportunities >= 10
+
+    &&
+
+    item.continuationRate >= 40
+
+    &&
+
+    item.wilsonEdge > 0
+
+    &&
+
+    item.edge >= 10
+
+    &&
+
+    item.stabilityScore >= 60
+
+    &&
+
+    item.recentStatus ===
+      "historical-only"
+
+  ) {
+
+    return "historical";
+  }
+
+
+  return "qualified";
+}
+
+
+/*
+========================================================
+RANDOM BASELINE TOP K
+========================================================
+*/
+
+function randomHitProbability(
+
+  uniqueLotoCount,
+
+  picks
+
+) {
+
+  const unique =
+    Math.floor(
+      clamp(
+        uniqueLotoCount,
+        0,
+        100
+      )
+    );
+
+
+  const k =
+    Math.floor(
+      clamp(
+        picks,
+        0,
+        100
+      )
+    );
+
+
+  if (
+    unique <= 0
+    ||
+    k <= 0
+  ) {
+
+    return 0;
+  }
+
+
+  if (
+    k >
+    100 -
+    unique
+  ) {
+
+    return 100;
+  }
+
+
+  let miss = 1;
+
+
+  for (
+    let i = 0;
+    i < k;
+    i++
+  ) {
+
+    miss *=
+      (
+        100 -
+        unique -
+        i
+      )
+      /
+      (
+        100 -
+        i
+      );
+  }
+
+
+  return round(
+
+    (
+      1 -
+      miss
+    )
+    *
+    100
+  );
+}
+
+
+/*
+========================================================
+PREDICT ONE HISTORICAL DAY
+========================================================
+*/
+
+function predictHistoricalDay(
+
+  targetIndex,
+
+  modelWindow,
+
+  minTrain
+
+) {
+
+  const rows =
+    engine.rows;
+
+
+  const rules =
+    engine.rules;
+
+
+  const digitRows =
+    engine.digitRows;
+
+
+  /*
+  Target = ngày cần dự đoán.
+
+  Source = ngày ngay trước target.
+  */
+
+  const sourceIndex =
+    targetIndex - 1;
+
+
+  /*
+  Chỉ sử dụng quá khứ.
+  */
+
+  const trainStart =
+    Math.max(
+      0,
+
+      targetIndex -
+      modelWindow
+    );
+
+
+  const trainDraws =
+    targetIndex -
+    trainStart;
+
+
+  if (
+    trainDraws <
+    minTrain
+  ) {
+
+    return null;
+  }
+
+
+  const baselineRate =
+    baselineForRange(
+      rows,
+      trainStart,
+      sourceIndex
+    );
+
+
+  /*
+  ================================================
+  ACTIVE CANDIDATES
+  ================================================
+  */
+
+  const active = [];
+
+
+  for (
+    let ruleIndex = 0;
+    ruleIndex <
+      rules.length;
+    ruleIndex++
+  ) {
+
+    const streak =
+      currentStreak(
+
+        engine,
+
+        ruleIndex,
+
+        trainStart,
+
+        sourceIndex
+      );
+
+
+    if (
+
+      streak <
+        MIN_CURRENT_STREAK
+
+      ||
+
+      streak >
+        MAX_CURRENT_STREAK
+
+    ) {
+
+      continue;
+    }
+
+
+    const rule =
+      rules[
+        ruleIndex
+      ];
+
+
+    const numberValue =
+      numberForRule(
+
+        digitRows[
+          sourceIndex
+        ],
+
+        rule
+      );
+
+
+    active.push({
+
+      ruleIndex,
+
+      numberValue,
+
+      number:
+        numberText(
+          numberValue
+        ),
+
+      streak,
+
+      bridge:
+        rule.bridge,
+
+      bridgeKey:
+        rule.bridgeKey,
+
+      positionAKey:
+        rule.positionAKey,
+
+      positionBKey:
+        rule.positionBKey
+    });
+  }
+
+
+  /*
+  ================================================
+  BACKTEST ACTIVE CANDIDATES
+  ================================================
+  */
+
+  const tested = [];
+
+
+  const rejected = {
+
+    insufficientSamples: 0,
+
+    lowRate: 0,
+
+    lowEdge: 0,
+
+    lowWilsonEdge: 0
+  };
+
+
+  for (
+    const candidate
+    of active
+  ) {
+
+    const performance =
+      analyzeRule(
+
+        engine,
+
+        candidate.ruleIndex,
+
+        trainStart,
+
+        sourceIndex,
+
+        candidate.streak,
+
+        baselineRate
+      );
+
+
+    if (
+      performance.opportunities <
+      MIN_SAMPLES
+    ) {
+
+      rejected
+        .insufficientSamples++;
+
+      continue;
+    }
+
+
+    if (
+      performance.continuationRate <
+      MIN_RATE
+    ) {
+
+      rejected.lowRate++;
+
+      continue;
+    }
+
+
+    if (
+      performance.edge <
+      MIN_EDGE
+    ) {
+
+      rejected.lowEdge++;
+
+      continue;
+    }
+
+
+    if (
+      performance.wilsonEdge <
+      MIN_WILSON_EDGE
+    ) {
+
+      rejected
+        .lowWilsonEdge++;
+
+      continue;
+    }
+
+
+    tested.push({
+
+      ...candidate,
+
+      ...performance
+    });
+  }
+
+
+  /*
+  ================================================
+  GROUP BY NUMBER
+  ================================================
+  */
+
+  const numberGroups =
+    new Map();
+
+
+  for (
+    const item
+    of tested
+  ) {
+
+    if (
+      !numberGroups.has(
+        item.number
+      )
+    ) {
+
+      numberGroups.set(
+        item.number,
+        []
+      );
+    }
+
+
+    numberGroups
+      .get(
+        item.number
+      )
+      .push(
+        item
+      );
+  }
+
+
+  /*
+  ================================================
+  CONSENSUS
+  ================================================
+  */
+
+  const consensusMap =
+    new Map();
+
+
+  for (
+    const [
+      number,
+      items
+    ]
+    of numberGroups
+  ) {
+
+    consensusMap.set(
+
+      number,
+
+      {
+
+        related:
+          items.length,
+
+        independent:
+          calculateIndependent(
+            items
+          )
+      }
+    );
+  }
+
+
+  /*
+  ================================================
+  FINAL SCORE
+  ================================================
+  */
+
+  const ranked =
+    tested.map(
+      item => {
+
+        const consensus =
+          consensusMap.get(
+            item.number
+          )
+          ||
+          {
+            related: 1,
+            independent: 1
+          };
+
+
+        const independent =
+          consensus.independent;
+
+
+        const related =
+          consensus.related;
+
+
+        const consensusBonus =
+          Math.min(
+
+            8,
+
+            Math.max(
+              0,
+              independent - 1
+            )
+            *
+            2
+          );
+
+
+        const correlationPenalty =
+
+          related > 1
+
+            ?
+
+            (
+              1 -
+              independent /
+              related
+            )
+            *
+            10
+
+            :
+
+            0;
+
+
+        const recentAdjustment =
+
+          item.recentStatus ===
+            "active"
+
+            ?
+
+            4
+
+            :
+
+            item.recentStatus ===
+              "historical-only"
+
+              ?
+
+              -6
+
+              :
+
+              0;
+
+
+        const finalScore =
+          clamp(
+
+            item.rawScore
+
+            +
+
+            consensusBonus
+
+            -
+
+            correlationPenalty
+
+            +
+
+            recentAdjustment,
+
+            0,
+
+            100
+          );
+
+
+        return {
+
+          ...item,
+
+          independentConsensus:
+            independent,
+
+          relatedBridgeCount:
+            related,
+
+          consensusBonus:
+            round(
+              consensusBonus
+            ),
+
+          correlationPenalty:
+            round(
+              correlationPenalty
+            ),
+
+          recentAdjustment,
+
+          score:
+            round(
+              finalScore
+            ),
+
+          strength:
+            classifyStrength(
+
+              item,
+
+              independent,
+
+              finalScore
+            )
+        };
+      }
+    );
+
+
+  /*
+  ================================================
+  SORT
+  ================================================
+  */
+
+  const strengthRank = {
+
+    "very-strong": 4,
+
+    "strong": 3,
+
+    "historical": 2,
+
+    "qualified": 1
+  };
+
+
+  ranked.sort(
+    (
+      a,
+      b
+    ) =>
+
+      (
+        strengthRank[
+          b.strength
+        ]
+        -
+        strengthRank[
+          a.strength
+        ]
+      )
+
+      ||
+
+      (
+        b.score -
+        a.score
+      )
+
+      ||
+
+      (
+        b.wilsonEdge -
+        a.wilsonEdge
+      )
+
+      ||
+
+      (
+        b.opportunities -
+        a.opportunities
+      )
+
+      ||
+
+      (
+        b.stabilityScore -
+        a.stabilityScore
+      )
+  );
+
+
+  /*
+  Historical-only
+  không dự đoán hôm đó.
+  */
+
+  const recommendations =
+    ranked.filter(
+      item =>
+        item.recentStatus !==
+        "historical-only"
+    );
+
+
+  /*
+  ================================================
+  DEDUPE NUMBER
+  ================================================
+  */
+
+  const unique = [];
+
+
+  const seen =
+    new Set();
+
+
+  const actual =
+    rows[
+      targetIndex
+    ]
+      .lotoFlags;
+
+
+  for (
+    const item
+    of recommendations
+  ) {
+
+    if (
+      seen.has(
+        item.number
+      )
+    ) {
+
+      continue;
+    }
+
+
+    seen.add(
+      item.number
+    );
+
+
+    unique.push({
+
+      rank:
+        unique.length + 1,
+
+      number:
+        item.number,
+
+      numberValue:
+        item.numberValue,
+
+      bridge:
+        item.bridge,
+
+      bridgeKey:
+        item.bridgeKey,
+
+      streak:
+        item.streak,
+
+      opportunities:
+        item.opportunities,
+
+      continued:
+        item.continued,
+
+      continuationRate:
+        item.continuationRate,
+
+      baselineRate:
+        item.baselineRate,
+
+      edge:
+        item.edge,
+
+      wilsonLowerBound:
+        item.wilsonLowerBound,
+
+      wilsonEdge:
+        item.wilsonEdge,
+
+      rate30:
+        item.rate30,
+
+      samples30:
+        item.samples30,
+
+      rate60:
+        item.rate60,
+
+      samples60:
+        item.samples60,
+
+      rate100:
+        item.rate100,
+
+      samples100:
+        item.samples100,
+
+      recentStatus:
+        item.recentStatus,
+
+      recentSamples:
+        item.recentSamples,
+
+      stabilityScore:
+        item.stabilityScore,
+
+      independentConsensus:
+        item.independentConsensus,
+
+      score:
+        item.score,
+
+      strength:
+        item.strength,
+
+      hit:
+        Boolean(
+          actual[
+            item.numberValue
+          ]
+        )
+    });
+
+
+    if (
+      unique.length >=
+      MAX_RECOMMENDATIONS
+    ) {
+
+      break;
+    }
+  }
+
+
+  /*
+  ================================================
+  TOP 1 / 3 / 5
+  ================================================
+  */
+
+  const evaluateTop =
+    size => {
+
+      const picks =
+        unique.slice(
+          0,
+          size
+        );
+
+
+      const hitNumbers =
+        picks
+          .filter(
+            item =>
+              item.hit
+          )
+          .map(
+            item =>
+              item.number
+          );
+
+
+      return {
+
+        requestedSize:
+          size,
+
+        actualPickCount:
+          picks.length,
+
+        numbers:
+          picks.map(
+            item =>
+              item.number
+          ),
+
+        hit:
+          hitNumbers.length > 0,
+
+        hitNumbers,
+
+        baselineRate:
+          randomHitProbability(
+
+            rows[
+              targetIndex
+            ]
+              .lotoCount,
+
+            picks.length
+          )
+      };
+    };
+
+
+  return {
+
+    version:
+      VERSION,
+
+    modelVersion:
+      MODEL_VERSION,
+
+    sourceDate:
+      rows[
+        sourceIndex
+      ]
+        .draw_date,
+
+    predictionDate:
+      rows[
+        targetIndex
+      ]
+        .draw_date,
+
+    trainDraws,
+
+    modelWindow,
+
+    baselineRate:
+      round(
+        baselineRate
+      ),
+
+    actualUniqueLotoCount:
+      rows[
+        targetIndex
+      ]
+        .lotoCount,
+
+    activeCandidateCount:
+      active.length,
+
+    qualifiedBridgeCount:
+      ranked.length,
+
+    recommendationCount:
+      unique.length,
+
+    rejected,
+
+    evaluation: {
+
+      top1:
+        evaluateTop(1),
+
+      top3:
+        evaluateTop(3),
+
+      top5:
+        evaluateTop(5)
+    },
+
+    recommendations:
+      unique
+  };
+}
+
+
+/*
+========================================================
+LOAD DATA / BUILD LOCAL ENGINE
+========================================================
+*/
+
+async function loadEngine() {
+
+  setStatus(
+    "Đang tải dữ liệu D1..."
+  );
+
+
+  /*
+  Chỉ một request nhẹ tới Cloudflare.
+  */
+
+  const response =
+    await fetch(
+
+      `/api/walk-forward-data` +
+      `?limit=340` +
+      `&t=${Date.now()}`,
+
+      {
+        cache:
+          "no-store"
+      }
+    );
+
+
+  const data =
+    await response.json();
+
+
+  if (
+    !response.ok
+    ||
+    !data.success
+  ) {
+
+    throw new Error(
+
+      data.message
+      ||
+      `HTTP ${response.status}`
+    );
+  }
+
+
+  const rawRows =
+    Array.isArray(
+      data.rows
+    )
+      ?
+      data.rows
+      :
+      [];
+
+
+  const rows =
+    rawRows
+      .filter(
+        validRow
+      )
+      .map(
+        normalizeRow
+      );
+
+
+  if (
+    rows.length < 101
+  ) {
+
+    throw new Error(
+
+      `Chỉ có ${rows.length} kỳ hợp lệ; ` +
+      `cần ít nhất 101 kỳ.`
+    );
+  }
+
+
+  /*
+  Build positions.
+  */
+
+  setStatus(
+    "Đang dựng vị trí và rule trên máy tính..."
+  );
+
+
+  await sleep(20);
+
+
+  const positions =
+    buildPositions(
+      rows[
+        rows.length - 1
+      ]
+    );
+
+
+  /*
+  Chuyển toàn bộ dữ liệu
+  sang matrix digit.
+  */
+
+  const digitRows =
+    buildDigitRows(
+      rows,
+      positions
+    );
+
+
+  /*
+  Tạo 9422 rule.
+  */
+
+  const rules =
+    buildRules(
+      positions
+    );
+
+
+  setStatus(
+
+    `Đang tạo hit matrix local: ` +
+
+    `${rules.length} rule × ` +
+
+    `${rows.length - 1} transition...`
+  );
+
+
+  /*
+  Cho browser render status trước.
+  */
+
+  await sleep(20);
+
+
+  /*
+  CPU chạy ở máy tính,
+  không phải Cloudflare Worker.
+  */
+
+  const matrix =
+    buildHitMatrix(
+      rows,
+      digitRows,
+      rules
+    );
+
+
+  engine = {
+
+    rows,
+
+    positions,
+
+    digitRows,
+
+    rules,
+
+    hits:
+      matrix.hits,
+
+    transitions:
+      matrix.transitions
+  };
+
+
+  document
+    .getElementById(
+      "data-info"
+    )
+    .innerHTML =
+
+      `DATA hợp lệ: ` +
+
+      `<strong>${rows.length} kỳ</strong>`
+
+      +
+
+      ` • ${formatDate(
+        rows[0].draw_date
+      )}`
+
+      +
+
+      ` → `
+
+      +
+
+      `${formatDate(
+        rows[
+          rows.length - 1
+        ]
+          .draw_date
+      )}`
+
+      +
+
+      ` • ${positions.length} vị trí`
+
+      +
+
+      ` • ${rules.length} rule`
+
+      +
+
+      ` • CPU backtest: trình duyệt.`;
+}
+
+
+/*
+========================================================
+START WALK-FORWARD
 ========================================================
 */
 
@@ -908,75 +3731,153 @@ async function startWalkForward() {
   }
 
 
-  const days =
-    Number(
-      document
-        .getElementById(
-          "test-days"
-        )
-        .value
-    );
+  clearError();
+
+  hideResults();
 
 
-  const historyWindow =
-    Number(
-      document
-        .getElementById(
-          "history-window"
-        )
-        .value
-    );
-
-
-  const delay =
-    Number(
-      document
-        .getElementById(
-          "request-delay"
-        )
-        .value
-    );
-
-
-  running = true;
+  dailyResults = [];
 
   stopRequested = false;
 
-  successfulResults = [];
-
-  failedResults = [];
+  running = true;
 
 
-  document
-    .getElementById(
+  const startButton =
+    document.getElementById(
       "start-button"
-    )
-    .disabled =
-      true;
+    );
 
 
-  document
-    .getElementById(
+  const stopButton =
+    document.getElementById(
       "stop-button"
-    )
-    .disabled =
-      false;
+    );
 
 
-  updateProgress(
-    0,
-    days
-  );
+  startButton.disabled =
+    true;
 
 
-  clearResults();
+  stopButton.disabled =
+    false;
 
 
   try {
 
+    /*
+    Chỉ load/build engine
+    lần đầu tiên.
+    */
+
+    if (!engine) {
+
+      await loadEngine();
+    }
+
+
+    const requestedDays =
+      Number(
+        document
+          .getElementById(
+            "test-days"
+          )
+          .value
+      );
+
+
+    const modelWindow =
+      Number(
+        document
+          .getElementById(
+            "model-window"
+          )
+          .value
+      );
+
+
+    const minTrain =
+      Number(
+        document
+          .getElementById(
+            "min-train"
+          )
+          .value
+      );
+
+
+    /*
+    Không test quá xa nếu
+    không đủ dữ liệu train.
+    */
+
+    const maxTestableDays =
+      Math.max(
+
+        0,
+
+        engine.rows.length -
+        minTrain
+      );
+
+
+    const testDays =
+      Math.min(
+
+        requestedDays,
+
+        maxTestableDays
+      );
+
+
+    if (
+      testDays <= 0
+    ) {
+
+      throw new Error(
+        "Không đủ dữ liệu cho minTrain đã chọn."
+      );
+    }
+
+
+    if (
+      testDays <
+      requestedDays
+    ) {
+
+      document
+        .getElementById(
+          "data-info"
+        )
+        .innerHTML +=
+
+          `<br>` +
+
+          `<strong>Lưu ý:</strong> ` +
+
+          `chỉ có thể test ` +
+
+          `${testDays}/${requestedDays} ngày ` +
+
+          `với minTrain=${minTrain}.`;
+    }
+
+
+    updateProgress(
+      0,
+      testDays
+    );
+
+
+    /*
+    ================================================
+    WALK-FORWARD LOCAL
+    ================================================
+    */
+
     for (
       let offset = 1;
-      offset <= days;
+      offset <= testDays;
       offset++
     ) {
 
@@ -987,125 +3888,142 @@ async function startWalkForward() {
       }
 
 
+      /*
+      offset=1:
+      target mới nhất có kết quả.
+      */
+
+      const targetIndex =
+        engine.rows.length -
+        offset;
+
+
       setStatus(
-        `Đang chạy ${offset}/${days}` +
-        ` • offset=${offset}` +
-        ` • window=${historyWindow}`
+
+        `Đang chạy ${offset}/${testDays}` +
+
+        ` • ` +
+
+        `${formatDate(
+          engine.rows[
+            targetIndex
+          ]
+            .draw_date
+        )}` +
+
+        ` • local CPU`
       );
 
 
-      try {
+      /*
+      Không network request.
+      */
 
-        const result =
-          await fetchOffset(
-            offset,
-            historyWindow
-          );
+      const result =
+        predictHistoricalDay(
 
+          targetIndex,
 
-        successfulResults.push(
-          result
+          modelWindow,
+
+          minTrain
         );
 
-      }
-      catch (error) {
 
-        if (
-          error.name ===
-          "AbortError"
-          ||
-          stopRequested
-        ) {
-          break;
-        }
+      if (result) {
+
+        result.offset =
+          offset;
 
 
-        failedResults.push({
-          offset,
-
-          message:
-            error.message
-        });
+        dailyResults.push(
+          result
+        );
       }
 
 
       updateProgress(
         offset,
-        days
+        testDays
       );
 
 
       /*
-      Render luôn sau mỗi ngày
-      để người dùng theo dõi.
+      Cập nhật báo cáo
+      sau từng ngày.
       */
 
       renderAll(
-        days
+        testDays
       );
 
 
-      if (
-        offset < days
-        &&
-        !stopRequested
-      ) {
-        await sleep(
-          delay
-        );
-      }
+      /*
+      Trả quyền render cho browser.
+      */
+
+      await sleep(15);
     }
 
 
     if (
       stopRequested
     ) {
+
       setStatus(
-        `Đã dừng. Thành công ` +
-        `${successfulResults.length} ngày.`
+
+        `Đã dừng sau ` +
+
+        `${dailyResults.length} ngày.`
       );
+
     }
     else {
+
       setStatus(
-        `Hoàn tất: ` +
-        `${successfulResults.length}/${days} ngày` +
-        (
-          failedResults.length
-            ?
-            ` • lỗi ${failedResults.length}`
-            :
-            ""
-        )
+
+        `Hoàn tất ` +
+
+        `${dailyResults.length} ngày` +
+
+        ` • ${VERSION}` +
+
+        ` • không gọi Worker backtest.`
       );
     }
+
+  }
+  catch (error) {
+
+    console.error(
+      error
+    );
+
+
+    showError(
+
+      error.message
+      ||
+      "Lỗi Walk-forward V2.7.2."
+    );
+
+
+    setStatus(
+      "Có lỗi."
+    );
 
   }
   finally {
 
     running = false;
 
-    currentController = null;
+
+    startButton.disabled =
+      false;
 
 
-    document
-      .getElementById(
-        "start-button"
-      )
-      .disabled =
-        false;
-
-
-    document
-      .getElementById(
-        "stop-button"
-      )
-      .disabled =
-        true;
-
-
-    renderAll(
-      days
-    );
+    stopButton.disabled =
+      true;
   }
 }
 
@@ -1118,121 +4036,27 @@ STOP
 
 function stopWalkForward() {
 
-  stopRequested = true;
-
-
-  if (
-    currentController
-  ) {
-    currentController.abort();
-  }
+  stopRequested =
+    true;
 
 
   setStatus(
-    "Đang dừng..."
+    "Sẽ dừng sau ngày đang tính..."
   );
 }
 
 
 /*
 ========================================================
-CLEAR
-========================================================
-*/
-
-function clearResults() {
-
-  const panels = [
-    "summary-panel",
-    "rank-panel",
-    "streak-panel",
-    "strength-panel",
-    "recent-panel",
-    "daily-panel",
-    "error-panel"
-  ];
-
-
-  panels.forEach(
-    id => {
-
-      document
-        .getElementById(id)
-        .classList
-        .add(
-          "hidden"
-        );
-    }
-  );
-
-
-  document
-    .getElementById(
-      "metrics"
-    )
-    .innerHTML =
-      "";
-
-
-  document
-    .getElementById(
-      "rank-table"
-    )
-    .innerHTML =
-      "";
-
-
-  document
-    .getElementById(
-      "streak-table"
-    )
-    .innerHTML =
-      "";
-
-
-  document
-    .getElementById(
-      "strength-table"
-    )
-    .innerHTML =
-      "";
-
-
-  document
-    .getElementById(
-      "recent-table"
-    )
-    .innerHTML =
-      "";
-
-
-  document
-    .getElementById(
-      "daily-table"
-    )
-    .innerHTML =
-      "";
-
-
-  document
-    .getElementById(
-      "errors"
-    )
-    .innerHTML =
-      "";
-}
-
-
-/*
-========================================================
-TOP METRIC
+TOP METRICS
 ========================================================
 */
 
 function calculateTopMetric(
   key,
-  requestedDays
+  testedDays
 ) {
+
   let availableDays = 0;
 
   let fullPickDays = 0;
@@ -1241,42 +4065,39 @@ function calculateTopMetric(
 
   let baselineTotal = 0;
 
-
   let requestedSize = 0;
 
 
   for (
     const result
-    of successfulResults
+    of dailyResults
   ) {
 
-    const evaluation =
-      result.evaluation?.[key];
+    const item =
+      result
+        .evaluation
+        ?.[key];
 
 
-    if (!evaluation) {
+    if (!item) {
       continue;
     }
 
 
     requestedSize =
-      Number(
-        evaluation.requestedSize
-        ||
-        requestedSize
-      );
+      item.requestedSize
+      ||
+      requestedSize;
 
 
-    const count =
-      Number(
-        evaluation.actualPickCount
-        ||
-        0
-      );
-
+    /*
+    Ngày không có prediction
+    không tính hit-rate,
+    nhưng sẽ làm giảm coverage.
+    */
 
     if (
-      count <= 0
+      item.actualPickCount <= 0
     ) {
       continue;
     }
@@ -1286,23 +4107,25 @@ function calculateTopMetric(
 
 
     if (
-      count >=
+      item.actualPickCount >=
       requestedSize
     ) {
+
       fullPickDays++;
     }
 
 
     if (
-      evaluation.hit
+      item.hit
     ) {
+
       hitDays++;
     }
 
 
     baselineTotal +=
       Number(
-        evaluation.baselineRate
+        item.baselineRate
         ||
         0
       );
@@ -1310,7 +4133,8 @@ function calculateTopMetric(
 
 
   const hitRate =
-    availableDays > 0
+
+    availableDays
       ?
       hitDays /
       availableDays *
@@ -1320,7 +4144,8 @@ function calculateTopMetric(
 
 
   const baselineRate =
-    availableDays > 0
+
+    availableDays
       ?
       baselineTotal /
       availableDays
@@ -1328,27 +4153,8 @@ function calculateTopMetric(
       0;
 
 
-  const coverage =
-    requestedDays > 0
-      ?
-      availableDays /
-      requestedDays *
-      100
-      :
-      0;
-
-
-  const fullCoverage =
-    requestedDays > 0
-      ?
-      fullPickDays /
-      requestedDays *
-      100
-      :
-      0;
-
-
   return {
+
     requestedSize,
 
     availableDays,
@@ -1358,7 +4164,9 @@ function calculateTopMetric(
     hitDays,
 
     hitRate:
-      round(hitRate),
+      round(
+        hitRate
+      ),
 
     baselineRate:
       round(
@@ -1373,14 +4181,152 @@ function calculateTopMetric(
 
     coverage:
       round(
-        coverage
+
+        testedDays
+          ?
+          availableDays /
+          testedDays *
+          100
+          :
+          0
       ),
 
     fullCoverage:
       round(
-        fullCoverage
+
+        testedDays
+          ?
+          fullPickDays /
+          testedDays *
+          100
+          :
+          0
       )
   };
+}
+
+
+/*
+========================================================
+METRIC CARD
+========================================================
+*/
+
+function renderMetricCard(
+  title,
+  metric
+) {
+
+  return `
+
+    <div class="metric">
+
+      <div class="metric-title">
+
+        ${title}
+
+      </div>
+
+
+      <div class="metric-value">
+
+        ${percent(
+          metric.hitRate
+        )}
+
+      </div>
+
+
+      <div class="metric-line">
+
+        Trúng:
+
+        <strong>
+
+          ${metric.hitDays}
+          /
+          ${metric.availableDays}
+
+        </strong>
+
+      </div>
+
+
+      <div class="metric-line">
+
+        Baseline:
+
+        <strong>
+
+          ${percent(
+            metric.baselineRate
+          )}
+
+        </strong>
+
+      </div>
+
+
+      <div class="metric-line">
+
+        Lift:
+
+        <span
+          class="${liftClass(
+            metric.lift
+          )}"
+        >
+
+          ${
+            metric.lift > 0
+              ?
+              "+"
+              :
+              ""
+          }
+
+          ${percent(
+            metric.lift
+          )}
+
+        </span>
+
+      </div>
+
+
+      <div class="metric-line">
+
+        Coverage:
+
+        <strong>
+
+          ${percent(
+            metric.coverage
+          )}
+
+        </strong>
+
+      </div>
+
+
+      <div class="metric-line">
+
+        Đủ
+        ${metric.requestedSize}
+        số:
+
+        <strong>
+
+          ${percent(
+            metric.fullCoverage
+          )}
+
+        </strong>
+
+      </div>
+
+    </div>
+  `;
 }
 
 
@@ -1391,53 +4337,54 @@ SUMMARY
 */
 
 function renderSummary(
-  requestedDays
+  testedDays
 ) {
 
   const top1 =
     calculateTopMetric(
       "top1",
-      requestedDays
+      testedDays
     );
 
 
   const top3 =
     calculateTopMetric(
       "top3",
-      requestedDays
+      testedDays
     );
 
 
   const top5 =
     calculateTopMetric(
       "top5",
-      requestedDays
+      testedDays
     );
 
 
-  const metrics =
-    document
-      .getElementById(
-        "metrics"
-      );
-
-
-  metrics.innerHTML = [
-    renderMetricCard(
-      "TOP 1",
-      top1
-    ),
-
-    renderMetricCard(
-      "TOP 3",
-      top3
-    ),
-
-    renderMetricCard(
-      "TOP 5",
-      top5
+  document
+    .getElementById(
+      "metrics"
     )
-  ].join("");
+    .innerHTML =
+
+      renderMetricCard(
+        "TOP 1",
+        top1
+      )
+
+      +
+
+      renderMetricCard(
+        "TOP 3",
+        top3
+      )
+
+      +
+
+      renderMetricCard(
+        "TOP 5",
+        top5
+      );
 
 
   document
@@ -1448,77 +4395,6 @@ function renderSummary(
     .remove(
       "hidden"
     );
-}
-
-
-function renderMetricCard(
-  title,
-  metric
-) {
-
-  const className =
-    liftClass(
-      metric.lift
-    );
-
-
-  return `
-    <div class="metric">
-
-      <div class="metric-title">
-        ${title}
-      </div>
-
-      <div class="metric-value">
-        ${percent(metric.hitRate)}
-      </div>
-
-      <div class="metric-line">
-        Trúng:
-        <strong>
-          ${metric.hitDays}/${metric.availableDays}
-        </strong>
-      </div>
-
-      <div class="metric-line">
-        Baseline:
-        <strong>
-          ${percent(metric.baselineRate)}
-        </strong>
-      </div>
-
-      <div class="metric-line">
-        Lift:
-
-        <span class="${className}">
-
-          ${
-            metric.lift > 0
-              ? "+"
-              : ""
-          }
-
-          ${percent(metric.lift)}
-
-        </span>
-      </div>
-
-      <div class="metric-line">
-        Coverage:
-        <strong>
-          ${percent(metric.coverage)}
-        </strong>
-      </div>
-
-      <div class="metric-line">
-        Đủ ${metric.requestedSize} số:
-        <strong>
-          ${percent(metric.fullCoverage)}
-        </strong>
-      </div>
-
-    </div>
-  `;
 }
 
 
@@ -1541,18 +4417,24 @@ function addBucket(
   if (
     !map[name]
   ) {
+
     map[name] = {
+
       signals: 0,
+
       hits: 0
     };
   }
 
 
-  map[name].signals++;
+  map[name]
+    .signals++;
 
 
   if (hit) {
-    map[name].hits++;
+
+    map[name]
+      .hits++;
   }
 }
 
@@ -1570,75 +4452,76 @@ function calculateBuckets() {
 
   for (
     const result
-    of successfulResults
+    of dailyResults
   ) {
 
     const recommendations =
+
       Array.isArray(
         result.recommendations
       )
+
         ?
-        result.recommendations
+
+        result
+          .recommendations
+          .slice(
+            0,
+            5
+          )
+
         :
+
         [];
 
 
-    /*
-    Chỉ phân tích Top 5.
-    */
-
     recommendations
-      .slice(
-        0,
-        5
-      )
       .forEach(
         (
           item,
           index
         ) => {
 
-          const hit =
-            Boolean(
-              item.hit
-            );
-
-
           addBucket(
             rank,
             index + 1,
-            hit
+            item.hit
           );
 
 
           addBucket(
             streak,
             item.streak,
-            hit
+            item.hit
           );
 
 
           addBucket(
             strength,
             item.strength,
-            hit
+            item.hit
           );
 
 
           addBucket(
             recent,
             item.recentStatus,
-            hit
+            item.hit
           );
+
         }
       );
   }
 
 
   return {
+
     rank,
+
     streak,
+
     strength,
+
     recent
   };
 }
@@ -1646,7 +4529,7 @@ function calculateBuckets() {
 
 /*
 ========================================================
-GENERIC BUCKET TABLE
+BUCKET TABLE
 ========================================================
 */
 
@@ -1656,37 +4539,59 @@ function renderBucketTable(
 ) {
 
   const entries =
-    Object.entries(map);
+    Object.entries(
+      map
+    );
 
 
   if (
     !entries.length
   ) {
+
     return `
+
       <div class="small">
+
         Chưa có dữ liệu.
+
       </div>
     `;
   }
 
 
   return `
+
     <table>
 
       <thead>
 
         <tr>
-          <th>${firstColumn}</th>
-          <th>Signals</th>
-          <th>Hits</th>
-          <th>Hit rate</th>
+
+          <th>
+            ${firstColumn}
+          </th>
+
+          <th>
+            Signals
+          </th>
+
+          <th>
+            Hits
+          </th>
+
+          <th>
+            Hit rate
+          </th>
+
         </tr>
 
       </thead>
 
+
       <tbody>
 
         ${
+
           entries
             .map(
               (
@@ -1697,6 +4602,7 @@ function renderBucketTable(
               ) => {
 
                 const rate =
+
                   value.signals
                     ?
                     value.hits /
@@ -1707,24 +4613,42 @@ function renderBucketTable(
 
 
                 return `
+
                   <tr>
 
                     <td>
+
                       <strong>
-                        ${escapeHtml(key)}
+
+                        ${escapeHtml(
+                          key
+                        )}
+
                       </strong>
+
                     </td>
 
+
                     <td>
+
                       ${value.signals}
+
                     </td>
 
+
                     <td>
+
                       ${value.hits}
+
                     </td>
 
+
                     <td>
-                      ${percent(rate)}
+
+                      ${percent(
+                        rate
+                      )}
+
                     </td>
 
                   </tr>
@@ -1743,7 +4667,7 @@ function renderBucketTable(
 
 /*
 ========================================================
-RANK / STREAK / STRENGTH / RECENT
+RENDER BUCKETS
 ========================================================
 */
 
@@ -1758,6 +4682,7 @@ function renderBuckets() {
       "rank-table"
     )
     .innerHTML =
+
       renderBucketTable(
         buckets.rank,
         "Rank"
@@ -1769,6 +4694,7 @@ function renderBuckets() {
       "streak-table"
     )
     .innerHTML =
+
       renderBucketTable(
         buckets.streak,
         "Streak"
@@ -1780,6 +4706,7 @@ function renderBuckets() {
       "strength-table"
     )
     .innerHTML =
+
       renderBucketTable(
         buckets.strength,
         "Strength"
@@ -1791,76 +4718,72 @@ function renderBuckets() {
       "recent-table"
     )
     .innerHTML =
+
       renderBucketTable(
         buckets.recent,
         "Recent"
       );
 
 
-  [
-    "rank-panel",
-    "streak-panel",
-    "strength-panel",
-    "recent-panel"
-  ]
-    .forEach(
-      id => {
+  for (
+    const id
+    of [
 
-        document
-          .getElementById(id)
-          .classList
-          .remove(
-            "hidden"
-          );
-      }
-    );
+      "rank-panel",
+
+      "streak-panel",
+
+      "strength-panel",
+
+      "recent-panel"
+
+    ]
+  ) {
+
+    document
+      .getElementById(
+        id
+      )
+      .classList
+      .remove(
+        "hidden"
+      );
+  }
 }
 
 
 /*
 ========================================================
-DAILY
+DAILY TABLE
 ========================================================
 */
 
 function renderDaily() {
 
   if (
-    !successfulResults.length
+    !dailyResults.length
   ) {
+
     return;
   }
 
 
-  const sorted =
-    [...successfulResults]
+  const rows =
+    [...dailyResults]
       .sort(
         (
           a,
           b
         ) =>
-          Number(a.offset) -
-          Number(b.offset)
-      );
-
-
-  const rows =
-    sorted
+          a.offset -
+          b.offset
+      )
       .map(
         result => {
 
-          const recommendations =
-            Array.isArray(
-              result.recommendations
-            )
-              ?
-              result.recommendations
-              :
-              [];
-
-
           const top5 =
-            recommendations
+            result
+              .recommendations
               .slice(
                 0,
                 5
@@ -1868,56 +4791,76 @@ function renderDaily() {
 
 
           const numbers =
-            top5
-              .map(
-                item => `
 
-                  <span
-                    class="
-                      number
-                      ${item.hit ? "hit" : ""}
-                    "
-                  >
+            top5.length
 
-                    ${escapeHtml(
-                      item.number
-                    )}
+              ?
 
-                  </span>
-                `
-              )
-              .join("");
+              top5
+                .map(
+                  item => `
+
+                    <span
+                      class="
+                        number
+                        ${item.hit ? "hit" : ""}
+                      "
+                    >
+
+                      ${escapeHtml(
+                        item.number
+                      )}
+
+                    </span>
+                  `
+                )
+                .join("")
+
+              :
+
+              "-";
 
 
           const top1Hit =
-            result
-              .evaluation
-              ?.top1
-              ?.hit;
+            Boolean(
+              result
+                .evaluation
+                .top1
+                .hit
+            );
 
 
           const top3Hit =
-            result
-              .evaluation
-              ?.top3
-              ?.hit;
+            Boolean(
+              result
+                .evaluation
+                .top3
+                .hit
+            );
 
 
           const top5Hit =
-            result
-              .evaluation
-              ?.top5
-              ?.hit;
+            Boolean(
+              result
+                .evaluation
+                .top5
+                .hit
+            );
 
 
           return `
+
             <tr>
 
               <td>
+
                 ${result.offset}
+
               </td>
 
+
               <td>
+
                 ${formatDate(
                   result.sourceDate
                 )}
@@ -1927,11 +4870,37 @@ function renderDaily() {
                 ${formatDate(
                   result.predictionDate
                 )}
+
               </td>
 
+
               <td>
-                ${numbers || "-"}
+
+                ${result.trainDraws}
+
               </td>
+
+
+              <td>
+
+                ${result.activeCandidateCount}
+
+              </td>
+
+
+              <td>
+
+                ${result.recommendationCount}
+
+              </td>
+
+
+              <td>
+
+                ${numbers}
+
+              </td>
+
 
               <td
                 class="${
@@ -1942,8 +4911,17 @@ function renderDaily() {
                     "miss-text"
                 }"
               >
-                ${top1Hit ? "HIT" : "MISS"}
+
+                ${
+                  top1Hit
+                    ?
+                    "HIT"
+                    :
+                    "MISS"
+                }
+
               </td>
+
 
               <td
                 class="${
@@ -1954,8 +4932,17 @@ function renderDaily() {
                     "miss-text"
                 }"
               >
-                ${top3Hit ? "HIT" : "MISS"}
+
+                ${
+                  top3Hit
+                    ?
+                    "HIT"
+                    :
+                    "MISS"
+                }
+
               </td>
+
 
               <td
                 class="${
@@ -1966,16 +4953,22 @@ function renderDaily() {
                     "miss-text"
                 }"
               >
-                ${top5Hit ? "HIT" : "MISS"}
+
+                ${
+                  top5Hit
+                    ?
+                    "HIT"
+                    :
+                    "MISS"
+                }
+
               </td>
 
+
               <td>
-                ${
-                  result
-                    .actualUniqueLotoCount
-                  ??
-                  "-"
-                }
+
+                ${result.actualUniqueLotoCount}
+
               </td>
 
             </tr>
@@ -1996,19 +4989,56 @@ function renderDaily() {
         <thead>
 
           <tr>
-            <th>Offset</th>
-            <th>Kỳ</th>
-            <th>Top 5</th>
-            <th>Top1</th>
-            <th>Top3</th>
-            <th>Top5</th>
-            <th>Loto unique</th>
+
+            <th>
+              Offset
+            </th>
+
+            <th>
+              Kỳ
+            </th>
+
+            <th>
+              Train
+            </th>
+
+            <th>
+              Active
+            </th>
+
+            <th>
+              Số gợi ý
+            </th>
+
+            <th>
+              Top 5
+            </th>
+
+            <th>
+              Top1
+            </th>
+
+            <th>
+              Top3
+            </th>
+
+            <th>
+              Top5
+            </th>
+
+            <th>
+              Loto unique
+            </th>
+
           </tr>
 
         </thead>
 
+
         <tbody>
+
           ${rows}
+
         </tbody>
 
       </table>
@@ -2028,95 +5058,80 @@ function renderDaily() {
 
 /*
 ========================================================
-ERRORS
-========================================================
-*/
-
-function renderErrors() {
-
-  const panel =
-    document
-      .getElementById(
-        "error-panel"
-      );
-
-
-  if (
-    !failedResults.length
-  ) {
-    panel
-      .classList
-      .add(
-        "hidden"
-      );
-
-    return;
-  }
-
-
-  document
-    .getElementById(
-      "errors"
-    )
-    .innerHTML =
-      failedResults
-        .map(
-          error => `
-
-            <div class="error-box">
-
-              Offset
-              <strong>
-                ${error.offset}
-              </strong>
-
-              :
-
-              ${escapeHtml(
-                error.message
-              )}
-
-            </div>
-          `
-        )
-        .join("");
-
-
-  panel
-    .classList
-    .remove(
-      "hidden"
-    );
-}
-
-
-/*
-========================================================
 RENDER ALL
 ========================================================
 */
 
 function renderAll(
-  requestedDays
+  testedDays
 ) {
 
   if (
-    successfulResults.length
+    !dailyResults.length
   ) {
-    renderSummary(
-      requestedDays
-    );
 
-    renderBuckets();
-
-    renderDaily();
+    return;
   }
 
 
-  renderErrors();
+  renderSummary(
+    testedDays
+  );
+
+
+  renderBuckets();
+
+
+  renderDaily();
+}
+
+
+/*
+========================================================
+HIDE RESULTS
+========================================================
+*/
+
+function hideResults() {
+
+  for (
+    const id
+    of [
+
+      "summary-panel",
+
+      "rank-panel",
+
+      "streak-panel",
+
+      "strength-panel",
+
+      "recent-panel",
+
+      "daily-panel"
+
+    ]
+  ) {
+
+    document
+      .getElementById(
+        id
+      )
+      .classList
+      .add(
+        "hidden"
+      );
+  }
+
+
+  updateProgress(
+    0,
+    1
+  );
 }
 
 </script>
 
 </body>
+
 </html>
