@@ -205,11 +205,6 @@ async function loadDashboard() {
       }
 
 
-      renderPrediction(
-        data,
-        totalDraws
-      );
-
 
       setSystemStatus(
 
