@@ -929,122 +929,219 @@ function getCarryHistory(
    FULL CARRY HISTORY
 ===================================================== */
 
-function renderCarryFullHistory(
-  item,
-  currentCarry
-) {
+function renderCarryFullHistory(item, currentCarry) {
 
   const history =
-    getCarryHistory(
-      item,
-      currentCarry
-    );
+    getCarryHistory(item, currentCarry);
 
-
-  if (
-    !history.length
-  ) {
-
+  if (!history.length) {
     return `
-
       <div class="live-history-empty">
-
-        Chưa có lịch sử cầu.
-
+        Chưa có dữ liệu lịch sử cho cầu này.
       </div>
     `;
   }
 
+  /*
+   * Sắp xếp mới nhất trước
+   */
+  const sorted = [...history].sort(
+    (a, b) =>
+      String(b.date || "")
+        .localeCompare(String(a.date || ""))
+  );
 
-  const sorted =
-    [...history]
-      .sort(
-        (
-          a,
-          b
-        ) =>
-          String(
-            a.date || ""
-          )
-            .localeCompare(
-              String(
-                b.date || ""
-              )
-            )
-      );
+  const hitCount =
+    sorted.filter(
+      x =>
+        String(x.status || "")
+          .toLowerCase() === "hit"
+    ).length;
+
+  const missCount =
+    sorted.filter(
+      x =>
+        String(x.status || "")
+          .toLowerCase() === "miss"
+    ).length;
+
+  const pendingCount =
+    sorted.filter(
+      x =>
+        String(x.status || "")
+          .toLowerCase() === "pending"
+    ).length;
+
+
+  /*
+   * Chuỗi HIT liên tiếp
+   * bỏ pending hiện tại
+   */
+  let hitStreak = 0;
+
+  for (const row of sorted) {
+
+    const status =
+      String(row.status || "")
+        .toLowerCase();
+
+    if (status === "pending") {
+      continue;
+    }
+
+    if (status === "hit") {
+      hitStreak++;
+    } else {
+      break;
+    }
+  }
+
+
+  /*
+   * 7 ngày đầu hiện ngay.
+   * Phần còn lại có thể mở.
+   */
+  const visibleLimit = 7;
+
+
+  const rows = sorted
+    .map((row, index) => {
+
+      const status =
+        String(row.status || "pending")
+          .toLowerCase();
+
+      const hidden =
+        index >= visibleLimit
+          ? " history-extra"
+          : "";
+
+      let statusText = "ĐANG CHỜ";
+      let statusIcon = "•";
+
+      if (status === "hit") {
+        statusText = "HIT";
+        statusIcon = "✓";
+      }
+
+      if (status === "miss") {
+        statusText = "MISS";
+        statusIcon = "×";
+      }
+
+      return `
+        <div
+          class="live-history-row-v2 ${status}${hidden}"
+        >
+
+          <div class="history-date-v2">
+            ${formatDateShort(row.date)}
+          </div>
+
+          <div class="history-number-v2">
+            ${escapeHtml(
+              normalizeDisplayNumber(row.number)
+            )}
+          </div>
+
+          <div class="history-status-v2 ${status}">
+            <span class="history-status-icon">
+              ${statusIcon}
+            </span>
+
+            ${statusText}
+          </div>
+
+        </div>
+      `;
+    })
+    .join("");
 
 
   return `
 
-    <div class="live-history-list">
+    <div class="live-history-v2">
+
+      <!-- SUMMARY -->
+
+      <div class="history-summary-v2">
+
+        <div class="history-summary-item">
+          <span>Đã lưu</span>
+          <strong>${sorted.length}</strong>
+          <small>ngày</small>
+        </div>
+
+        <div class="history-summary-item hit">
+          <span>HIT</span>
+          <strong>${hitCount}</strong>
+          <small>ngày</small>
+        </div>
+
+        <div class="history-summary-item miss">
+          <span>MISS</span>
+          <strong>${missCount}</strong>
+          <small>ngày</small>
+        </div>
+
+        <div class="history-summary-item streak">
+          <span>Chuỗi HIT</span>
+          <strong>${hitStreak}</strong>
+          <small>ngày</small>
+        </div>
+
+      </div>
+
 
       ${
-        sorted
-          .map(
-            (
-              row,
-              index
-            ) => `
+        pendingCount
+          ? `
+            <div class="history-current-status">
+              <span class="history-pulse"></span>
 
-              <div class="live-history-row">
-
-
-                <div class="live-history-timeline">
-
-                  <span class="live-history-dot"></span>
-
-                  ${
-                    index <
-                    sorted.length - 1
-                      ?
-                      `
-                        <span
-                          class="live-history-line"
-                        ></span>
-                      `
-                      :
-                      ""
-                  }
-
-                </div>
+              ${pendingCount} cầu đang chờ
+              kết quả
+            </div>
+          `
+          : ""
+      }
 
 
-                <div class="live-history-date">
+      <!-- LIST -->
 
-                  ${formatDateShort(
-                    row.date
-                  )}
+      <div class="history-list-v2">
 
-                </div>
+        <div class="history-list-head">
+
+          <span>Ngày</span>
+          <span>Số</span>
+          <span>Kết quả</span>
+
+        </div>
+
+        ${rows}
+
+      </div>
 
 
-                <div class="live-history-number">
-
-                  ${escapeHtml(
-                    row.number
-                  )}
-
-                </div>
-
-
-                <div class="live-history-result">
-
-                  ${carryStatusLabel(
-                    row.status
-                  )}
-
-                </div>
-
-              </div>
-            `
-          )
-          .join("")
+      ${
+        sorted.length > visibleLimit
+          ? `
+            <button
+              type="button"
+              class="history-toggle-btn"
+              onclick="toggleCarryHistory(this)"
+              data-open="false"
+            >
+              Xem toàn bộ ${sorted.length} ngày
+            </button>
+          `
+          : ""
       }
 
     </div>
   `;
 }
-
 
 /* =====================================================
    CALCULATE DISPLAY STREAK
