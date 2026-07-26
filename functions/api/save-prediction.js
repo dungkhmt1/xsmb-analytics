@@ -268,206 +268,417 @@ function extractLotoFromResult(row) {
 // data.recommendations
 // topNumbers
 // ============================================================
-
 function parsePredictPayload(payload) {
-  if (!payload || typeof payload !== "object") {
-    throw new Error("Predict API không trả JSON object hợp lệ");
+
+  if (
+    !payload ||
+    typeof payload !== "object"
+  ) {
+    throw new Error(
+      "Predict API không trả JSON object hợp lệ"
+    );
   }
 
-  if (payload.success === false) {
+
+  if (
+    payload.success === false
+  ) {
     throw new Error(
       payload.message ||
       "Predict API trả success=false"
     );
   }
 
+
   const data =
     payload.data &&
     typeof payload.data === "object"
-      ? payload.data
-      : {};
+      ?
+      payload.data
+      :
+      {};
 
+
+  /*
+  ====================================================
+  SOURCE DATE
+  ====================================================
+  */
 
   const sourceDate =
     normalizeDate(
+
       payload.sourceDate ||
+
       data.sourceDate ||
+
       payload.latestResult ||
+
       data.latestResult ||
+
       payload.latestDate ||
+
       data.latestDate
     );
 
 
+  /*
+  ====================================================
+  PREDICTION DATE
+  ====================================================
+  */
+
   let predictionDate =
     normalizeDate(
+
       payload.predictionDate ||
+
       data.predictionDate ||
+
       payload.targetDate ||
+
       data.targetDate
     );
 
 
-  if (!predictionDate && sourceDate) {
-    predictionDate = addDays(sourceDate, 1);
+  if (
+    !predictionDate &&
+    sourceDate
+  ) {
+
+    predictionDate =
+      addDays(
+        sourceDate,
+        1
+      );
   }
 
 
+  /*
+  ====================================================
+  V2.6.2 DÙNG "suggestions"
+
+  Đây là điểm lỗi của bản cũ.
+  ====================================================
+  */
+
   let recommendations =
+
+    payload.suggestions ||
+
+    data.suggestions ||
+
     payload.recommendations ||
+
     data.recommendations ||
+
     payload.topNumbers ||
+
     data.topNumbers ||
+
     [];
 
 
-  if (!Array.isArray(recommendations)) {
+  if (
+    !Array.isArray(
+      recommendations
+    )
+  ) {
+
     recommendations = [];
   }
 
 
-  recommendations = recommendations
-    .map((item, index) => {
+  /*
+  ====================================================
+  NORMALIZE TẤT CẢ SUGGESTIONS
+  ====================================================
+  */
 
-      if (
-        typeof item === "string" ||
-        typeof item === "number"
-      ) {
-        return {
-          rank: index + 1,
-          baseRank: index + 1,
-          number: normalizeNumber(item),
-          bridgeKey: null,
-          bridge: null
-        };
-      }
+  recommendations =
+    recommendations
 
-      const number = normalizeNumber(
-        item.number ??
-        item.value ??
-        item.loto
+      .map(
+        (
+          item,
+          index
+        ) => {
+
+          /*
+          Chỉ có số.
+          */
+
+          if (
+            typeof item === "string" ||
+            typeof item === "number"
+          ) {
+
+            return {
+
+              rank:
+                index + 1,
+
+              baseRank:
+                index + 1,
+
+              number:
+                normalizeNumber(
+                  item
+                ),
+
+              bridgeKey:
+                null,
+
+              bridge:
+                null
+            };
+          }
+
+
+          if (
+            !item ||
+            typeof item !== "object"
+          ) {
+
+            return null;
+          }
+
+
+          const number =
+            normalizeNumber(
+
+              item.number ??
+
+              item.value ??
+
+              item.loto
+            );
+
+
+          return {
+
+            ...item,
+
+
+            rank:
+
+              Number(
+                item.rank
+              )
+
+              ||
+
+              index + 1,
+
+
+            baseRank:
+
+              Number(
+                item.baseRank
+              )
+
+              ||
+
+              Number(
+                item.rank
+              )
+
+              ||
+
+              index + 1,
+
+
+            number,
+
+
+            bridgeKey:
+
+              item.bridgeKey ||
+
+              item.ruleKey ||
+
+              null,
+
+
+            bridge:
+
+              item.bridge ||
+
+              item.rule ||
+
+              null
+          };
+        }
+      )
+
+      .filter(
+        item =>
+          item &&
+          item.number
       );
 
-      return {
-        ...item,
 
-        rank:
-          Number(item.rank) ||
-          index + 1,
+  /*
+  ====================================================
+  CANDIDATE POOL
 
-        baseRank:
-          Number(item.baseRank) ||
-          Number(item.rank) ||
-          index + 1,
+  Không ảnh hưởng BASE.
 
-        number,
-
-        bridgeKey:
-          item.bridgeKey ||
-          item.ruleKey ||
-          null,
-
-        bridge:
-          item.bridge ||
-          item.rule ||
-          null
-      };
-    })
-    .filter(x => x.number);
-
-
-  // ----------------------------------------------------------
-  // Candidate pool nếu predict.js có cung cấp
-  //
-  // Đây là phần rất hữu ích cho SHADOW.
-  // ----------------------------------------------------------
+  Chỉ dùng cho SHADOW Carry nếu predict.js
+  expose candidate pool.
+  ====================================================
+  */
 
   let candidates =
+
     payload.candidates ||
+
     data.candidates ||
+
     payload.candidatePool ||
+
     data.candidatePool ||
+
     payload.activeCandidates ||
+
     data.activeCandidates ||
+
     [];
 
 
-  if (!Array.isArray(candidates)) {
+  if (
+    !Array.isArray(
+      candidates
+    )
+  ) {
+
     candidates = [];
   }
 
 
-  candidates = candidates
-    .map((item, index) => {
+  candidates =
+    candidates
 
-      if (!item || typeof item !== "object") {
-        return null;
-      }
+      .map(
+        (
+          item,
+          index
+        ) => {
 
-      return {
-        ...item,
+          if (
+            !item ||
+            typeof item !== "object"
+          ) {
 
-        candidateIndex: index,
+            return null;
+          }
 
-        number: normalizeNumber(
-          item.number ??
-          item.value ??
-          item.loto
-        ),
 
-        bridgeKey:
-          item.bridgeKey ||
-          item.ruleKey ||
-          null,
+          return {
 
-        bridge:
-          item.bridge ||
-          item.rule ||
-          null
-      };
-    })
-    .filter(
-      x =>
-        x &&
-        x.number &&
-        x.bridgeKey
-    );
+            ...item,
 
+
+            candidateIndex:
+              index,
+
+
+            number:
+              normalizeNumber(
+
+                item.number ??
+
+                item.value ??
+
+                item.loto
+              ),
+
+
+            bridgeKey:
+
+              item.bridgeKey ||
+
+              item.ruleKey ||
+
+              null,
+
+
+            bridge:
+
+              item.bridge ||
+
+              item.rule ||
+
+              null
+          };
+        }
+      )
+
+      .filter(
+        item =>
+          item &&
+          item.number &&
+          item.bridgeKey
+      );
+
+
+  /*
+  ====================================================
+  VALIDATION
+  ====================================================
+  */
 
   if (!sourceDate) {
+
     throw new Error(
-      "Predict API không có sourceDate/latestDate"
+      "Predict API không có sourceDate"
     );
   }
 
 
   if (!predictionDate) {
+
     throw new Error(
       "Không xác định được predictionDate"
     );
   }
 
 
-  if (!recommendations.length) {
+  if (
+    !recommendations.length
+  ) {
+
     throw new Error(
-      "Không có recommendation để theo dõi"
+      "Predict API không có suggestions để theo dõi"
     );
   }
 
 
   return {
-    raw: payload,
+
+    raw:
+      payload,
+
 
     model:
+
       payload.model ||
+
       payload.version ||
+
       data.model ||
+
       data.version ||
+
       BASE_MODEL,
 
+
     sourceDate,
+
     predictionDate,
+
     recommendations,
+
     candidates
   };
 }
