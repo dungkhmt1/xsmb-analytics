@@ -700,6 +700,9 @@ function renderLatestError(
 /* =====================================================
    LIVE VALIDATION CONTAINER
 ===================================================== */
+/* =====================================================
+   LIVE VALIDATION - VISUAL UI V3
+===================================================== */
 
 function ensureLiveValidationContainer() {
 
@@ -710,7 +713,6 @@ function ensureLiveValidationContainer() {
 
 
   if (container) {
-
     return container;
   }
 
@@ -722,25 +724,17 @@ function ensureLiveValidationContainer() {
 
 
   if (!prediction) {
-
     return null;
   }
 
 
   container =
-    document.createElement(
-      "div"
-    );
+    document.createElement("div");
 
 
   container.id =
     "live-validation-panel";
 
-
-  /*
-  Live Validation nằm ngay trên
-  Dàn số gợi ý.
-  */
 
   prediction.insertAdjacentElement(
     "beforebegin",
@@ -753,63 +747,94 @@ function ensureLiveValidationContainer() {
 
 
 /* =====================================================
-   LIVE HISTORY STATUS
+   STATUS
 ===================================================== */
 
-function carryStatusLabel(
+function normalizeCarryStatus(
   status
 ) {
 
-  const normalized =
-    String(
-      status || ""
-    )
+  const value =
+    String(status || "")
       .toLowerCase();
 
 
   if (
-    normalized === "hit"
+    value === "hit"
   ) {
-
-    return `
-
-      <span class="live-history-status hit">
-        ✓ HIT
-      </span>
-    `;
+    return "hit";
   }
 
 
   if (
-    normalized === "miss"
+    value === "miss"
   ) {
-
-    return `
-
-      <span class="live-history-status miss">
-        MISS
-      </span>
-    `;
+    return "miss";
   }
 
 
-  return `
+  return "pending";
+}
 
-    <span class="live-history-status pending">
-      ĐANG CHỜ
-    </span>
-  `;
+
+function carryStatusText(
+  status
+) {
+
+  const value =
+    normalizeCarryStatus(
+      status
+    );
+
+
+  if (
+    value === "hit"
+  ) {
+    return "HIT";
+  }
+
+
+  if (
+    value === "miss"
+  ) {
+    return "MISS";
+  }
+
+
+  return "ĐANG CHỜ";
+}
+
+
+function carryStatusIcon(
+  status
+) {
+
+  const value =
+    normalizeCarryStatus(
+      status
+    );
+
+
+  if (
+    value === "hit"
+  ) {
+    return "✓";
+  }
+
+
+  if (
+    value === "miss"
+  ) {
+    return "×";
+  }
+
+
+  return "•";
 }
 
 
 /* =====================================================
-   NORMALIZE CARRY HISTORY
-
-   Ưu tiên:
-   item.history
-
-   Fallback:
-   previousNumber + currentNumber
+   GET CARRY HISTORY
 ===================================================== */
 
 function getCarryHistory(
@@ -817,9 +842,12 @@ function getCarryHistory(
   currentCarry
 ) {
 
+  let history = [];
+
+
   /*
   ====================================================
-  BACKEND ĐÃ TRẢ FULL HISTORY
+  FULL HISTORY TỪ API
   ====================================================
   */
 
@@ -830,326 +858,152 @@ function getCarryHistory(
     item.history.length
   ) {
 
-    return item.history
-      .map(
-        row => ({
+    history =
+      item.history
+        .map(
+          row => ({
 
-          date:
-            row.date ||
-            row.targetDate ||
-            row.predictionDate ||
-            null,
+            date:
+              row.date ||
+              row.targetDate ||
+              row.predictionDate ||
+              null,
 
-          number:
-            normalizeDisplayNumber(
-              row.number
-            ),
+            sourceDate:
+              row.sourceDate ||
+              null,
 
-          status:
-            row.status ||
-            (
-              row.hit === true
-                ?
-                "hit"
-                :
-                row.hit === false
+            number:
+              normalizeDisplayNumber(
+                row.number
+              ),
+
+            status:
+              row.status ||
+              (
+                row.hit === true
                   ?
-                  "miss"
+                  "hit"
                   :
-                  "pending"
-            )
-        })
-      )
-      .filter(
-        row =>
-          row.date &&
-          row.number !== "--"
-      );
+                  row.hit === false
+                    ?
+                    "miss"
+                    :
+                    "pending"
+              )
+          })
+        )
+        .filter(
+          row =>
+            row.date &&
+            row.number !== "--"
+        );
   }
 
 
   /*
   ====================================================
-  FALLBACK SCHEMA CŨ
+  FALLBACK SCHEMA HIỆN TẠI
   ====================================================
   */
 
-  const history =
-    [];
-
-
   if (
-    item?.previousHitDate &&
-    item?.previousNumber
+    !history.length
   ) {
 
-    history.push({
+    if (
+      item?.previousNumber &&
+      item?.previousHitDate
+    ) {
 
-      date:
-        item.previousHitDate,
+      history.push({
 
-      number:
-        normalizeDisplayNumber(
-          item.previousNumber
-        ),
+        date:
+          item.previousHitDate,
 
-      status:
-        "hit"
-    });
-  }
+        number:
+          normalizeDisplayNumber(
+            item.previousNumber
+          ),
 
-
-  if (
-    currentCarry?.predictionDate &&
-    item?.currentNumber
-  ) {
-
-    history.push({
-
-      date:
-        currentCarry.predictionDate,
-
-      number:
-        normalizeDisplayNumber(
-          item.currentNumber
-        ),
-
-      status:
-        item.status ||
-        "pending"
-    });
-  }
-
-
-  return history;
-}
-
-
-/* =====================================================
-   FULL CARRY HISTORY
-===================================================== */
-
-function renderCarryFullHistory(item, currentCarry) {
-
-  const history =
-    getCarryHistory(item, currentCarry);
-
-  if (!history.length) {
-    return `
-      <div class="live-history-empty">
-        Chưa có dữ liệu lịch sử cho cầu này.
-      </div>
-    `;
-  }
-
-  /*
-   * Sắp xếp mới nhất trước
-   */
-  const sorted = [...history].sort(
-    (a, b) =>
-      String(b.date || "")
-        .localeCompare(String(a.date || ""))
-  );
-
-  const hitCount =
-    sorted.filter(
-      x =>
-        String(x.status || "")
-          .toLowerCase() === "hit"
-    ).length;
-
-  const missCount =
-    sorted.filter(
-      x =>
-        String(x.status || "")
-          .toLowerCase() === "miss"
-    ).length;
-
-  const pendingCount =
-    sorted.filter(
-      x =>
-        String(x.status || "")
-          .toLowerCase() === "pending"
-    ).length;
-
-
-  /*
-   * Chuỗi HIT liên tiếp
-   * bỏ pending hiện tại
-   */
-  let hitStreak = 0;
-
-  for (const row of sorted) {
-
-    const status =
-      String(row.status || "")
-        .toLowerCase();
-
-    if (status === "pending") {
-      continue;
+        status:
+          "hit"
+      });
     }
 
-    if (status === "hit") {
-      hitStreak++;
-    } else {
-      break;
+
+    if (
+      item?.currentNumber &&
+      currentCarry?.predictionDate
+    ) {
+
+      history.push({
+
+        date:
+          currentCarry.predictionDate,
+
+        number:
+          normalizeDisplayNumber(
+            item.currentNumber
+          ),
+
+        status:
+          item.status ||
+          "pending"
+      });
     }
   }
 
 
   /*
-   * 7 ngày đầu hiện ngay.
-   * Phần còn lại có thể mở.
-   */
-  const visibleLimit = 7;
+  ====================================================
+  DEDUPE THEO DATE + NUMBER
+  ====================================================
+  */
+
+  const map =
+    new Map();
 
 
-  const rows = sorted
-    .map((row, index) => {
+  for (
+    const row
+    of history
+  ) {
 
-      const status =
-        String(row.status || "pending")
-          .toLowerCase();
-
-      const hidden =
-        index >= visibleLimit
-          ? " history-extra"
-          : "";
-
-      let statusText = "ĐANG CHỜ";
-      let statusIcon = "•";
-
-      if (status === "hit") {
-        statusText = "HIT";
-        statusIcon = "✓";
-      }
-
-      if (status === "miss") {
-        statusText = "MISS";
-        statusIcon = "×";
-      }
-
-      return `
-        <div
-          class="live-history-row-v2 ${status}${hidden}"
-        >
-
-          <div class="history-date-v2">
-            ${formatDateShort(row.date)}
-          </div>
-
-          <div class="history-number-v2">
-            ${escapeHtml(
-              normalizeDisplayNumber(row.number)
-            )}
-          </div>
-
-          <div class="history-status-v2 ${status}">
-            <span class="history-status-icon">
-              ${statusIcon}
-            </span>
-
-            ${statusText}
-          </div>
-
-        </div>
-      `;
-    })
-    .join("");
+    const key =
+      `${row.date}|${row.number}`;
 
 
-  return `
-
-    <div class="live-history-v2">
-
-      <!-- SUMMARY -->
-
-      <div class="history-summary-v2">
-
-        <div class="history-summary-item">
-          <span>Đã lưu</span>
-          <strong>${sorted.length}</strong>
-          <small>ngày</small>
-        </div>
-
-        <div class="history-summary-item hit">
-          <span>HIT</span>
-          <strong>${hitCount}</strong>
-          <small>ngày</small>
-        </div>
-
-        <div class="history-summary-item miss">
-          <span>MISS</span>
-          <strong>${missCount}</strong>
-          <small>ngày</small>
-        </div>
-
-        <div class="history-summary-item streak">
-          <span>Chuỗi HIT</span>
-          <strong>${hitStreak}</strong>
-          <small>ngày</small>
-        </div>
-
-      </div>
+    map.set(
+      key,
+      row
+    );
+  }
 
 
-      ${
-        pendingCount
-          ? `
-            <div class="history-current-status">
-              <span class="history-pulse"></span>
-
-              ${pendingCount} cầu đang chờ
-              kết quả
-            </div>
-          `
-          : ""
-      }
-
-
-      <!-- LIST -->
-
-      <div class="history-list-v2">
-
-        <div class="history-list-head">
-
-          <span>Ngày</span>
-          <span>Số</span>
-          <span>Kết quả</span>
-
-        </div>
-
-        ${rows}
-
-      </div>
-
-
-      ${
-        sorted.length > visibleLimit
-          ? `
-            <button
-              type="button"
-              class="history-toggle-btn"
-              onclick="toggleCarryHistory(this)"
-              data-open="false"
-            >
-              Xem toàn bộ ${sorted.length} ngày
-            </button>
-          `
-          : ""
-      }
-
-    </div>
-  `;
+  return [
+    ...map.values()
+  ]
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        String(a.date)
+          .localeCompare(
+            String(b.date)
+          )
+    );
 }
 
+
 /* =====================================================
-   CALCULATE DISPLAY STREAK
+   HIT STREAK
 ===================================================== */
 
-function getCarryStreak(
+function getCarryHitStreak(
   item,
-  currentCarry
+  history
 ) {
 
   const explicit =
@@ -1161,22 +1015,9 @@ function getCarryStreak(
   if (
     explicit > 0
   ) {
-
     return explicit;
   }
 
-
-  const history =
-    getCarryHistory(
-      item,
-      currentCarry
-    );
-
-
-  /*
-  Đếm HIT liên tiếp từ cuối
-  nhưng bỏ pending hiện tại.
-  */
 
   let streak =
     0;
@@ -1190,16 +1031,14 @@ function getCarryStreak(
   ) {
 
     const status =
-      String(
-        history[i].status || ""
-      )
-        .toLowerCase();
+      normalizeCarryStatus(
+        history[i].status
+      );
 
 
     if (
       status === "pending"
     ) {
-
       continue;
     }
 
@@ -1223,7 +1062,314 @@ function getCarryStreak(
 
 
 /* =====================================================
-   LIVE VALIDATION
+   PREVIOUS HIT
+===================================================== */
+
+function getLastCarryHit(
+  history
+) {
+
+  for (
+    let i =
+      history.length - 1;
+    i >= 0;
+    i--
+  ) {
+
+    if (
+      normalizeCarryStatus(
+        history[i].status
+      ) === "hit"
+    ) {
+
+      return history[i];
+    }
+  }
+
+
+  return null;
+}
+
+
+/* =====================================================
+   HERO TRANSITION
+
+   Ví dụ:
+   98 ✓ HIT  →  06 ĐANG CHỜ
+===================================================== */
+
+function renderCarryTransition(
+  previousHit,
+  currentNumber,
+  currentStatus
+) {
+
+  if (
+    !previousHit
+  ) {
+    return "";
+  }
+
+
+  return `
+
+    <div class="live-transition">
+
+
+      <div class="live-transition-side">
+
+        <div class="live-transition-label">
+          ĐÃ VỀ
+        </div>
+
+
+        <div class="live-transition-number hit">
+
+          ${escapeHtml(
+            previousHit.number
+          )}
+
+        </div>
+
+
+        <div class="live-transition-status hit">
+
+          ✓ HIT
+
+        </div>
+
+      </div>
+
+
+      <div class="live-transition-arrow">
+
+        <span></span>
+
+      </div>
+
+
+      <div class="live-transition-side">
+
+        <div class="live-transition-label">
+          TIẾP THEO
+        </div>
+
+
+        <div class="live-transition-number current">
+
+          ${escapeHtml(
+            currentNumber
+          )}
+
+        </div>
+
+
+        <div
+          class="
+            live-transition-status
+            ${normalizeCarryStatus(
+              currentStatus
+            )}
+          "
+        >
+
+          ${carryStatusText(
+            currentStatus
+          )}
+
+        </div>
+
+      </div>
+
+
+    </div>
+  `;
+}
+
+
+/* =====================================================
+   FULL HISTORY LIST
+===================================================== */
+
+function renderCarryFullHistory(
+  history
+) {
+
+  if (
+    !history.length
+  ) {
+
+    return `
+
+      <div class="live-empty">
+
+        Chưa có lịch sử cầu.
+
+      </div>
+    `;
+  }
+
+
+  const hitCount =
+    history.filter(
+      row =>
+        normalizeCarryStatus(
+          row.status
+        ) === "hit"
+    ).length;
+
+
+  const missCount =
+    history.filter(
+      row =>
+        normalizeCarryStatus(
+          row.status
+        ) === "miss"
+    ).length;
+
+
+  return `
+
+    <div class="live-history-section">
+
+
+      <div class="live-history-heading">
+
+        <div>
+
+          <div class="live-history-title">
+            LỊCH SỬ CẦU
+          </div>
+
+
+          <div class="live-history-summary">
+
+            ${history.length} ngày
+
+            •
+
+            <strong>
+              ${hitCount} HIT
+            </strong>
+
+            ${
+              missCount
+                ?
+                `• ${missCount} MISS`
+                :
+                ""
+            }
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="live-history-table">
+
+
+        ${
+          history
+            .map(
+              (
+                row,
+                index
+              ) => {
+
+                const status =
+                  normalizeCarryStatus(
+                    row.status
+                  );
+
+
+                const isLast =
+                  index ===
+                  history.length - 1;
+
+
+                return `
+
+                  <div
+                    class="
+                      live-history-item
+                      ${status}
+                      ${
+                        isLast
+                          ?
+                          "current"
+                          :
+                          ""
+                      }
+                    "
+                  >
+
+
+                    <div class="live-history-date">
+
+                      ${formatDateShort(
+                        row.date
+                      )}
+
+                    </div>
+
+
+                    <div
+                      class="
+                        live-history-number
+                        ${status}
+                      "
+                    >
+
+                      ${escapeHtml(
+                        row.number
+                      )}
+
+                    </div>
+
+
+                    <div
+                      class="
+                        live-history-status
+                        ${status}
+                      "
+                    >
+
+                      <span>
+
+                        ${carryStatusIcon(
+                          status
+                        )}
+
+                      </span>
+
+
+                      ${carryStatusText(
+                        status
+                      )}
+
+                    </div>
+
+
+                  </div>
+                `;
+              }
+            )
+            .join("")
+        }
+
+
+      </div>
+
+
+    </div>
+  `;
+}
+
+
+/* =====================================================
+   LIVE VALIDATION MAIN
 ===================================================== */
 
 function renderLiveValidation(
@@ -1235,7 +1381,6 @@ function renderLiveValidation(
 
 
   if (!container) {
-
     return;
   }
 
@@ -1244,14 +1389,6 @@ function renderLiveValidation(
     data.currentCarry ||
     null;
 
-
-  /*
-  Hỗ trợ schema hiện tại:
-  currentCarry.promoted
-
-  và schema tương lai:
-  currentCarry.items
-  */
 
   const promoted =
 
@@ -1270,44 +1407,59 @@ function renderLiveValidation(
         [];
 
 
+  /*
+  ====================================================
+  NO CARRY
+  ====================================================
+  */
+
   if (
     !promoted.length
   ) {
 
     container.innerHTML = `
 
-      <section class="live-validation-card">
+      <section class="live-card">
 
 
-        <div class="live-validation-header">
+        <div class="live-card-header">
 
           <div>
 
-            <div class="live-validation-title">
+            <div class="live-title">
+
               LIVE VALIDATION
+
             </div>
 
 
-            <div class="live-validation-subtitle">
-              Theo dõi cầu đang chạy
+            <div class="live-subtitle">
+
+              Theo dõi cầu vừa HIT
+
             </div>
 
           </div>
 
 
-          <div class="live-validation-badge">
+          <div class="live-badge">
+
+            <span></span>
+
             LIVE
+
           </div>
 
         </div>
 
 
-        <div class="live-validation-empty">
+        <div class="live-empty">
 
-          Hiện chưa có cầu Carry
-          đang được theo dõi.
+          Chưa có cầu đủ điều kiện
+          để tiếp tục theo dõi.
 
         </div>
+
 
       </section>
     `;
@@ -1317,84 +1469,120 @@ function renderLiveValidation(
 
 
   /*
-  Chỉ hiển thị Carry đầu tiên
-  ở card chính.
-
-  Không hiển thị ranking.
+  ====================================================
+  PRIMARY CARRY
+  ====================================================
   */
 
   const item =
     promoted[0];
 
 
-  const currentNumber =
-    normalizeDisplayNumber(
-      item.currentNumber ||
-      item.number
-    );
-
-
-  const streak =
-    getCarryStreak(
+  const history =
+    getCarryHistory(
       item,
       currentCarry
     );
 
 
+  const currentNumber =
+    normalizeDisplayNumber(
+
+      item.currentNumber ||
+
+      item.number
+    );
+
+
+  const currentStatus =
+    item.status ||
+    "pending";
+
+
+  const previousHit =
+    getLastCarryHit(
+      history.filter(
+        row =>
+          row.number !==
+          currentNumber
+          ||
+          normalizeCarryStatus(
+            row.status
+          ) !== "pending"
+      )
+    );
+
+
+  const streak =
+    getCarryHitStreak(
+      item,
+      history
+    );
+
+
   const bridge =
+
     item.bridge ||
+
     item.carrySources?.[0]?.bridge ||
+
     "-";
-
-
-  const bridgeKey =
-    item.bridgeKey ||
-    item.carrySources?.[0]?.bridgeKey ||
-    null;
 
 
   container.innerHTML = `
 
-    <section class="live-validation-card">
+    <section class="live-card">
 
 
-      <div class="live-validation-header">
+      <!-- HEADER -->
+
+      <div class="live-card-header">
 
 
         <div>
 
-          <div class="live-validation-title">
+          <div class="live-title">
+
             LIVE VALIDATION
+
           </div>
 
 
-          <div class="live-validation-subtitle">
+          <div class="live-subtitle">
 
-            Cầu đang được tiếp tục
-            sau khi HIT
+            Cầu vừa HIT đang được
+            tiếp tục theo dõi
 
           </div>
 
         </div>
 
 
-        <div class="live-validation-badge">
-          CARRY
+        <div class="live-badge">
+
+          <span></span>
+
+          LIVE
+
         </div>
 
 
       </div>
 
 
-      <div class="live-validation-main">
+      <!-- HERO NUMBER -->
+
+      <div class="live-hero">
 
 
-        <div class="live-validation-label">
+        <div class="live-hero-label">
+
           SỐ ĐANG THEO
+
         </div>
 
 
-        <div class="live-validation-number">
+        <div class="live-hero-number">
 
           ${escapeHtml(
             currentNumber
@@ -1403,17 +1591,34 @@ function renderLiveValidation(
         </div>
 
 
-        <div class="live-validation-date">
+        <div class="live-hero-bottom">
 
-          Dự đoán
 
-          <strong>
+          <span>
 
             ${formatDate(
-              currentCarry?.predictionDate
+              currentCarry
+                ?.predictionDate
             )}
 
-          </strong>
+          </span>
+
+
+          <span
+            class="
+              live-current-status
+              ${normalizeCarryStatus(
+                currentStatus
+              )}
+            "
+          >
+
+            ${carryStatusText(
+              currentStatus
+            )}
+
+          </span>
+
 
         </div>
 
@@ -1421,13 +1626,34 @@ function renderLiveValidation(
       </div>
 
 
-      <div class="live-validation-info-grid">
+      <!-- PREVIOUS → CURRENT -->
+
+      ${renderCarryTransition(
+
+        previousHit,
+
+        currentNumber,
+
+        currentStatus
+      )}
 
 
-        <div class="live-validation-info-item">
+      <!-- BRIDGE -->
+
+      <div class="live-bridge-card">
+
+
+        <div class="live-bridge-icon">
+
+          ↗
+
+        </div>
+
+
+        <div class="live-bridge-content">
 
           <span>
-            Vị trí cầu
+            VỊ TRÍ CẦU
           </span>
 
 
@@ -1442,10 +1668,27 @@ function renderLiveValidation(
         </div>
 
 
-        <div class="live-validation-info-item">
+      </div>
+
+
+      <!-- STREAK -->
+
+      <div class="live-streak-card">
+
+
+        <div class="live-streak-icon">
+
+          🔥
+
+        </div>
+
+
+        <div>
 
           <span>
-            Cầu đã chạy
+
+            Chuỗi HIT hiện tại
+
           </span>
 
 
@@ -1462,48 +1705,10 @@ function renderLiveValidation(
       </div>
 
 
-      ${
-        bridgeKey
-          ?
-          `
-
-            <div class="live-validation-key">
-
-              ${escapeHtml(
-                bridgeKey
-              )}
-
-            </div>
-          `
-          :
-          ""
-      }
-
-
-      <div class="live-history-header">
-
-        <div>
-
-          <div class="live-history-title">
-            LỊCH SỬ CẦU CHẠY
-          </div>
-
-
-          <div class="live-history-subtitle">
-
-            Toàn bộ các ngày
-            đang lưu của cầu này
-
-          </div>
-
-        </div>
-
-      </div>
-
+      <!-- HISTORY -->
 
       ${renderCarryFullHistory(
-        item,
-        currentCarry
+        history
       )}
 
 
@@ -1511,6 +1716,10 @@ function renderLiveValidation(
   `;
 }
 
+
+/* =====================================================
+   ERROR
+===================================================== */
 
 function renderLiveValidationError(
   message
@@ -1521,35 +1730,38 @@ function renderLiveValidationError(
 
 
   if (!container) {
-
     return;
   }
 
 
   container.innerHTML = `
 
-    <section class="live-validation-card">
+    <section class="live-card">
 
 
-      <div class="live-validation-header">
+      <div class="live-card-header">
 
         <div>
 
-          <div class="live-validation-title">
+          <div class="live-title">
             LIVE VALIDATION
           </div>
 
         </div>
 
 
-        <div class="live-validation-badge">
+        <div class="live-badge">
+
+          <span></span>
+
           LIVE
+
         </div>
 
       </div>
 
 
-      <div class="live-validation-empty">
+      <div class="live-empty">
 
         ${escapeHtml(
           message
@@ -1561,7 +1773,6 @@ function renderLiveValidationError(
     </section>
   `;
 }
-
 
 /* =====================================================
    DÀN SỐ GỢI Ý
