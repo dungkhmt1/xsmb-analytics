@@ -1,8 +1,30 @@
 /*
 ========================================================
 XSMB ANALYTICS FRONTEND
-V2.6.2 + LIVE CARRY V2
-CLEAN USER-FOCUSED UI
+V2.6.2 + LIVE VALIDATION CARRY
+CLEAN HOME UI
+========================================================
+
+TRANG CHỦ:
+
+1. Kết quả XSMB mới nhất
+
+2. Phân tích hôm nay
+   - LIVE VALIDATION
+   - Dàn số gợi ý
+
+3. Không hiển thị:
+   - Hiệu quả Live
+   - Top số theo mô hình
+   - Score
+   - Wilson
+   - Edge
+   - Ranking #1 #2 #3...
+
+4. Giữ:
+   - Tracking
+   - Backtest
+   - Cầu 5 chữ số
 ========================================================
 */
 
@@ -144,9 +166,7 @@ async function loadDashboard() {
   /*
   ====================================================
   STATISTICS
-
-  Chỉ dùng lấy tổng số kỳ.
-  Không hiển thị Top số theo mô hình.
+  CHỈ LẤY SỐ KỲ DATA
   ====================================================
   */
 
@@ -338,21 +358,6 @@ async function loadDashboard() {
       }
 
 
-      /*
-      Thứ tự:
-
-      HIỆU QUẢ LIVE
-      ↓
-      LIVE VALIDATION
-      ↓
-      DÀN SỐ GỢI Ý
-      */
-
-      renderLivePerformance(
-        data
-      );
-
-
       renderLiveValidation(
         data
       );
@@ -366,11 +371,6 @@ async function loadDashboard() {
       );
 
 
-      renderLivePerformanceError(
-        error.message
-      );
-
-
       renderLiveValidationError(
         error.message
       );
@@ -378,11 +378,6 @@ async function loadDashboard() {
 
   }
   else {
-
-    renderLivePerformanceError(
-      "Không kết nối được dữ liệu Live."
-    );
-
 
     renderLiveValidationError(
       "Không kết nối được Live Validation API."
@@ -397,10 +392,6 @@ async function loadDashboard() {
 
 function hideModelTopSection() {
 
-  /*
-  Nội dung bảng cũ.
-  */
-
   const detail =
     document.getElementById(
       "analysis-detail"
@@ -414,17 +405,13 @@ function hideModelTopSection() {
   }
 
 
-  /*
-  Tìm title bên ngoài.
-  */
-
-  const elements =
+  const headings =
     document.querySelectorAll(
       "h1, h2, h3, h4, .section-title, .card-title"
     );
 
 
-  elements.forEach(
+  headings.forEach(
     element => {
 
       const text =
@@ -711,54 +698,8 @@ function renderLatestError(
 
 
 /* =====================================================
-   CONTAINERS PHÂN TÍCH
+   LIVE VALIDATION CONTAINER
 ===================================================== */
-
-function ensurePerformanceContainer() {
-
-  let container =
-    document.getElementById(
-      "analysis-performance-panel"
-    );
-
-
-  if (container) {
-
-    return container;
-  }
-
-
-  const prediction =
-    document.getElementById(
-      "today-prediction"
-    );
-
-
-  if (!prediction) {
-
-    return null;
-  }
-
-
-  container =
-    document.createElement(
-      "div"
-    );
-
-
-  container.id =
-    "analysis-performance-panel";
-
-
-  prediction.insertAdjacentElement(
-    "beforebegin",
-    container
-  );
-
-
-  return container;
-}
-
 
 function ensureLiveValidationContainer() {
 
@@ -796,25 +737,15 @@ function ensureLiveValidationContainer() {
     "live-validation-panel";
 
 
-  const performance =
-    ensurePerformanceContainer();
+  /*
+  Live Validation nằm ngay trên
+  Dàn số gợi ý.
+  */
 
-
-  if (performance) {
-
-    performance.insertAdjacentElement(
-      "afterend",
-      container
-    );
-
-  }
-  else {
-
-    prediction.insertAdjacentElement(
-      "beforebegin",
-      container
-    );
-  }
+  prediction.insertAdjacentElement(
+    "beforebegin",
+    container
+  );
 
 
   return container;
@@ -822,402 +753,27 @@ function ensureLiveValidationContainer() {
 
 
 /* =====================================================
-   HIỆU QUẢ LIVE
-===================================================== */
-
-function getPerformanceRate(
-  metric
-) {
-
-  if (
-    !metric ||
-    !Number(
-      metric.tested
-    )
-  ) {
-
-    return null;
-  }
-
-
-  return Number(
-    metric.hitRate || 0
-  );
-}
-
-
-function performanceRateText(
-  metric
-) {
-
-  const rate =
-    getPerformanceRate(
-      metric
-    );
-
-
-  if (
-    rate === null
-  ) {
-
-    return "--";
-  }
-
-
-  return `${rate}%`;
-}
-
-
-function performanceHitText(
-  metric
-) {
-
-  if (
-    !metric ||
-    !Number(
-      metric.tested
-    )
-  ) {
-
-    return "Chưa có dữ liệu";
-  }
-
-
-  return (
-
-    `${Number(
-      metric.hits || 0
-    )}` +
-
-    "/" +
-
-    `${Number(
-      metric.tested || 0
-    )} kỳ`
-  );
-}
-
-
-/*
-========================================================
-CARD HIỆU QUẢ
-
-Tương tự card Dàn số:
-- giá trị chính thật lớn
-- giá trị phụ bên dưới
-========================================================
-*/
-
-function renderPerformanceCard(
-  title,
-  performance,
-  type = "base"
-) {
-
-  const top1 =
-    performance?.top1 ||
-    {};
-
-
-  const top3 =
-    performance?.top3 ||
-    {};
-
-
-  const top5 =
-    performance?.top5 ||
-    {};
-
-
-  const tested =
-    Number(
-      performance?.tested || 0
-    );
-
-
-  const pending =
-    Number(
-      performance?.pending || 0
-    );
-
-
-  return `
-
-    <article
-      class="
-        performance-card
-        ${
-          type === "carry"
-            ?
-            "performance-carry"
-            :
-            "performance-base"
-        }
-      "
-    >
-
-
-      <div class="performance-card-header">
-
-        <div class="performance-model-name">
-
-          ${escapeHtml(
-            title
-          )}
-
-        </div>
-
-
-        <div class="performance-status">
-
-          ${
-            tested
-              ?
-              `${tested} kỳ đã chấm`
-              :
-              "Chưa chấm"
-          }
-
-          ${
-            pending
-              ?
-              ` • ${pending} đang chờ`
-              :
-              ""
-          }
-
-        </div>
-
-      </div>
-
-
-      <div class="performance-primary">
-
-        <div class="performance-primary-label">
-          HIỆU QUẢ 1 SỐ
-        </div>
-
-
-        <div class="performance-primary-rate">
-
-          ${performanceRateText(
-            top1
-          )}
-
-        </div>
-
-
-        <div class="performance-primary-detail">
-
-          ${performanceHitText(
-            top1
-          )}
-
-        </div>
-
-      </div>
-
-
-      <div class="performance-secondary-grid">
-
-
-        <div class="performance-secondary-item">
-
-          <div class="performance-secondary-title">
-            3 SỐ
-          </div>
-
-
-          <div class="performance-secondary-rate">
-
-            ${performanceRateText(
-              top3
-            )}
-
-          </div>
-
-
-          <div class="performance-secondary-detail">
-
-            ${performanceHitText(
-              top3
-            )}
-
-          </div>
-
-        </div>
-
-
-        <div class="performance-secondary-item">
-
-          <div class="performance-secondary-title">
-            5 SỐ
-          </div>
-
-
-          <div class="performance-secondary-rate">
-
-            ${performanceRateText(
-              top5
-            )}
-
-          </div>
-
-
-          <div class="performance-secondary-detail">
-
-            ${performanceHitText(
-              top5
-            )}
-
-          </div>
-
-        </div>
-
-
-      </div>
-
-    </article>
-  `;
-}
-
-
-function renderLivePerformance(
-  data
-) {
-
-  const container =
-    ensurePerformanceContainer();
-
-
-  if (!container) {
-
-    return;
-  }
-
-
-  const base =
-    data.performance?.base ||
-    {};
-
-
-  const carry =
-    data.performance?.carry ||
-    {};
-
-
-  container.innerHTML = `
-
-    <section class="performance-panel">
-
-
-      <div class="performance-panel-header">
-
-        <div>
-
-          <div class="pick-panel-title">
-            HIỆU QUẢ LIVE
-          </div>
-
-
-          <div class="pick-panel-subtitle">
-            Kết quả kiểm chứng thực tế
-          </div>
-
-        </div>
-
-
-        <div class="performance-live-badge">
-          LIVE
-        </div>
-
-      </div>
-
-
-      <div class="performance-card-list">
-
-
-        ${renderPerformanceCard(
-          "V2.6.2",
-          base,
-          "base"
-        )}
-
-
-        ${renderPerformanceCard(
-          "CARRY",
-          carry,
-          "carry"
-        )}
-
-
-      </div>
-
-    </section>
-  `;
-}
-
-
-function renderLivePerformanceError(
-  message
-) {
-
-  const container =
-    ensurePerformanceContainer();
-
-
-  if (!container) {
-
-    return;
-  }
-
-
-  container.innerHTML = `
-
-    <section class="performance-panel">
-
-
-      <div class="performance-panel-header">
-
-        <div>
-
-          <div class="pick-panel-title">
-            HIỆU QUẢ LIVE
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div class="simple-empty">
-
-        ${escapeHtml(
-          message
-        )}
-
-      </div>
-
-    </section>
-  `;
-}
-
-
-/* =====================================================
-   LIVE VALIDATION / CARRY
+   LIVE HISTORY STATUS
 ===================================================== */
 
 function carryStatusLabel(
   status
 ) {
 
+  const normalized =
+    String(
+      status || ""
+    )
+      .toLowerCase();
+
+
   if (
-    status === "hit"
+    normalized === "hit"
   ) {
 
     return `
 
-      <span class="carry-status hit">
+      <span class="live-history-status hit">
         ✓ HIT
       </span>
     `;
@@ -1225,12 +781,12 @@ function carryStatusLabel(
 
 
   if (
-    status === "miss"
+    normalized === "miss"
   ) {
 
     return `
 
-      <span class="carry-status miss">
+      <span class="live-history-status miss">
         MISS
       </span>
     `;
@@ -1239,159 +795,339 @@ function carryStatusLabel(
 
   return `
 
-    <span class="carry-status pending">
+    <span class="live-history-status pending">
       ĐANG CHỜ
     </span>
   `;
 }
 
 
-function buildCarryDisplayHistory(
+/* =====================================================
+   NORMALIZE CARRY HISTORY
+
+   Ưu tiên:
+   item.history
+
+   Fallback:
+   previousNumber + currentNumber
+===================================================== */
+
+function getCarryHistory(
   item,
   currentCarry
 ) {
 
   /*
-  API có history đầy đủ.
+  ====================================================
+  BACKEND ĐÃ TRẢ FULL HISTORY
+  ====================================================
   */
 
   if (
     Array.isArray(
-      item.history
+      item?.history
     ) &&
     item.history.length
   ) {
 
     return item.history
       .map(
-        row => `
+        row => ({
 
-          <div class="carry-history-row">
+          date:
+            row.date ||
+            row.targetDate ||
+            row.predictionDate ||
+            null,
 
-            <span>
+          number:
+            normalizeDisplayNumber(
+              row.number
+            ),
 
-              ${formatDateShort(
-                row.date ||
-                row.targetDate
-              )}
-
-            </span>
-
-
-            <strong>
-
-              ${escapeHtml(
-                row.number
-              )}
-
-            </strong>
-
-
-            ${carryStatusLabel(
-              row.status
-            )}
-
-          </div>
-        `
+          status:
+            row.status ||
+            (
+              row.hit === true
+                ?
+                "hit"
+                :
+                row.hit === false
+                  ?
+                  "miss"
+                  :
+                  "pending"
+            )
+        })
       )
-      .join("");
+      .filter(
+        row =>
+          row.date &&
+          row.number !== "--"
+      );
   }
 
 
   /*
-  Schema Carry hiện tại.
+  ====================================================
+  FALLBACK SCHEMA CŨ
+  ====================================================
   */
 
-  let html =
-    "";
+  const history =
+    [];
 
 
   if (
-    item.previousNumber &&
-    item.previousHitDate
+    item?.previousHitDate &&
+    item?.previousNumber
   ) {
 
-    html += `
+    history.push({
 
-      <div class="carry-history-row">
+      date:
+        item.previousHitDate,
 
-        <span>
+      number:
+        normalizeDisplayNumber(
+          item.previousNumber
+        ),
 
-          ${formatDateShort(
-            item.previousHitDate
-          )}
-
-        </span>
-
-
-        <strong>
-
-          ${escapeHtml(
-            item.previousNumber
-          )}
-
-        </strong>
-
-
-        <span class="carry-status hit">
-          ✓ HIT
-        </span>
-
-      </div>
-    `;
+      status:
+        "hit"
+    });
   }
 
 
   if (
-    item.currentNumber &&
-    currentCarry?.predictionDate
+    currentCarry?.predictionDate &&
+    item?.currentNumber
   ) {
 
-    html += `
+    history.push({
 
-      <div class="carry-history-row">
+      date:
+        currentCarry.predictionDate,
 
-        <span>
+      number:
+        normalizeDisplayNumber(
+          item.currentNumber
+        ),
 
-          ${formatDateShort(
-            currentCarry.predictionDate
-          )}
-
-        </span>
-
-
-        <strong>
-
-          ${escapeHtml(
-            item.currentNumber
-          )}
-
-        </strong>
-
-
-        ${carryStatusLabel(
-          item.status
-        )}
-
-      </div>
-    `;
+      status:
+        item.status ||
+        "pending"
+    });
   }
 
 
-  if (!html) {
-
-    html = `
-
-      <div class="simple-empty">
-        Chưa có lịch sử Carry.
-      </div>
-    `;
-  }
-
-
-  return html;
+  return history;
 }
 
+
+/* =====================================================
+   FULL CARRY HISTORY
+===================================================== */
+
+function renderCarryFullHistory(
+  item,
+  currentCarry
+) {
+
+  const history =
+    getCarryHistory(
+      item,
+      currentCarry
+    );
+
+
+  if (
+    !history.length
+  ) {
+
+    return `
+
+      <div class="live-history-empty">
+
+        Chưa có lịch sử cầu.
+
+      </div>
+    `;
+  }
+
+
+  const sorted =
+    [...history]
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          String(
+            a.date || ""
+          )
+            .localeCompare(
+              String(
+                b.date || ""
+              )
+            )
+      );
+
+
+  return `
+
+    <div class="live-history-list">
+
+      ${
+        sorted
+          .map(
+            (
+              row,
+              index
+            ) => `
+
+              <div class="live-history-row">
+
+
+                <div class="live-history-timeline">
+
+                  <span class="live-history-dot"></span>
+
+                  ${
+                    index <
+                    sorted.length - 1
+                      ?
+                      `
+                        <span
+                          class="live-history-line"
+                        ></span>
+                      `
+                      :
+                      ""
+                  }
+
+                </div>
+
+
+                <div class="live-history-date">
+
+                  ${formatDateShort(
+                    row.date
+                  )}
+
+                </div>
+
+
+                <div class="live-history-number">
+
+                  ${escapeHtml(
+                    row.number
+                  )}
+
+                </div>
+
+
+                <div class="live-history-result">
+
+                  ${carryStatusLabel(
+                    row.status
+                  )}
+
+                </div>
+
+              </div>
+            `
+          )
+          .join("")
+      }
+
+    </div>
+  `;
+}
+
+
+/* =====================================================
+   CALCULATE DISPLAY STREAK
+===================================================== */
+
+function getCarryStreak(
+  item,
+  currentCarry
+) {
+
+  const explicit =
+    Number(
+      item?.carryHitStreak || 0
+    );
+
+
+  if (
+    explicit > 0
+  ) {
+
+    return explicit;
+  }
+
+
+  const history =
+    getCarryHistory(
+      item,
+      currentCarry
+    );
+
+
+  /*
+  Đếm HIT liên tiếp từ cuối
+  nhưng bỏ pending hiện tại.
+  */
+
+  let streak =
+    0;
+
+
+  for (
+    let i =
+      history.length - 1;
+    i >= 0;
+    i--
+  ) {
+
+    const status =
+      String(
+        history[i].status || ""
+      )
+        .toLowerCase();
+
+
+    if (
+      status === "pending"
+    ) {
+
+      continue;
+    }
+
+
+    if (
+      status === "hit"
+    ) {
+
+      streak++;
+
+      continue;
+    }
+
+
+    break;
+  }
+
+
+  return streak;
+}
+
+
+/* =====================================================
+   LIVE VALIDATION
+===================================================== */
 
 function renderLiveValidation(
   data
@@ -1412,14 +1148,29 @@ function renderLiveValidation(
     null;
 
 
+  /*
+  Hỗ trợ schema hiện tại:
+  currentCarry.promoted
+
+  và schema tương lai:
+  currentCarry.items
+  */
+
   const promoted =
+
     Array.isArray(
       currentCarry?.promoted
     )
       ?
       currentCarry.promoted
       :
-      [];
+      Array.isArray(
+        currentCarry?.items
+      )
+        ?
+        currentCarry.items
+        :
+        [];
 
 
   if (
@@ -1428,30 +1179,36 @@ function renderLiveValidation(
 
     container.innerHTML = `
 
-      <section class="carry-panel">
+      <section class="live-validation-card">
 
-        <div class="carry-header">
+
+        <div class="live-validation-header">
 
           <div>
 
-            <div class="pick-panel-title">
+            <div class="live-validation-title">
               LIVE VALIDATION
             </div>
 
 
-            <div class="pick-panel-subtitle">
-              Theo dõi cầu Carry
+            <div class="live-validation-subtitle">
+              Theo dõi cầu đang chạy
             </div>
 
+          </div>
+
+
+          <div class="live-validation-badge">
+            LIVE
           </div>
 
         </div>
 
 
-        <div class="simple-empty">
+        <div class="live-validation-empty">
 
           Hiện chưa có cầu Carry
-          đang được ưu tiên.
+          đang được theo dõi.
 
         </div>
 
@@ -1463,7 +1220,9 @@ function renderLiveValidation(
 
 
   /*
-  Carry đầu tiên.
+  Chỉ hiển thị Carry đầu tiên
+  ở card chính.
+
   Không hiển thị ranking.
   */
 
@@ -1471,67 +1230,83 @@ function renderLiveValidation(
     promoted[0];
 
 
-  const history =
-    buildCarryDisplayHistory(
+  const currentNumber =
+    normalizeDisplayNumber(
+      item.currentNumber ||
+      item.number
+    );
+
+
+  const streak =
+    getCarryStreak(
       item,
       currentCarry
     );
 
 
-  const streak =
-    Number(
-      item.carryHitStreak || 1
-    );
+  const bridge =
+    item.bridge ||
+    item.carrySources?.[0]?.bridge ||
+    "-";
+
+
+  const bridgeKey =
+    item.bridgeKey ||
+    item.carrySources?.[0]?.bridgeKey ||
+    null;
 
 
   container.innerHTML = `
 
-    <section class="carry-panel">
+    <section class="live-validation-card">
 
 
-      <div class="carry-header">
+      <div class="live-validation-header">
+
 
         <div>
 
-          <div class="pick-panel-title">
+          <div class="live-validation-title">
             LIVE VALIDATION
           </div>
 
 
-          <div class="pick-panel-subtitle">
-            Cầu tiếp tục sau khi HIT
+          <div class="live-validation-subtitle">
+
+            Cầu đang được tiếp tục
+            sau khi HIT
+
           </div>
 
         </div>
 
 
-        <div class="carry-badge">
+        <div class="live-validation-badge">
           CARRY
         </div>
+
 
       </div>
 
 
-      <div class="carry-main">
+      <div class="live-validation-main">
 
 
-        <div class="carry-main-label">
-          SỐ ƯU TIÊN
+        <div class="live-validation-label">
+          SỐ ĐANG THEO
         </div>
 
 
-        <div class="carry-number">
+        <div class="live-validation-number">
 
           ${escapeHtml(
-            normalizeDisplayNumber(
-              item.currentNumber
-            )
+            currentNumber
           )}
 
         </div>
 
 
-        <div class="carry-date">
+        <div class="live-validation-date">
 
           Dự đoán
 
@@ -1545,54 +1320,95 @@ function renderLiveValidation(
 
         </div>
 
-      </div>
-
-
-      <div class="carry-bridge-box">
-
-        <span>
-          Vị trí cầu
-        </span>
-
-
-        <strong>
-
-          ${escapeHtml(
-            item.bridge || "-"
-          )}
-
-        </strong>
 
       </div>
 
 
-      <div class="carry-history-title">
-        LỊCH SỬ CẦU CHẠY
+      <div class="live-validation-info-grid">
+
+
+        <div class="live-validation-info-item">
+
+          <span>
+            Vị trí cầu
+          </span>
+
+
+          <strong>
+
+            ${escapeHtml(
+              bridge
+            )}
+
+          </strong>
+
+        </div>
+
+
+        <div class="live-validation-info-item">
+
+          <span>
+            Cầu đã chạy
+          </span>
+
+
+          <strong>
+
+            ${streak}
+            ngày
+
+          </strong>
+
+        </div>
+
+
       </div>
 
 
-      <div class="carry-history">
+      ${
+        bridgeKey
+          ?
+          `
 
-        ${history}
+            <div class="live-validation-key">
+
+              ${escapeHtml(
+                bridgeKey
+              )}
+
+            </div>
+          `
+          :
+          ""
+      }
+
+
+      <div class="live-history-header">
+
+        <div>
+
+          <div class="live-history-title">
+            LỊCH SỬ CẦU CHẠY
+          </div>
+
+
+          <div class="live-history-subtitle">
+
+            Toàn bộ các ngày
+            đang lưu của cầu này
+
+          </div>
+
+        </div>
 
       </div>
 
 
-      <div class="carry-streak">
+      ${renderCarryFullHistory(
+        item,
+        currentCarry
+      )}
 
-        <span>
-          Cầu đã chạy
-        </span>
-
-
-        <strong>
-
-          ${streak}
-          ngày
-
-        </strong>
-
-      </div>
 
     </section>
   `;
@@ -1615,20 +1431,35 @@ function renderLiveValidationError(
 
   container.innerHTML = `
 
-    <section class="carry-panel">
+    <section class="live-validation-card">
 
-      <div class="pick-panel-title">
-        LIVE VALIDATION
+
+      <div class="live-validation-header">
+
+        <div>
+
+          <div class="live-validation-title">
+            LIVE VALIDATION
+          </div>
+
+        </div>
+
+
+        <div class="live-validation-badge">
+          LIVE
+        </div>
+
       </div>
 
 
-      <div class="simple-empty">
+      <div class="live-validation-empty">
 
         ${escapeHtml(
           message
         )}
 
       </div>
+
 
     </section>
   `;
@@ -1696,7 +1527,7 @@ function strengthClass(
 
 
 /* =====================================================
-   HISTORY CẦU
+   HISTORY CẦU GỢI Ý
 ===================================================== */
 
 function renderPickHistory(
@@ -1915,6 +1746,7 @@ function renderPrimaryPick(
 
       </div>
 
+
     </article>
   `;
 }
@@ -1997,13 +1829,14 @@ function renderSecondaryPick(
 
       </div>
 
+
     </article>
   `;
 }
 
 
 /* =====================================================
-   RENDER DÀN SỐ
+   RENDER DÀN SỐ GỢI Ý
 ===================================================== */
 
 function renderPrediction(
@@ -2034,10 +1867,10 @@ function renderPrediction(
 
 
   /*
-  Chỉ lấy 5 số đầu tiên
-  theo thứ tự V2.6.2.
+  Chỉ hiển thị 5 số đầu tiên
+  theo thứ tự nội bộ V2.6.2.
 
-  Không hiển thị rank.
+  Không hiển thị ranking.
   */
 
   const top5 =
@@ -2085,6 +1918,7 @@ function renderPrediction(
 
         </div>
 
+
       </section>
     `;
 
@@ -2108,6 +1942,7 @@ function renderPrediction(
 
 
       <div class="pick-panel-header">
+
 
         <div>
 
@@ -2139,6 +1974,7 @@ function renderPrediction(
           SỐ
 
         </div>
+
 
       </div>
 
@@ -2176,6 +2012,7 @@ function renderPrediction(
               }
 
             </div>
+
           `
 
           :
@@ -2185,6 +2022,7 @@ function renderPrediction(
 
 
       <div class="pick-footer">
+
 
         <span>
 
@@ -2222,7 +2060,9 @@ function renderPrediction(
 
         </span>
 
+
       </div>
+
 
     </section>
   `;
@@ -2250,6 +2090,7 @@ function renderPredictionError(
 
     <section class="pick-panel">
 
+
       <div class="pick-panel-title">
         DÀN SỐ GỢI Ý
       </div>
@@ -2270,6 +2111,7 @@ function renderPredictionError(
         ${totalDraws} kỳ
 
       </div>
+
 
     </section>
   `;
@@ -2560,7 +2402,7 @@ window.showPrediction =
     const target =
 
       document.getElementById(
-        "analysis-performance-panel"
+        "live-validation-panel"
       )
 
       ||
@@ -2802,6 +2644,7 @@ async function loadPredictionHistory() {
             Lãi/Lỗ
           </small>
 
+
           <strong
             class="${
               Number(
@@ -2824,6 +2667,7 @@ async function loadPredictionHistory() {
                 ""
             }
 
+
             ${money(
               s.totalProfit || 0
             )}
@@ -2831,6 +2675,7 @@ async function loadPredictionHistory() {
           </strong>
 
         </div>
+
 
       </div>
     `;
@@ -3023,6 +2868,7 @@ async function loadPredictionHistory() {
 
                 </td>
 
+
               </tr>
             `;
           }
@@ -3058,6 +2904,7 @@ async function loadPredictionHistory() {
             ${rows}
 
           </tbody>
+
 
         </table>
 
@@ -3272,7 +3119,9 @@ function renderFiveDigitBridge(
         <br>
 
         Đã đọc
+
         ${data.analyzedDraws || 0}
+
         kỳ.
 
       </div>
@@ -3392,6 +3241,7 @@ function renderFiveDigitBridge(
                 ${status}
 
               </div>
+
 
             </div>
           `;
