@@ -1548,4 +1548,199 @@ button {
   .pick-number {
     font-size: 38px;
   }
+}/* =====================================================
+   HIỆU QUẢ LIVE
+   CÙNG STYLE DÀN SỐ GỢI Ý
+===================================================== */
+
+.performance-panel {
+  margin-bottom: 16px;
+}
+
+.performance-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  gap: 10px;
+
+  margin-bottom: 12px;
+}
+
+.performance-live-badge {
+  padding: 5px 9px;
+
+  border-radius: 999px;
+
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .6px;
+
+  background: rgba(22,163,74,.12);
+}
+
+
+/* =====================================================
+   CARD
+===================================================== */
+
+.performance-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.performance-card {
+  padding: 15px;
+
+  border-radius: 16px;
+
+  background: var(--card-bg, #fff);
+
+  border: 1px solid rgba(0,0,0,.08);
+
+  box-shadow:
+    0 5px 18px rgba(0,0,0,.05);
+}
+
+.performance-base {
+  border: 2px solid rgba(37,99,235,.20);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(37,99,235,.07),
+      rgba(255,255,255,.96)
+    );
+}
+
+.performance-carry {
+  border: 1px solid rgba(22,163,74,.18);
+}
+
+
+/* =====================================================
+   HEADER
+===================================================== */
+
+.performance-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  gap: 8px;
+}
+
+.performance-model-name {
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.performance-status {
+  font-size: 10px;
+  opacity: .58;
+}
+
+
+/* =====================================================
+   PRIMARY
+===================================================== */
+
+.performance-primary {
+  margin-top: 14px;
+
+  text-align: center;
+}
+
+.performance-primary-label {
+  font-size: 10px;
+  font-weight: 800;
+
+  letter-spacing: .7px;
+
+  opacity: .55;
+}
+
+.performance-primary-rate {
+  margin-top: 4px;
+
+  font-size: 48px;
+  line-height: 1;
+
+  font-weight: 900;
+
+  letter-spacing: -2px;
+}
+
+.performance-primary-detail {
+  margin-top: 5px;
+
+  font-size: 11px;
+
+  opacity: .6;
+}
+
+
+/* =====================================================
+   TOP3 / TOP5
+===================================================== */
+
+.performance-secondary-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 8px;
+
+  margin-top: 14px;
+}
+
+.performance-secondary-item {
+  padding: 10px;
+
+  border-radius: 12px;
+
+  text-align: center;
+
+  background: rgba(0,0,0,.035);
+}
+
+.performance-secondary-title {
+  font-size: 10px;
+  font-weight: 750;
+
+  opacity: .55;
+}
+
+.performance-secondary-rate {
+  margin-top: 3px;
+
+  font-size: 24px;
+  line-height: 1.1;
+
+  font-weight: 850;
+}
+
+.performance-secondary-detail {
+  margin-top: 3px;
+
+  font-size: 10px;
+  opacity: .55;
+}
+
+
+/* =====================================================
+   MOBILE
+===================================================== */
+
+@media (max-width: 520px) {
+
+  .performance-primary-rate {
+    font-size: 44px;
+  }
+
+  .performance-secondary-rate {
+    font-size: 22px;
+  }
 }
