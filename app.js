@@ -2,29 +2,7 @@
 ========================================================
 XSMB ANALYTICS FRONTEND
 V2.6.2 + LIVE CARRY V2
-SIMPLE / USER-FOCUSED UI
-========================================================
-
-TRANG CHỦ:
-
-1. Kết quả XSMB mới nhất
-
-2. Phân tích hôm nay
-   - Hiệu quả Live
-   - Live Validation / Carry
-   - Dàn số gợi ý
-
-3. Không hiển thị:
-   - Top số theo mô hình
-   - Score
-   - Wilson
-   - Edge
-   - Ranking #1 #2 #3...
-
-4. Giữ:
-   - Tracking
-   - Backtest
-   - Cầu 5 chữ số
+CLEAN USER-FOCUSED UI
 ========================================================
 */
 
@@ -33,11 +11,6 @@ document.addEventListener(
   "DOMContentLoaded",
   () => {
 
-    /*
-    Loại bỏ khu vực
-    "Top số theo mô hình"
-    khỏi trang chủ.
-    */
     hideModelTopSection();
 
     loadDashboard();
@@ -76,13 +49,6 @@ async function loadDashboard() {
         }
       ),
 
-      /*
-      Statistics vẫn được gọi
-      chỉ để lấy totalDraws.
-
-      Không render bảng
-      Top số theo mô hình.
-      */
       fetch(
         `/api/statistics?t=${now}`,
         {
@@ -112,7 +78,7 @@ async function loadDashboard() {
 
   /*
   ====================================================
-  LATEST RESULT
+  KẾT QUẢ MỚI NHẤT
   ====================================================
   */
 
@@ -178,7 +144,9 @@ async function loadDashboard() {
   /*
   ====================================================
   STATISTICS
-  CHỈ LẤY SỐ KỲ DATA
+
+  Chỉ dùng lấy tổng số kỳ.
+  Không hiển thị Top số theo mô hình.
   ====================================================
   */
 
@@ -224,14 +192,6 @@ async function loadDashboard() {
         totalDraws
       );
 
-
-      /*
-      Không gọi:
-      renderStatistics(data)
-      */
-
-      hideModelTopSection();
-
     }
     catch (error) {
 
@@ -239,16 +199,12 @@ async function loadDashboard() {
         "Statistics:",
         error
       );
-
-
-      hideModelTopSection();
     }
 
   }
-  else {
 
-    hideModelTopSection();
-  }
+
+  hideModelTopSection();
 
 
   /*
@@ -298,9 +254,7 @@ async function loadDashboard() {
       setSystemStatus(
 
         `D1 ${totalDraws} kỳ • ` +
-
         `${data.version || "bridge-v2.6.2"} • ` +
-
         `${Math.min(
           5,
           data.suggestions?.length || 0
@@ -385,11 +339,13 @@ async function loadDashboard() {
 
 
       /*
-      Thứ tự giao diện:
+      Thứ tự:
 
-      HIỆU QUẢ
+      HIỆU QUẢ LIVE
+      ↓
       LIVE VALIDATION
-      DÀN SỐ
+      ↓
+      DÀN SỐ GỢI Ý
       */
 
       renderLivePerformance(
@@ -405,7 +361,7 @@ async function loadDashboard() {
     catch (error) {
 
       console.error(
-        "LiveValidation:",
+        "Live Validation:",
         error
       );
 
@@ -424,7 +380,7 @@ async function loadDashboard() {
   else {
 
     renderLivePerformanceError(
-      "Không đọc được dữ liệu Live."
+      "Không kết nối được dữ liệu Live."
     );
 
 
@@ -436,13 +392,13 @@ async function loadDashboard() {
 
 
 /* =====================================================
-   REMOVE "TOP SỐ THEO MÔ HÌNH"
+   ẨN TOP SỐ THEO MÔ HÌNH
 ===================================================== */
 
 function hideModelTopSection() {
 
   /*
-  Ẩn trực tiếp analysis-detail.
+  Nội dung bảng cũ.
   */
 
   const detail =
@@ -459,11 +415,7 @@ function hideModelTopSection() {
 
 
   /*
-  Tìm heading:
-  "Top số theo mô hình"
-
-  Nếu tìm thấy thì ẩn cả section/card
-  chứa heading đó.
+  Tìm title bên ngoài.
   */
 
   const elements =
@@ -512,46 +464,11 @@ function hideModelTopSection() {
       }
     }
   );
-
-
-  /*
-  Nếu bottom navigation
-  có nút "Thống kê",
-  ẩn nó để tránh bấm vào
-  section đã bỏ.
-  */
-
-  document
-    .querySelectorAll(
-      ".bottom-nav .nav-item"
-    )
-    .forEach(
-      element => {
-
-        const text =
-          String(
-            element.textContent || ""
-          )
-            .trim()
-            .toLowerCase();
-
-
-        if (
-          text.includes(
-            "thống kê"
-          )
-        ) {
-
-          element.style.display =
-            "none";
-        }
-      }
-    );
 }
 
 
 /* =====================================================
-   TOTAL DRAWS
+   TOTAL DATA
 ===================================================== */
 
 function updateTotalDraws(
@@ -583,7 +500,7 @@ function updateTotalDraws(
 
 
 /* =====================================================
-   LATEST RESULT
+   KẾT QUẢ XSMB MỚI NHẤT
 ===================================================== */
 
 function renderLatest(
@@ -794,8 +711,7 @@ function renderLatestError(
 
 
 /* =====================================================
-   PHÂN TÍCH HÔM NAY
-   CONTAINERS
+   CONTAINERS PHÂN TÍCH
 ===================================================== */
 
 function ensurePerformanceContainer() {
@@ -906,10 +822,10 @@ function ensureLiveValidationContainer() {
 
 
 /* =====================================================
-   LIVE PERFORMANCE
+   HIỆU QUẢ LIVE
 ===================================================== */
 
-function performanceValue(
+function getPerformanceRate(
   metric
 ) {
 
@@ -920,58 +836,248 @@ function performanceValue(
     )
   ) {
 
-    return `
-      <strong>--</strong>
-      <small>Chưa đủ dữ liệu</small>
-    `;
+    return null;
   }
 
 
-  return `
-
-    <strong>
-      ${Number(
-        metric.hitRate || 0
-      )}%
-    </strong>
-
-    <small>
-
-      ${Number(
-        metric.hits || 0
-      )}
-
-      /
-
-      ${Number(
-        metric.tested || 0
-      )}
-
-      kỳ
-
-    </small>
-  `;
+  return Number(
+    metric.hitRate || 0
+  );
 }
 
 
-function performanceMetric(
-  title,
+function performanceRateText(
   metric
 ) {
 
+  const rate =
+    getPerformanceRate(
+      metric
+    );
+
+
+  if (
+    rate === null
+  ) {
+
+    return "--";
+  }
+
+
+  return `${rate}%`;
+}
+
+
+function performanceHitText(
+  metric
+) {
+
+  if (
+    !metric ||
+    !Number(
+      metric.tested
+    )
+  ) {
+
+    return "Chưa có dữ liệu";
+  }
+
+
+  return (
+
+    `${Number(
+      metric.hits || 0
+    )}` +
+
+    "/" +
+
+    `${Number(
+      metric.tested || 0
+    )} kỳ`
+  );
+}
+
+
+/*
+========================================================
+CARD HIỆU QUẢ
+
+Tương tự card Dàn số:
+- giá trị chính thật lớn
+- giá trị phụ bên dưới
+========================================================
+*/
+
+function renderPerformanceCard(
+  title,
+  performance,
+  type = "base"
+) {
+
+  const top1 =
+    performance?.top1 ||
+    {};
+
+
+  const top3 =
+    performance?.top3 ||
+    {};
+
+
+  const top5 =
+    performance?.top5 ||
+    {};
+
+
+  const tested =
+    Number(
+      performance?.tested || 0
+    );
+
+
+  const pending =
+    Number(
+      performance?.pending || 0
+    );
+
+
   return `
 
-    <div class="live-metric">
+    <article
+      class="
+        performance-card
+        ${
+          type === "carry"
+            ?
+            "performance-carry"
+            :
+            "performance-base"
+        }
+      "
+    >
 
-      <span class="live-metric-title">
-        ${title}
-      </span>
 
-      ${performanceValue(
-        metric
-      )}
+      <div class="performance-card-header">
 
-    </div>
+        <div class="performance-model-name">
+
+          ${escapeHtml(
+            title
+          )}
+
+        </div>
+
+
+        <div class="performance-status">
+
+          ${
+            tested
+              ?
+              `${tested} kỳ đã chấm`
+              :
+              "Chưa chấm"
+          }
+
+          ${
+            pending
+              ?
+              ` • ${pending} đang chờ`
+              :
+              ""
+          }
+
+        </div>
+
+      </div>
+
+
+      <div class="performance-primary">
+
+        <div class="performance-primary-label">
+          HIỆU QUẢ 1 SỐ
+        </div>
+
+
+        <div class="performance-primary-rate">
+
+          ${performanceRateText(
+            top1
+          )}
+
+        </div>
+
+
+        <div class="performance-primary-detail">
+
+          ${performanceHitText(
+            top1
+          )}
+
+        </div>
+
+      </div>
+
+
+      <div class="performance-secondary-grid">
+
+
+        <div class="performance-secondary-item">
+
+          <div class="performance-secondary-title">
+            3 SỐ
+          </div>
+
+
+          <div class="performance-secondary-rate">
+
+            ${performanceRateText(
+              top3
+            )}
+
+          </div>
+
+
+          <div class="performance-secondary-detail">
+
+            ${performanceHitText(
+              top3
+            )}
+
+          </div>
+
+        </div>
+
+
+        <div class="performance-secondary-item">
+
+          <div class="performance-secondary-title">
+            5 SỐ
+          </div>
+
+
+          <div class="performance-secondary-rate">
+
+            ${performanceRateText(
+              top5
+            )}
+
+          </div>
+
+
+          <div class="performance-secondary-detail">
+
+            ${performanceHitText(
+              top5
+            )}
+
+          </div>
+
+        </div>
+
+
+      </div>
+
+    </article>
   `;
 }
 
@@ -1002,109 +1108,48 @@ function renderLivePerformance(
 
   container.innerHTML = `
 
-    <section class="live-performance-panel">
+    <section class="performance-panel">
 
-      <div class="live-performance-header">
+
+      <div class="performance-panel-header">
 
         <div>
 
-          <div class="simple-section-title">
+          <div class="pick-panel-title">
             HIỆU QUẢ LIVE
           </div>
 
-          <div class="live-performance-subtitle">
-            Theo dõi kết quả thực tế
+
+          <div class="pick-panel-subtitle">
+            Kết quả kiểm chứng thực tế
           </div>
 
         </div>
 
-      </div>
 
-
-      <div class="live-performance-model">
-
-        <div class="live-performance-model-name">
-
-          V2.6.2
-
-          <span>
-            ${Number(
-              base.tested || 0
-            )} kỳ đã chấm
-          </span>
-
-        </div>
-
-
-        <div class="live-performance-grid">
-
-          ${performanceMetric(
-            "1 số",
-            base.top1
-          )}
-
-          ${performanceMetric(
-            "3 số",
-            base.top3
-          )}
-
-          ${performanceMetric(
-            "5 số",
-            base.top5
-          )}
-
+        <div class="performance-live-badge">
+          LIVE
         </div>
 
       </div>
 
 
-      <div class="live-performance-model carry-performance">
-
-        <div class="live-performance-model-name">
-
-          CARRY
-
-          <span>
-
-            ${Number(
-              carry.tested || 0
-            )} kỳ đã chấm
-
-            ${
-              Number(
-                carry.pending || 0
-              )
-                ?
-                `• ${Number(
-                  carry.pending
-                )} đang chờ`
-                :
-                ""
-            }
-
-          </span>
-
-        </div>
+      <div class="performance-card-list">
 
 
-        <div class="live-performance-grid">
+        ${renderPerformanceCard(
+          "V2.6.2",
+          base,
+          "base"
+        )}
 
-          ${performanceMetric(
-            "1 số",
-            carry.top1
-          )}
 
-          ${performanceMetric(
-            "3 số",
-            carry.top3
-          )}
+        ${renderPerformanceCard(
+          "CARRY",
+          carry,
+          "carry"
+        )}
 
-          ${performanceMetric(
-            "5 số",
-            carry.top5
-          )}
-
-        </div>
 
       </div>
 
@@ -1129,11 +1174,21 @@ function renderLivePerformanceError(
 
   container.innerHTML = `
 
-    <section class="live-performance-panel">
+    <section class="performance-panel">
 
-      <div class="simple-section-title">
-        HIỆU QUẢ LIVE
+
+      <div class="performance-panel-header">
+
+        <div>
+
+          <div class="pick-panel-title">
+            HIỆU QUẢ LIVE
+          </div>
+
+        </div>
+
       </div>
+
 
       <div class="simple-empty">
 
@@ -1149,7 +1204,7 @@ function renderLivePerformanceError(
 
 
 /* =====================================================
-   LIVE VALIDATION
+   LIVE VALIDATION / CARRY
 ===================================================== */
 
 function carryStatusLabel(
@@ -1161,6 +1216,7 @@ function carryStatusLabel(
   ) {
 
     return `
+
       <span class="carry-status hit">
         ✓ HIT
       </span>
@@ -1173,6 +1229,7 @@ function carryStatusLabel(
   ) {
 
     return `
+
       <span class="carry-status miss">
         MISS
       </span>
@@ -1181,6 +1238,7 @@ function carryStatusLabel(
 
 
   return `
+
     <span class="carry-status pending">
       ĐANG CHỜ
     </span>
@@ -1194,8 +1252,7 @@ function buildCarryDisplayHistory(
 ) {
 
   /*
-  API tương lai có history
-  đầy đủ thì ưu tiên sử dụng.
+  API có history đầy đủ.
   */
 
   if (
@@ -1220,6 +1277,7 @@ function buildCarryDisplayHistory(
 
             </span>
 
+
             <strong>
 
               ${escapeHtml(
@@ -1227,6 +1285,7 @@ function buildCarryDisplayHistory(
               )}
 
             </strong>
+
 
             ${carryStatusLabel(
               row.status
@@ -1240,7 +1299,7 @@ function buildCarryDisplayHistory(
 
 
   /*
-  Schema Carry V2 hiện tại.
+  Schema Carry hiện tại.
   */
 
   let html =
@@ -1264,6 +1323,7 @@ function buildCarryDisplayHistory(
 
         </span>
 
+
         <strong>
 
           ${escapeHtml(
@@ -1271,6 +1331,7 @@ function buildCarryDisplayHistory(
           )}
 
         </strong>
+
 
         <span class="carry-status hit">
           ✓ HIT
@@ -1298,6 +1359,7 @@ function buildCarryDisplayHistory(
 
         </span>
 
+
         <strong>
 
           ${escapeHtml(
@@ -1305,6 +1367,7 @@ function buildCarryDisplayHistory(
           )}
 
         </strong>
+
 
         ${carryStatusLabel(
           item.status
@@ -1315,15 +1378,18 @@ function buildCarryDisplayHistory(
   }
 
 
-  return (
-    html ||
-    `
+  if (!html) {
+
+    html = `
 
       <div class="simple-empty">
         Chưa có lịch sử Carry.
       </div>
-    `
-  );
+    `;
+  }
+
+
+  return html;
 }
 
 
@@ -1364,8 +1430,21 @@ function renderLiveValidation(
 
       <section class="carry-panel">
 
-        <div class="simple-section-title">
-          LIVE VALIDATION
+        <div class="carry-header">
+
+          <div>
+
+            <div class="pick-panel-title">
+              LIVE VALIDATION
+            </div>
+
+
+            <div class="pick-panel-subtitle">
+              Theo dõi cầu Carry
+            </div>
+
+          </div>
+
         </div>
 
 
@@ -1384,10 +1463,8 @@ function renderLiveValidation(
 
 
   /*
-  Chỉ hiển thị cầu Carry
-  ưu tiên đầu tiên.
-
-  Không hiển thị ranking #1.
+  Carry đầu tiên.
+  Không hiển thị ranking.
   */
 
   const item =
@@ -1416,12 +1493,13 @@ function renderLiveValidation(
 
         <div>
 
-          <div class="simple-section-title">
+          <div class="pick-panel-title">
             LIVE VALIDATION
           </div>
 
-          <div class="carry-header-subtitle">
-            Cầu đang được tiếp tục sau khi HIT
+
+          <div class="pick-panel-subtitle">
+            Cầu tiếp tục sau khi HIT
           </div>
 
         </div>
@@ -1436,6 +1514,7 @@ function renderLiveValidation(
 
       <div class="carry-main">
 
+
         <div class="carry-main-label">
           SỐ ƯU TIÊN
         </div>
@@ -1444,7 +1523,9 @@ function renderLiveValidation(
         <div class="carry-number">
 
           ${escapeHtml(
-            item.currentNumber
+            normalizeDisplayNumber(
+              item.currentNumber
+            )
           )}
 
         </div>
@@ -1472,6 +1553,7 @@ function renderLiveValidation(
         <span>
           Vị trí cầu
         </span>
+
 
         <strong>
 
@@ -1502,8 +1584,12 @@ function renderLiveValidation(
           Cầu đã chạy
         </span>
 
+
         <strong>
-          ${streak} ngày
+
+          ${streak}
+          ngày
+
         </strong>
 
       </div>
@@ -1531,9 +1617,10 @@ function renderLiveValidationError(
 
     <section class="carry-panel">
 
-      <div class="simple-section-title">
+      <div class="pick-panel-title">
         LIVE VALIDATION
       </div>
+
 
       <div class="simple-empty">
 
@@ -1608,16 +1695,9 @@ function strengthClass(
 }
 
 
-/*
-========================================================
-LỊCH SỬ NGẮN CỦA CẦU
-
-Ví dụ:
-
-24/07   82 ✓
-25/07   69 ✓
-========================================================
-*/
+/* =====================================================
+   HISTORY CẦU
+===================================================== */
 
 function renderPickHistory(
   history
@@ -1633,7 +1713,9 @@ function renderPickHistory(
     return `
 
       <div class="pick-history-empty">
+
         Chưa có lịch sử cầu.
+
       </div>
     `;
   }
@@ -1672,7 +1754,9 @@ function renderPickHistory(
     return `
 
       <div class="pick-history-empty">
+
         Chưa có lịch sử cầu.
+
       </div>
     `;
   }
@@ -1701,7 +1785,9 @@ function renderPickHistory(
                 <strong>
 
                   ${escapeHtml(
-                    item.number
+                    normalizeDisplayNumber(
+                      item.number
+                    )
                   )}
 
                 </strong>
@@ -1722,17 +1808,9 @@ function renderPickHistory(
 }
 
 
-/*
-========================================================
-GỢI Ý CHÍNH
-
-Không ghi #1.
-
-Sử dụng kích thước số lớn
-để người dùng nhận biết
-ngay số đáng chú ý nhất.
-========================================================
-*/
+/* =====================================================
+   GỢI Ý CHÍNH
+===================================================== */
 
 function renderPrimaryPick(
   item
@@ -1797,6 +1875,7 @@ function renderPrimaryPick(
           Vị trí cầu
         </span>
 
+
         <strong>
 
           ${escapeHtml(
@@ -1824,6 +1903,7 @@ function renderPrimaryPick(
           Cầu chạy
         </span>
 
+
         <strong>
 
           ${Number(
@@ -1840,11 +1920,9 @@ function renderPrimaryPick(
 }
 
 
-/*
-========================================================
-CÁC SỐ GỢI Ý CÒN LẠI
-========================================================
-*/
+/* =====================================================
+   GỢI Ý PHỤ
+===================================================== */
 
 function renderSecondaryPick(
   item
@@ -1925,10 +2003,7 @@ function renderSecondaryPick(
 
 
 /* =====================================================
-   RENDER PREDICTION
-
-   TOP 5 THEO THỨ TỰ MODEL
-   NHƯNG KHÔNG HIỂN THỊ RANK.
+   RENDER DÀN SỐ
 ===================================================== */
 
 function renderPrediction(
@@ -1958,6 +2033,13 @@ function renderPrediction(
       [];
 
 
+  /*
+  Chỉ lấy 5 số đầu tiên
+  theo thứ tự V2.6.2.
+
+  Không hiển thị rank.
+  */
+
   const top5 =
     suggestions.slice(
       0,
@@ -1972,6 +2054,7 @@ function renderPrediction(
     container.innerHTML = `
 
       <section class="pick-panel">
+
 
         <div class="pick-panel-header">
 
@@ -2067,7 +2150,9 @@ function renderPrediction(
 
       ${
         secondary.length
+
           ?
+
           `
 
             <div class="pick-secondary-title">
@@ -2092,7 +2177,9 @@ function renderPrediction(
 
             </div>
           `
+
           :
+
           ""
       }
 
@@ -2190,7 +2277,7 @@ function renderPredictionError(
 
 
 /* =====================================================
-   STATUS
+   SYSTEM STATUS
 ===================================================== */
 
 function setSystemStatus(
@@ -2390,7 +2477,7 @@ function money(
 
 
 /* =====================================================
-   REFRESH ANALYSIS
+   REFRESH
 ===================================================== */
 
 window.refreshAnalysis =
@@ -2462,12 +2549,6 @@ function setActiveNav(
 }
 
 
-/*
-========================================================
-PHÂN TÍCH
-========================================================
-*/
-
 window.showPrediction =
   function () {
 
@@ -2491,23 +2572,16 @@ window.showPrediction =
 
     target?.scrollIntoView({
 
-      behavior:
-        "smooth",
+      behavior: "smooth",
+      block: "start"
 
-      block:
-        "start"
     });
   };
 
 
 /*
-========================================================
-GIỮ TƯƠNG THÍCH INDEX CŨ
-
 Top số theo mô hình đã bỏ.
-Nếu index.html còn gọi showStatistics()
-thì đưa người dùng về Phân tích hôm nay.
-========================================================
+Giữ function để index.html cũ không lỗi.
 */
 
 window.showStatistics =
@@ -2579,11 +2653,9 @@ window.showTracking =
 
     section.scrollIntoView({
 
-      behavior:
-        "smooth",
+      behavior: "smooth",
+      block: "start"
 
-      block:
-        "start"
     });
   };
 
@@ -2827,9 +2899,7 @@ async function loadPredictionHistory() {
                     );
                   }
                 )
-                .join(
-                  "<br>"
-                );
+                .join("<br>");
 
 
             const pending =
@@ -2970,33 +3040,13 @@ async function loadPredictionHistory() {
 
             <tr>
 
-              <th>
-                Ngày
-              </th>
-
-              <th>
-                Dàn số
-              </th>
-
-              <th>
-                Kết quả
-              </th>
-
-              <th>
-                Lần về
-              </th>
-
-              <th>
-                Tiền đánh
-              </th>
-
-              <th>
-                Tiền nhận
-              </th>
-
-              <th>
-                Lãi/Lỗ
-              </th>
+              <th>Ngày</th>
+              <th>Dàn số</th>
+              <th>Kết quả</th>
+              <th>Lần về</th>
+              <th>Tiền đánh</th>
+              <th>Tiền nhận</th>
+              <th>Lãi/Lỗ</th>
 
             </tr>
 
@@ -3043,7 +3093,6 @@ async function loadPredictionHistory() {
 
 /* =====================================================
    CẦU 5 CHỮ SỐ
-   MODULE ĐỘC LẬP
 ===================================================== */
 
 window.showFiveDigitBridge =
@@ -3070,11 +3119,9 @@ window.showFiveDigitBridge =
 
     section.scrollIntoView({
 
-      behavior:
-        "smooth",
+      behavior: "smooth",
+      block: "start"
 
-      block:
-        "start"
     });
   };
 
@@ -3225,9 +3272,7 @@ function renderFiveDigitBridge(
         <br>
 
         Đã đọc
-
         ${data.analyzedDraws || 0}
-
         kỳ.
 
       </div>
