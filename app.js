@@ -51,71 +51,54 @@ async function loadDashboard() {
     ""
   );
 
-
-  const now =
-    Date.now();
-
+  const now = Date.now();
 
   const [
-  latestResult,
-  statisticsResult,
-  predictResult,
-  liveResult,
-  trackingResult
-] =
-  await Promise.allSettled([
+    latestResult,
+    statisticsResult,
+    predictResult,
+    liveResult,
+    trackingResult
+  ] = await Promise.allSettled([
 
-    fetch(`/api/latest?t=${now}`, {
-      cache: "no-store"
-    }),
+    fetch(
+      `/api/latest?t=${now}`,
+      {
+        cache: "no-store"
+      }
+    ),
 
-    fetch(`/api/statistics?t=${now}`, {
-      cache: "no-store"
-    }),
+    fetch(
+      `/api/statistics?t=${now}`,
+      {
+        cache: "no-store"
+      }
+    ),
 
-    fetch(`/api/predict?t=${now}`, {
-      cache: "no-store"
-    }),
+    fetch(
+      `/api/predict?t=${now}`,
+      {
+        cache: "no-store"
+      }
+    ),
 
-    fetch(`/api/live-validation?t=${now}`, {
-      cache: "no-store"
-    }),
+    fetch(
+      `/api/live-validation?t=${now}`,
+      {
+        cache: "no-store"
+      }
+    ),
 
-    fetch(`/api/save-prediction?t=${now}`, {
-      cache: "no-store"
-    })
+    fetch(
+      `/api/save-prediction?t=${now}`,
+      {
+        cache: "no-store"
+      }
+    )
 
   ]);
 
-      fetch(
-        `/api/latest?t=${now}`,
-        {
-          cache: "no-store"
-        }
-      ),
-
-      fetch(
-        `/api/statistics?t=${now}`,
-        {
-          cache: "no-store"
-        }
-      ),
-
-      fetch(
-        `/api/predict?t=${now}`,
-        {
-          cache: "no-store"
-        }
-      ),
-
-      fetch(
-        `/api/live-validation?t=${now}`,
-        {
-          cache: "no-store"
-        }
-      )
-
-    ]);
+  let totalDraws = 0;
 
 
   let totalDraws = 0;
