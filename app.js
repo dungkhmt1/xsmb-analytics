@@ -100,10 +100,6 @@ async function loadDashboard() {
 
   let totalDraws = 0;
 
-
-  let totalDraws = 0;
-
-
   /*
   ====================================================
   KẾT QUẢ MỚI NHẤT
