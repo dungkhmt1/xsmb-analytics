@@ -492,180 +492,575 @@ function updateTotalDraws(
    KẾT QUẢ XSMB MỚI NHẤT
 ===================================================== */
 
-function renderLatest(
-  data
-) {
+function renderLatest(data) {
 
-  const container =
+  const box =
     document.getElementById(
-      "latest-result"
+      "latestResult"
     );
 
-
-  const badge =
-    document.getElementById(
-      "latest-date-badge"
-    );
+  if (!box) {
+    return;
+  }
 
 
-  if (!container) {
+  if (
+    !data ||
+    !data.success ||
+    !data.results
+  ) {
+
+    box.innerHTML = `
+      <div class="result-empty">
+        Không có dữ liệu kết quả.
+      </div>
+    `;
 
     return;
   }
 
 
-  const result =
+  const drawDate =
+    data.drawDate;
 
-    data.results ||
-
-    data.result ||
-
-    data.latest ||
-
-    data;
+  const r =
+    data.results;
 
 
-  const date =
+  /*
+  ====================================================
+  LƯU NGÀY ĐANG XEM
+  ====================================================
+  */
 
-    data.drawDate ||
-
-    data.draw_date ||
-
-    data.date ||
-
-    result.drawDate ||
-
-    result.draw_date ||
-
-    result.date;
+  window.currentResultDate =
+    drawDate;
 
 
-  if (badge) {
+  /*
+  ====================================================
+  FORMAT GIẢI
+  ====================================================
+  */
 
-    badge.textContent =
-      formatDate(
-        date
-      );
-  }
+  const values = value => {
 
+    const arr =
+      Array.isArray(value)
+        ? value
+        : value
+          ? [value]
+          : [];
 
-  const prizeRow =
-    (
-      name,
-      values,
-      columns,
-      extraClass = ""
-    ) => {
-
-      const list =
-        Array.isArray(
-          values
-        )
-          ?
-          values
-          :
-          values
-            ?
-            String(
-              values
-            )
-              .trim()
-              .split(/\s+/)
-            :
-            [];
+    return arr
+      .map(
+        number => `
+          <span class="result-number">
+            ${escapeHtml(String(number))}
+          </span>
+        `
+      )
+      .join("");
+  };
 
 
-      return `
+  box.innerHTML = `
 
-        <div class="prize-row ${extraClass}">
+    <section class="xsmb-result-card">
 
-          <div class="prize-name">
-            ${name}
+      <div class="result-date-navigation">
+
+        <button
+          type="button"
+          class="result-nav-button"
+          onclick="changeResultDate(-1)"
+          aria-label="Ngày trước"
+        >
+          ‹
+        </button>
+
+
+        <button
+          type="button"
+          class="result-date-button"
+          onclick="openResultDatePicker()"
+        >
+
+          <span class="result-date-label">
+            KẾT QUẢ XSMB
+          </span>
+
+          <strong>
+            ${formatDate(drawDate)}
+          </strong>
+
+          <span class="result-date-hint">
+            Chọn ngày
+          </span>
+
+        </button>
+
+
+        <button
+          type="button"
+          class="result-nav-button"
+          onclick="changeResultDate(1)"
+          aria-label="Ngày sau"
+        >
+          ›
+        </button>
+
+      </div>
+
+
+      <input
+        id="resultDatePicker"
+        class="result-date-picker"
+        type="date"
+        value="${escapeHtml(drawDate)}"
+        max="${todayISO()}"
+        onchange="selectResultDate(this.value)"
+      >
+
+
+      <div class="result-table">
+
+        <div class="result-row special-row">
+
+          <div class="result-prize">
+            ĐB
           </div>
 
-
-          <div class="prize-values cols-${columns}">
-
-            ${
-              list
-                .filter(Boolean)
-                .map(
-                  value => `
-
-                    <span class="prize-number">
-
-                      ${escapeHtml(
-                        value
-                      )}
-
-                    </span>
-                  `
-                )
-                .join("")
-            }
-
+          <div class="result-values special-number">
+            ${values(r.special)}
           </div>
 
         </div>
-      `;
-    };
 
 
-  container.innerHTML = `
+        <div class="result-row">
 
-    <div class="xsmb-board">
+          <div class="result-prize">
+            G1
+          </div>
 
-      ${prizeRow(
-        "ĐB",
-        result.special,
-        1,
-        "special-row"
-      )}
+          <div class="result-values">
+            ${values(r.g1)}
+          </div>
 
-      ${prizeRow(
-        "G1",
-        result.g1,
-        1
-      )}
+        </div>
 
-      ${prizeRow(
-        "G2",
-        result.g2,
-        2
-      )}
 
-      ${prizeRow(
-        "G3",
-        result.g3,
-        6
-      )}
+        <div class="result-row">
 
-      ${prizeRow(
-        "G4",
-        result.g4,
-        4
-      )}
+          <div class="result-prize">
+            G2
+          </div>
 
-      ${prizeRow(
-        "G5",
-        result.g5,
-        6
-      )}
+          <div class="result-values">
+            ${values(r.g2)}
+          </div>
 
-      ${prizeRow(
-        "G6",
-        result.g6,
-        3
-      )}
+        </div>
 
-      ${prizeRow(
-        "G7",
-        result.g7,
-        4,
-        "g7-row"
-      )}
+
+        <div class="result-row">
+
+          <div class="result-prize">
+            G3
+          </div>
+
+          <div class="result-values">
+            ${values(r.g3)}
+          </div>
+
+        </div>
+
+
+        <div class="result-row">
+
+          <div class="result-prize">
+            G4
+          </div>
+
+          <div class="result-values">
+            ${values(r.g4)}
+          </div>
+
+        </div>
+
+
+        <div class="result-row">
+
+          <div class="result-prize">
+            G5
+          </div>
+
+          <div class="result-values">
+            ${values(r.g5)}
+          </div>
+
+        </div>
+
+
+        <div class="result-row">
+
+          <div class="result-prize">
+            G6
+          </div>
+
+          <div class="result-values">
+            ${values(r.g6)}
+          </div>
+
+        </div>
+
+
+        <div class="result-row">
+
+          <div class="result-prize">
+            G7
+          </div>
+
+          <div class="result-values g7-values">
+            ${values(r.g7)}
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+  `;
+}
+/*
+====================================================
+RESULT HISTORY
+Chỉ đọc kết quả.
+KHÔNG chạy Predict / Save / Carry.
+====================================================
+*/
+
+
+function todayISO() {
+
+  const now =
+    new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      now.getDate()
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+
+
+function openResultDatePicker() {
+
+  const picker =
+    document.getElementById(
+      "resultDatePicker"
+    );
+
+  if (!picker) {
+    return;
+  }
+
+
+  /*
+  Chrome / Edge / Android mới
+  */
+
+  if (
+    typeof picker.showPicker ===
+    "function"
+  ) {
+
+    try {
+
+      picker.showPicker();
+      return;
+
+    } catch (_) {
+      // fallback
+    }
+  }
+
+
+  picker.focus();
+  picker.click();
+}
+
+
+
+async function selectResultDate(date) {
+
+  if (!date) {
+    return;
+  }
+
+  await loadResultByDate(date);
+}
+
+
+
+async function changeResultDate(offset) {
+
+  const current =
+    window.currentResultDate;
+
+  if (!current) {
+    return;
+  }
+
+
+  const date =
+    new Date(
+      `${current}T12:00:00`
+    );
+
+
+  date.setDate(
+    date.getDate() + offset
+  );
+
+
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      date.getDate()
+    ).padStart(2, "0");
+
+
+  const target =
+    `${year}-${month}-${day}`;
+
+
+  /*
+  Không cho đi sang tương lai.
+  */
+
+  if (
+    target > todayISO()
+  ) {
+    return;
+  }
+
+
+  await loadResultByDate(
+    target
+  );
+}
+
+
+
+async function loadResultByDate(date) {
+
+  const box =
+    document.getElementById(
+      "latestResult"
+    );
+
+  if (!box) {
+    return;
+  }
+
+
+  box.innerHTML = `
+
+    <div class="result-loading">
+
+      <div class="result-loading-title">
+        Đang tải kết quả
+      </div>
+
+      <strong>
+        ${formatDate(date)}
+      </strong>
 
     </div>
+  `;
+
+
+  try {
+
+    const response =
+      await fetch(
+        `/api/result?date=${encodeURIComponent(date)}&t=${Date.now()}`,
+        {
+          cache: "no-store"
+        }
+      );
+
+
+    let data;
+
+    try {
+
+      data =
+        await response.json();
+
+    } catch (_) {
+
+      throw new Error(
+        `API trả dữ liệu không hợp lệ (HTTP ${response.status})`
+      );
+    }
+
+
+    if (
+      !response.ok ||
+      !data.success
+    ) {
+
+      throw new Error(
+        data.message ||
+        "Không có kết quả ngày này."
+      );
+    }
+
+
+    /*
+    ====================================================
+    CHỈ RENDER KẾT QUẢ
+
+    Không gọi:
+    loadDashboard()
+    predict
+    save-prediction
+    live-validation
+    ====================================================
+    */
+
+    renderLatest(data);
+
+
+  } catch (error) {
+
+    console.error(
+      "RESULT HISTORY:",
+      error
+    );
+
+
+    renderResultNotFound(
+      date,
+      error.message
+    );
+  }
+}
+
+
+
+function renderResultNotFound(
+  date,
+  message
+) {
+
+  const box =
+    document.getElementById(
+      "latestResult"
+    );
+
+  if (!box) {
+    return;
+  }
+
+
+  window.currentResultDate =
+    date;
+
+
+  box.innerHTML = `
+
+    <section class="xsmb-result-card">
+
+      <div class="result-date-navigation">
+
+        <button
+          type="button"
+          class="result-nav-button"
+          onclick="changeResultDate(-1)"
+        >
+          ‹
+        </button>
+
+
+        <button
+          type="button"
+          class="result-date-button"
+          onclick="openResultDatePicker()"
+        >
+
+          <span class="result-date-label">
+            KẾT QUẢ XSMB
+          </span>
+
+          <strong>
+            ${formatDate(date)}
+          </strong>
+
+          <span class="result-date-hint">
+            Chọn ngày
+          </span>
+
+        </button>
+
+
+        <button
+          type="button"
+          class="result-nav-button"
+          onclick="changeResultDate(1)"
+        >
+          ›
+        </button>
+
+      </div>
+
+
+      <input
+        id="resultDatePicker"
+        class="result-date-picker"
+        type="date"
+        value="${escapeHtml(date)}"
+        max="${todayISO()}"
+        onchange="selectResultDate(this.value)"
+      >
+
+
+      <div class="result-not-found">
+
+        <strong>
+          Không có kết quả
+        </strong>
+
+        <span>
+          ${escapeHtml(
+            message ||
+            "Không tìm thấy dữ liệu cho ngày này."
+          )}
+        </span>
+
+      </div>
+
+    </section>
   `;
 }
 
