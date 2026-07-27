@@ -496,13 +496,22 @@ function renderLatest(data) {
 
   const box =
     document.getElementById(
-      "latestResult"
+      "latest-result"
     );
+
+  const badge =
+  document.getElementById(
+    "latest-date-badge"
+  );
+
+if (badge) {
+  badge.textContent =
+    formatDate(drawDate);
+}
 
   if (!box) {
     return;
   }
-
 
   if (
     !data ||
@@ -519,29 +528,19 @@ function renderLatest(data) {
     return;
   }
 
-
   const drawDate =
     data.drawDate;
 
   const r =
     data.results;
 
-
-  /*
-  ====================================================
-  LƯU NGÀY ĐANG XEM
-  ====================================================
-  */
-
   window.currentResultDate =
     drawDate;
 
-
-  /*
-  ====================================================
-  FORMAT GIẢI
-  ====================================================
-  */
+  if (badge) {
+    badge.textContent =
+      formatDate(drawDate);
+  }
 
   const values = value => {
 
@@ -563,7 +562,6 @@ function renderLatest(data) {
       .join("");
   };
 
-
   box.innerHTML = `
 
     <section class="xsmb-result-card">
@@ -574,11 +572,9 @@ function renderLatest(data) {
           type="button"
           class="result-nav-button"
           onclick="changeResultDate(-1)"
-          aria-label="Ngày trước"
         >
           ‹
         </button>
-
 
         <button
           type="button"
@@ -600,18 +596,15 @@ function renderLatest(data) {
 
         </button>
 
-
         <button
           type="button"
           class="result-nav-button"
           onclick="changeResultDate(1)"
-          aria-label="Ngày sau"
         >
           ›
         </button>
 
       </div>
-
 
       <input
         id="resultDatePicker"
@@ -622,110 +615,62 @@ function renderLatest(data) {
         onchange="selectResultDate(this.value)"
       >
 
-
       <div class="result-table">
 
         <div class="result-row special-row">
-
-          <div class="result-prize">
-            ĐB
-          </div>
-
+          <div class="result-prize">ĐB</div>
           <div class="result-values special-number">
             ${values(r.special)}
           </div>
-
         </div>
 
-
         <div class="result-row">
-
-          <div class="result-prize">
-            G1
-          </div>
-
+          <div class="result-prize">G1</div>
           <div class="result-values">
             ${values(r.g1)}
           </div>
-
         </div>
 
-
         <div class="result-row">
-
-          <div class="result-prize">
-            G2
-          </div>
-
+          <div class="result-prize">G2</div>
           <div class="result-values">
             ${values(r.g2)}
           </div>
-
         </div>
 
-
         <div class="result-row">
-
-          <div class="result-prize">
-            G3
-          </div>
-
+          <div class="result-prize">G3</div>
           <div class="result-values">
             ${values(r.g3)}
           </div>
-
         </div>
 
-
         <div class="result-row">
-
-          <div class="result-prize">
-            G4
-          </div>
-
+          <div class="result-prize">G4</div>
           <div class="result-values">
             ${values(r.g4)}
           </div>
-
         </div>
 
-
         <div class="result-row">
-
-          <div class="result-prize">
-            G5
-          </div>
-
+          <div class="result-prize">G5</div>
           <div class="result-values">
             ${values(r.g5)}
           </div>
-
         </div>
 
-
         <div class="result-row">
-
-          <div class="result-prize">
-            G6
-          </div>
-
+          <div class="result-prize">G6</div>
           <div class="result-values">
             ${values(r.g6)}
           </div>
-
         </div>
 
-
         <div class="result-row">
-
-          <div class="result-prize">
-            G7
-          </div>
-
+          <div class="result-prize">G7</div>
           <div class="result-values g7-values">
             ${values(r.g7)}
           </div>
-
         </div>
 
       </div>
@@ -870,23 +815,19 @@ async function changeResultDate(offset) {
 }
 
 
-
-async function loadResultByDate(date) {
+  async function loadResultByDate(date) {
 
   const box =
     document.getElementById(
-      "latestResult"
+      "latest-result"
     );
 
   if (!box) {
     return;
   }
 
-
   box.innerHTML = `
-
     <div class="result-loading">
-
       <div class="result-loading-title">
         Đang tải kết quả
       </div>
@@ -894,10 +835,8 @@ async function loadResultByDate(date) {
       <strong>
         ${formatDate(date)}
       </strong>
-
     </div>
   `;
-
 
   try {
 
@@ -909,32 +848,35 @@ async function loadResultByDate(date) {
         }
       );
 
-
-    let data;
-
-    try {
-
-      data =
-        await response.json();
-
-    } catch (_) {
-
-      throw new Error(
-        `API trả dữ liệu không hợp lệ (HTTP ${response.status})`
-      );
-    }
-
+    const data =
+      await response.json();
 
     if (
       !response.ok ||
       !data.success
     ) {
-
       throw new Error(
         data.message ||
         "Không có kết quả ngày này."
       );
     }
+
+    renderLatest(data);
+
+  }
+  catch (error) {
+
+    console.error(
+      "Result History:",
+      error
+    );
+
+    renderResultNotFound(
+      date,
+      error.message
+    );
+  }
+}
 
 
     /*
@@ -976,7 +918,7 @@ function renderResultNotFound(
 
   const box =
     document.getElementById(
-      "latestResult"
+      "latest-Result"
     );
 
   if (!box) {
