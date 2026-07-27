@@ -81,65 +81,57 @@ export async function onRequestGet(context) {
 
     function parseArray(value) {
 
-  if (Array.isArray(value)) {
-    return value
-      .map(x => String(x).trim())
-      .filter(Boolean);
-  }
+      if (Array.isArray(value)) {
+        return value;
+      }
+
+      if (
+        value === null ||
+        value === undefined ||
+        value === ""
+      ) {
+        return [];
+      }
+
+      /*
+      Có thể DB đang lưu JSON.
+      */
+
+      if (
+        typeof value === "string"
+      ) {
+
+        try {
+
+          const parsed =
+            JSON.parse(value);
+
+          if (
+            Array.isArray(parsed)
+          ) {
+            return parsed;
+          }
+
+        } catch (_) {
+          // fallback phía dưới
+        }
 
 
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return [];
-  }
+        /*
+        Nếu DB lưu dạng:
+        12345,67890
+        */
 
-
-  if (typeof value === "string") {
-
-    /*
-    Thử JSON trước.
-    */
-
-    try {
-
-      const parsed =
-        JSON.parse(value);
-
-      if (Array.isArray(parsed)) {
-
-        return parsed
-          .map(x => String(x).trim())
+        return value
+          .split(",")
+          .map(x => x.trim())
           .filter(Boolean);
       }
 
-    } catch (_) {
-      // không phải JSON
+      return [
+        String(value)
+      ];
     }
-
-
-    /*
-    Database XSMB hiện tại lưu
-    nhiều giải bằng dấu cách.
-
-    Ví dụ:
-    "86786 24867"
-    */
-
-    return value
-      .trim()
-      .split(/\s+/)
-      .map(x => x.trim())
-      .filter(Boolean);
-  }
-
-
-  return [
-    String(value)
-  ];
-}
 
 
     function clean(value) {
