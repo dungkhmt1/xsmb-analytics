@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <meta name="theme-color" content="#071020" />
+  <title>Chiến lược Vàng - XSMB Analytics</title>
+  <link rel="stylesheet" href="/golden/styles.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <a class="back-link" href="/" aria-label="Quay lại V2.6.2">← V2.6.2</a>
+
+    <div>
+      <div class="eyebrow">XSMB ANALYTICS</div>
+      <h1>Chiến lược Vàng</h1>
+    </div>
+
+    <button id="refreshBtn" class="icon-button" type="button">
+      ↻
+    </button>
+  </header>
+
+  <main class="page-shell">
+    <section class="card hero-card">
+      <div class="section-label">SONG THỦ ĐỀ XUẤT</div>
+      <div id="latestDate" class="muted">Đang tải...</div>
+
+      <div id="songThu" class="pair-display">
+        <span>--</span>
+        <span class="dash">—</span>
+        <span>--</span>
+      </div>
+
+      <div class="score-line">
+        Điểm hội tụ:
+        <strong id="pairScore">--</strong>
+        <span class="score-max">/ 500</span>
+      </div>
+
+      <p class="disclaimer">
+        Điểm dùng để xếp hạng tín hiệu, không phải xác suất trúng.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <div class="section-label gold">DÀN CHỦ LỰC 10 SỐ</div>
+          <h2>Tỷ lệ cấu trúc 3:2:2:2:1</h2>
+        </div>
+
+        <button id="copyBtn" class="secondary-button" type="button">
+          Copy dàn 10
+        </button>
+      </div>
+
+      <div id="main10" class="number-grid"></div>
+
+      <div class="divider"></div>
+
+      <h3>Bóc tách chiến thuật</h3>
+      <div id="details" class="details-list"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-label blue">
+        GIÁM SÁT & ĐỒNG ĐẾM HIỆU SUẤT
+      </div>
+
+      <div class="stat-grid">
+        <article class="stat-box">
+          <span>Tổng kỳ đánh giá</span>
+          <strong id="tracked">0</strong>
+        </article>
+
+        <article class="stat-box">
+          <span>Số kỳ trúng ≥ 1 con</span>
+          <strong id="hits">0</strong>
+        </article>
+
+        <article class="stat-box">
+          <span>Tỷ lệ nổ</span>
+          <strong id="rate">0%</strong>
+        </article>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Ngày</th>
+              <th>Song thủ</th>
+              <th>Kết quả</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card action-card">
+      <h2>Khóa dự đoán kỳ kế tiếp</h2>
+      <p class="muted">
+        Dự đoán đã lưu sẽ không bị ghi đè, giúp kiểm chứng walk-forward.
+      </p>
+
+      <button id="lockPredictionBtn" class="primary-button" type="button">
+        Khóa dự đoán hiện tại
+      </button>
+
+      <div id="actionMessage" class="action-message" role="status"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <div class="section-label blue">BACKTEST WALK-FORWARD</div>
+          <h2>20 kỳ gần nhất</h2>
+        </div>
+
+        <button id="backtestBtn" class="secondary-button" type="button">
+          Chạy backtest
+        </button>
+      </div>
+
+      <div id="backtestResult" class="muted">
+        Chưa chạy.
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/golden/app.js"></script>
+</body>
+</html>
