@@ -25,18 +25,15 @@
     rel="stylesheet"
   >
 
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=2.6.3.1">
   <link rel="manifest" href="/manifest.json">
 </head>
 
 <body>
 
 <header class="app-header">
-
   <div class="header-main">
-
     <div class="brand">
-
       <div class="brand-icon">
         <span class="material-symbols-rounded">
           monitoring
@@ -52,32 +49,24 @@
           Phân tích dữ liệu miền Bắc
         </div>
       </div>
-
     </div>
 
     <div class="header-status">
-
       <span class="status-dot"></span>
 
       <span id="header-total-draws">
         -- kỳ
       </span>
-
     </div>
-
   </div>
-
 </header>
 
 
 <main class="app-container">
 
   <!-- KẾT QUẢ -->
-
   <section class="card">
-
     <div class="card-header">
-
       <div>
         <div class="section-label">
           KẾT QUẢ
@@ -94,26 +83,19 @@
       >
         --/--/----
       </div>
-
     </div>
 
     <div id="latest-result">
-
       <div class="skeleton-box">
         Đang tải kết quả...
       </div>
-
     </div>
-
   </section>
 
 
   <!-- DỰ ĐOÁN -->
-
   <section class="card hot-card">
-
     <div class="card-header">
-
       <div>
         <div class="section-label">
           PHÂN TÍCH HÔM NAY
@@ -127,47 +109,6 @@
       <span class="hot-chip">
         HOT
       </span>
-
-    </div>
-
-    <div id="today-prediction">
-
-      <div class="skeleton-box">
-        Đang phân tích...
-      </div>
-
-    </div>
-
-  </section>
-
-
-  <!-- TOP MODEL -->
-
-  <section class="card">
-
-    <div class="card-header">
-
-      <div>
-        <div class="section-label">
-          XẾP HẠNG
-        </div>
-
-        <h2>
-          Top số theo mô hình
-        </h2>
-      </div>
-
-      <button
-        id="analyze-button"
-        class="icon-button"
-        onclick="refreshAnalysis()"
-        aria-label="Làm mới"
-      >
-        <span class="material-symbols-rounded">
-          refresh
-        </span>
-      </button>
-
     </div>
 
     <div
@@ -177,59 +118,54 @@
       Đang kết nối dữ liệu...
     </div>
 
-    <div id="analysis-detail"></div>
+    <div id="today-prediction">
+      <div class="skeleton-box">
+        Đang phân tích...
+      </div>
+    </div>
+  </section>
 
+
+  <!-- CẦU 5 CHỮ SỐ -->
+  <section
+    class="card"
+    id="five-digit-section"
+    style="display:none;"
+  >
+    <div class="card-header">
+      <div>
+        <div class="section-label">
+          CẦU 5 CHỮ SỐ
+        </div>
+
+        <h2>
+          Cầu 2 chữ số
+        </h2>
+      </div>
+
+      <div
+        id="five-digit-date"
+        class="date-chip"
+      >
+        --/--/----
+      </div>
+    </div>
+
+    <div id="five-digit-content">
+      <div class="skeleton-box">
+        Chưa tải dữ liệu.
+      </div>
+    </div>
   </section>
 
 
   <!-- TRACKING -->
-<section
-  id="five-digit-section"
-  style="display:none;"
->
-
-  <div class="section-header">
-
-    <div>
-      <div class="section-label">
-        CẦU 5 CHỮ SỐ
-      </div>
-
-      <h2>
-        Cầu 2 chữ số
-      </h2>
-    </div>
-
-    <div
-      id="five-digit-date"
-      class="date-badge"
-    >
-      --/--/----
-    </div>
-
-  </div>
-
-
-  <div
-    id="five-digit-content"
-  >
-
-    <div class="loading-box">
-      Chưa tải dữ liệu.
-    </div>
-
-  </div>
-
-</section>
-
   <section
     class="card"
     id="tracking-section"
     style="display:none;"
   >
-
     <div class="card-header">
-
       <div>
         <div class="section-label">
           HIỆU QUẢ
@@ -243,13 +179,10 @@
       <span class="material-symbols-rounded tracking-icon">
         payments
       </span>
-
     </div>
 
     <div id="tracking-summary"></div>
-
     <div id="tracking-table"></div>
-
   </section>
 
 </main>
@@ -285,7 +218,6 @@
   </button>
 
 
-
   <button
     class="nav-item"
     onclick="showFiveDigitBridge()"
@@ -315,7 +247,7 @@
 
 </nav>
 
-<script src="/app.js?v=2.6.2.1"></script>
+<script src="/app.js?v=2.6.3.1"></script>
 
 </body>
 </html>

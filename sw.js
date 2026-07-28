@@ -1,17 +1,15 @@
-const CACHE_NAME = "xsmb-v2.6.2-cache-v2";
+const CACHE_NAME = "xsmb-v2.6.3-stable-v1";
 
 const STATIC_FILES = [
   "/",
   "/index.html",
-  "/style.css",
   "/manifest.json"
 ];
 
-/*
-========================================================
-INSTALL
-========================================================
-*/
+
+/* =====================================================
+   INSTALL
+===================================================== */
 
 self.addEventListener("install", event => {
   event.waitUntil(
@@ -23,12 +21,10 @@ self.addEventListener("install", event => {
 });
 
 
-/*
-========================================================
-ACTIVATE
-Xóa cache phiên bản cũ
-========================================================
-*/
+/* =====================================================
+   ACTIVATE
+   XÓA CACHE CŨ
+===================================================== */
 
 self.addEventListener("activate", event => {
   event.waitUntil(
@@ -50,11 +46,9 @@ self.addEventListener("activate", event => {
 });
 
 
-/*
-========================================================
-FETCH
-========================================================
-*/
+/* =====================================================
+   FETCH
+===================================================== */
 
 self.addEventListener("fetch", event => {
   const request = event.request;
@@ -66,44 +60,45 @@ self.addEventListener("fetch", event => {
   const url = new URL(request.url);
 
 
-  /*
-  ======================================================
-  API
-  LUÔN LẤY TỪ NETWORK
-  KHÔNG CACHE
-  ======================================================
-  */
+  /* ===================================================
+     API
+     LUÔN NETWORK - KHÔNG CACHE
+  =================================================== */
 
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(
-      fetch(request)
+      fetch(request, {
+        cache: "no-store"
+      })
     );
 
     return;
   }
 
 
-  /*
-  ======================================================
-  JAVASCRIPT
-  NETWORK FIRST
-  ======================================================
-  */
+  /* ===================================================
+     JS + CSS
+     NETWORK FIRST
+  =================================================== */
 
   if (
     url.pathname.endsWith(".js") ||
-    url.pathname === "/app.js"
+    url.pathname.endsWith(".css")
   ) {
     event.respondWith(
       fetch(request)
         .then(response => {
+          if (!response || !response.ok) {
+            return response;
+          }
+
           const copy = response.clone();
 
-          caches
-            .open(CACHE_NAME)
-            .then(cache => {
-              cache.put(request, copy);
-            });
+          event.waitUntil(
+            caches
+              .open(CACHE_NAME)
+              .then(cache => cache.put(request, copy))
+          );
 
           return response;
         })
@@ -114,12 +109,10 @@ self.addEventListener("fetch", event => {
   }
 
 
-  /*
-  ======================================================
-  HTML
-  NETWORK FIRST
-  ======================================================
-  */
+  /* ===================================================
+     HTML / NAVIGATION
+     NETWORK FIRST
+  =================================================== */
 
   if (
     request.mode === "navigate" ||
@@ -128,52 +121,60 @@ self.addEventListener("fetch", event => {
     event.respondWith(
       fetch(request)
         .then(response => {
+          if (!response || !response.ok) {
+            return response;
+          }
+
           const copy = response.clone();
 
-          caches
-            .open(CACHE_NAME)
-            .then(cache => {
-              cache.put(request, copy);
-            });
+          event.waitUntil(
+            caches
+              .open(CACHE_NAME)
+              .then(cache => cache.put(request, copy))
+          );
 
           return response;
         })
-        .catch(() =>
-          caches.match(request)
-        )
+        .catch(async () => {
+          const cached = await caches.match(request);
+          if (cached) {
+            return cached;
+          }
+
+          return caches.match("/index.html");
+        })
     );
 
     return;
   }
 
 
-  /*
-  ======================================================
-  STATIC
-  CACHE FIRST
-  ======================================================
-  */
+  /* ===================================================
+     STATIC ASSETS
+     CACHE FIRST + NETWORK FALLBACK
+  =================================================== */
 
   event.respondWith(
     caches
       .match(request)
-      .then(cachedResponse => {
+      .then(async cachedResponse => {
         if (cachedResponse) {
           return cachedResponse;
         }
 
-        return fetch(request)
-          .then(response => {
-            const copy = response.clone();
+        const response = await fetch(request);
 
+        if (response && response.ok) {
+          const copy = response.clone();
+
+          event.waitUntil(
             caches
               .open(CACHE_NAME)
-              .then(cache => {
-                cache.put(request, copy);
-              });
+              .then(cache => cache.put(request, copy))
+          );
+        }
 
-            return response;
-          });
+        return response;
       })
   );
 });
