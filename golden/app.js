@@ -1,35 +1,37 @@
-const $ = (selector) => document.querySelector(selector);
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
 
 const els = {
   refreshBtn: $("#refreshBtn"),
+  v1Panel: $("#v1Panel"),
+  v2Panel: $("#v2Panel"),
+  v1Summary: $("#v1Summary"),
+
   latestDate: $("#latestDate"),
   songThu: $("#songThu"),
   pairScore: $("#pairScore"),
   main10: $("#main10"),
   details: $("#details"),
+  weights: $("#weights"),
+  calibrationInfo: $("#calibrationInfo"),
   copyBtn: $("#copyBtn"),
+
   tracked: $("#tracked"),
   hits: $("#hits"),
   rate: $("#rate"),
   historyBody: $("#historyBody"),
+
   lockPredictionBtn: $("#lockPredictionBtn"),
   actionMessage: $("#actionMessage"),
+
   backtestBtn: $("#backtestBtn"),
   backtestResult: $("#backtestResult"),
 };
 
-const categoryLabels = {
-  golden: "Phong độ Vàng",
-  gan: "Số Gan",
-  explosion: "Điểm Nổ",
-  headTail: "Đầu–Đuôi Nóng",
-  support: "Bổ trợ",
-};
+let stateV2 = null;
 
-let dashboardState = null;
-
-function escapeHtml(value) {
-  return String(value ?? "")
+function esc(v) {
+  return String(v ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -37,158 +39,152 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function formatDate(iso) {
+function dateVN(iso) {
   if (!iso) return "--/--/----";
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
 }
 
 async function fetchJson(url, options) {
-  const response = await fetch(url, options);
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || `HTTP ${response.status}`);
+  const r = await fetch(url, options);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data.success === false) {
+    throw new Error(data.error || `HTTP ${r.status}`);
   }
-
   return data;
 }
 
-function renderMain10(numbers) {
-  els.main10.innerHTML = numbers
-    .map(
-      (number) =>
-        `<div class="number-chip">${escapeHtml(number)}</div>`,
-    )
-    .join("");
+function modelLabel(name) {
+  return {
+    frequency: "Frequency",
+    cycle: "Cycle",
+    position: "Position",
+    temporal: "Temporal",
+  }[name] || name;
 }
 
-function renderDetails(details) {
-  els.details.innerHTML = details
-    .map((item) => {
-      const category = item.category || "support";
-      return `
-        <article class="detail-row">
-          <div class="detail-number">${escapeHtml(item.number)}</div>
-
-          <div class="badge badge-${escapeHtml(category)}">
-            ${escapeHtml(categoryLabels[category] || category)}
-          </div>
-
-          <div class="detail-reason">
-            ${escapeHtml(item.reason)}
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-}
-
-function renderHistory(rows) {
-  if (!rows.length) {
-    els.historyBody.innerHTML = `
-      <tr>
-        <td colspan="3" class="muted">Chưa có dự đoán đã khóa.</td>
-      </tr>
-    `;
-    return;
-  }
-
-  els.historyBody.innerHTML = rows
-    .map((row) => {
-      let result = `<span class="pending">Chờ kết quả</span>`;
-
-      if (row.evaluated) {
-        result = row.hit
-          ? `<span class="hit">✓ Nổ (${escapeHtml(row.hitNumber)})</span>`
-          : `<span class="miss">✕ Trượt</span>`;
-      }
-
-      return `
-        <tr>
-          <td>${formatDate(row.predictionDate)}</td>
-          <td><strong>${escapeHtml(row.songThu.join(" - "))}</strong></td>
-          <td>${result}</td>
-        </tr>
-      `;
-    })
-    .join("");
-}
-
-function renderDashboard(data) {
-  dashboardState = data;
+function renderV2(data) {
+  stateV2 = data;
 
   els.latestDate.textContent =
-    `Dữ liệu đến ${formatDate(data.latestDataDate)}`;
+    `Dữ liệu đến ${dateVN(data.sourceLatestDate)} · dự đoán ${dateVN(data.predictionDate)}`;
 
-  if (data.songThu?.numbers?.length === 2) {
-    const [a, b] = data.songThu.numbers;
-    els.songThu.innerHTML = `
-      <span>${escapeHtml(a)}</span>
-      <span class="dash">—</span>
-      <span>${escapeHtml(b)}</span>
-    `;
-    els.pairScore.textContent =
-      Number(data.songThu.pairScore).toFixed(0);
-  }
+  const [a, b] = data.songThu || ["--", "--"];
+  els.songThu.innerHTML =
+    `<span>${esc(a)}</span><span class="dash">—</span><span>${esc(b)}</span>`;
+  els.pairScore.textContent = Number(data.pairScore ?? 0).toFixed(0);
 
-  renderMain10(data.main10 || []);
-  renderDetails(data.details || []);
+  els.main10.innerHTML = (data.main10 || [])
+    .map((n) => `<div class="number-chip">${esc(n)}</div>`)
+    .join("");
+
+  els.details.innerHTML = (data.details || [])
+    .map((x) => `
+      <article class="detail-row">
+        <div class="detail-number">${esc(x.number)}</div>
+        <div class="detail-main">
+          <div>
+            <strong>${esc(modelLabel(x.strongestModel))}</strong>
+            · Final ${Number(x.finalScore).toFixed(1)}
+          </div>
+          <div class="detail-reason">
+            Top10 đồng thuận: ${esc(x.modelsInTop10)}/4 ·
+            Gap: ${esc(x.gap)} ·
+            Cycle median: ${esc(x.cycleMedian)} ·
+            Momentum 10/30: ${esc(x.momentum10_30)}
+          </div>
+        </div>
+      </article>
+    `)
+    .join("");
+
+  els.weights.innerHTML = Object.entries(data.modelWeights || {})
+    .map(([name, weight]) => `
+      <article class="weight-box">
+        <span>${esc(modelLabel(name))}</span>
+        <strong>${(Number(weight) * 100).toFixed(1)}%</strong>
+      </article>
+    `)
+    .join("");
+
+  els.calibrationInfo.textContent =
+    `Trọng số được hiệu chỉnh từ ${data.calibration?.tested ?? 0} kỳ walk-forward gần nhất.`;
 
   els.tracked.textContent = data.performance?.tracked ?? 0;
   els.hits.textContent = data.performance?.hits ?? 0;
   els.rate.textContent = `${data.performance?.rate ?? 0}%`;
 
-  renderHistory(data.history || []);
+  const rows = data.history || [];
+  els.historyBody.innerHTML = rows.length
+    ? rows.map((r) => {
+        let result = `<span class="pending">Chờ kết quả</span>`;
+        if (r.evaluated) {
+          result = r.hit
+            ? `<span class="hit">✓ Nổ (${esc(r.hitNumber)})</span>`
+            : `<span class="miss">✕ Trượt</span>`;
+        }
+
+        return `
+          <tr>
+            <td>${dateVN(r.predictionDate)}</td>
+            <td><strong>${esc(r.songThu.join(" - "))}</strong></td>
+            <td>${result}</td>
+          </tr>
+        `;
+      }).join("")
+    : `<tr><td colspan="3" class="muted">Chưa có prediction V2 đã khóa.</td></tr>`;
 }
 
-async function loadDashboard() {
-  els.refreshBtn.disabled = true;
+async function loadV2() {
+  const data = await fetchJson("/api/golden/v2/dashboard");
+  renderV2(data);
+}
 
+async function loadV1() {
   try {
     const data = await fetchJson("/api/golden/dashboard");
-    renderDashboard(data);
-  } catch (error) {
-    els.actionMessage.textContent =
-      `Lỗi tải dữ liệu: ${error.message}`;
+    const pair = data.songThu?.numbers?.join(" - ") || "--";
+    els.v1Summary.innerHTML = `
+      <div><strong>Song thủ V1:</strong> ${esc(pair)}</div>
+      <div><strong>Dàn 10:</strong> ${esc((data.main10 || []).join(" "))}</div>
+      <div><strong>Hiệu suất:</strong>
+        ${esc(data.performance?.hits ?? 0)}/${esc(data.performance?.tracked ?? 0)}
+        (${esc(data.performance?.rate ?? 0)}%)
+      </div>
+    `;
+  } catch (e) {
+    els.v1Summary.textContent = `Không tải được V1: ${e.message}`;
+  }
+}
+
+async function refreshAll() {
+  els.refreshBtn.disabled = true;
+  els.actionMessage.textContent = "";
+  try {
+    await Promise.all([loadV2(), loadV1()]);
+  } catch (e) {
+    els.actionMessage.textContent = `Lỗi: ${e.message}`;
   } finally {
     els.refreshBtn.disabled = false;
   }
 }
 
-async function copyMain10() {
-  const numbers = dashboardState?.main10 || [];
-  if (!numbers.length) return;
-
-  await navigator.clipboard.writeText(numbers.join(" "));
-  const old = els.copyBtn.textContent;
-  els.copyBtn.textContent = "Đã copy";
-
-  setTimeout(() => {
-    els.copyBtn.textContent = old;
-  }, 1300);
-}
-
-async function lockPrediction() {
+async function lockV2() {
   els.lockPredictionBtn.disabled = true;
-  els.actionMessage.textContent = "Đang khóa dự đoán...";
-
+  els.actionMessage.textContent = "Đang khóa prediction V2...";
   try {
-    const data = await fetchJson("/api/golden/predict", {
+    const data = await fetchJson("/api/golden/v2/predict", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
+      headers: { "content-type": "application/json" },
       body: "{}",
     });
-
     els.actionMessage.textContent =
-      data.message || "Đã khóa dự đoán thành công.";
-
-    await loadDashboard();
-  } catch (error) {
-    els.actionMessage.textContent =
-      `Không khóa được dự đoán: ${error.message}`;
+      data.existed
+        ? "Prediction V2 ngày này đã tồn tại; hệ thống giữ nguyên bản đã khóa."
+        : "Đã khóa prediction V2.";
+    await loadV2();
+  } catch (e) {
+    els.actionMessage.textContent = `Không khóa được: ${e.message}`;
   } finally {
     els.lockPredictionBtn.disabled = false;
   }
@@ -196,29 +192,46 @@ async function lockPrediction() {
 
 async function runBacktest() {
   els.backtestBtn.disabled = true;
-  els.backtestResult.textContent = "Đang chạy walk-forward...";
-
+  els.backtestResult.textContent = "Đang chạy strict walk-forward...";
   try {
-    const data = await fetchJson("/api/golden/backtest?limit=20");
-
+    const d = await fetchJson("/api/golden/v2/backtest?limit=10");
     els.backtestResult.innerHTML = `
-      Đã kiểm tra <strong>${data.testedDraws}</strong> kỳ,
-      trúng <strong>${data.hits}</strong> kỳ,
-      tỷ lệ <strong>${data.hitRate}%</strong>.
-      <br />
-      <small>${escapeHtml(data.warning)}</small>
+      <strong>${d.testedDraws}</strong> kỳ ·
+      Song thủ: <strong>${d.songThuHits}</strong> kỳ
+      (${d.songThuHitRate}%) ·
+      Dàn 10 có ≥1 số: <strong>${d.main10HitDraws}</strong> kỳ
+      (${d.main10HitRate}%).
+      <br><small>${esc(d.warning)}</small>
     `;
-  } catch (error) {
-    els.backtestResult.textContent =
-      `Backtest lỗi: ${error.message}`;
+  } catch (e) {
+    els.backtestResult.textContent = `Backtest lỗi: ${e.message}`;
   } finally {
     els.backtestBtn.disabled = false;
   }
 }
 
-els.refreshBtn.addEventListener("click", loadDashboard);
-els.copyBtn.addEventListener("click", copyMain10);
-els.lockPredictionBtn.addEventListener("click", lockPrediction);
+$$(".version-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    $$(".version-btn").forEach((x) => x.classList.remove("active"));
+    btn.classList.add("active");
+
+    const v = btn.dataset.version;
+    els.v1Panel.hidden = v !== "v1";
+    els.v2Panel.hidden = v !== "v2";
+  });
+});
+
+els.refreshBtn.addEventListener("click", refreshAll);
+els.lockPredictionBtn.addEventListener("click", lockV2);
 els.backtestBtn.addEventListener("click", runBacktest);
 
-loadDashboard();
+els.copyBtn.addEventListener("click", async () => {
+  const numbers = stateV2?.main10 || [];
+  if (!numbers.length) return;
+  await navigator.clipboard.writeText(numbers.join(" "));
+  const old = els.copyBtn.textContent;
+  els.copyBtn.textContent = "Đã copy";
+  setTimeout(() => (els.copyBtn.textContent = old), 1200);
+});
+
+refreshAll();
