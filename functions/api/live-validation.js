@@ -2,33 +2,32 @@
 ========================================================
 XSMB LIVE VALIDATION READ API
 /api/live-validation
-========================================================
 
-READ ONLY
+V2.6.3 - READ ONLY
 
-Hiển thị:
-- Kỳ BASE V2.6.2 gần nhất đã có kết quả
-- Cầu nào HIT
-- Carry hiện tại
-- Số trước -> số Carry mới
-- Carry streak
-- Hiệu quả BASE / CARRY
+Đọc trực tiếp hệ thống Live mới:
+- prediction_live_v262
+- prediction_bridge_evidence
+- prediction_carry_v262
+
+Mục tiêu:
+1. Hiển thị BASE gần nhất đã có kết quả.
+2. Xác định tất cả số gợi ý đã HIT.
+3. Hiển thị các bridge HIT làm "ưu tiên carry" cho kỳ kế tiếp.
+4. Không tự tạo prediction trong endpoint READ này.
 ========================================================
 */
 
-const BASE_MODEL =
-  "bridge-v2.6.2";
-
-const CARRY_MODEL =
-  "bridge-v2.6.2-live-priority-carry-v2";
+const BASE_MODEL = "bridge-v2.6.2";
+const CARRY_MODEL = "bridge-v2.6.2-live-priority-v2";
+const VERSION = "live-validation-ui-v2.6.3";
 
 
 function json(data, status = 200) {
   return Response.json(data, {
     status,
     headers: {
-      "Cache-Control":
-        "no-store, no-cache, must-revalidate"
+      "Cache-Control": "no-store, no-cache, must-revalidate"
     }
   });
 }
@@ -36,20 +35,14 @@ function json(data, status = 200) {
 
 function round2(value) {
   const n = Number(value);
-
-  if (!Number.isFinite(n)) {
-    return 0;
-  }
-
-  return Math.round(n * 100) / 100;
+  return Number.isFinite(n)
+    ? Math.round(n * 100) / 100
+    : 0;
 }
 
 
 function normalizeNumber(value) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
+  if (value === null || value === undefined) {
     return null;
   }
 
@@ -67,7 +60,15 @@ function normalizeNumber(value) {
 }
 
 
-function parseJSON(value, fallback = null) {
+function safeJSON(value, fallback = null) {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value === "object") {
+    return value;
+  }
+
   try {
     return JSON.parse(value);
   } catch {
@@ -76,295 +77,208 @@ function parseJSON(value, fallback = null) {
 }
 
 
-function prizeTokens(value) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
+function splitNumbers(value) {
+  if (!value) {
     return [];
   }
 
-  return (
-    String(value)
-      .match(/\d+/g)
-    ||
-    []
-  );
-}
-
-
-function extractUniqueLoto(row) {
-  const fields = [
-    "special",
-    "g1",
-    "g2",
-    "g3",
-    "g4",
-    "g5",
-    "g6",
-    "g7"
-  ];
-
-  const set =
-    new Set();
-
-
-  for (const field of fields) {
-
-    const values =
-      prizeTokens(
-        row?.[field]
-      );
-
-
-    for (const value of values) {
-
-      set.add(
-        value
-          .padStart(2, "0")
-          .slice(-2)
-      );
-    }
+  if (Array.isArray(value)) {
+    return value
+      .map(normalizeNumber)
+      .filter(Boolean);
   }
 
-
-  return [
-    ...set
-  ].sort();
-}
-
-
-function readRecommendations(value) {
-  const payload =
-    parseJSON(
-      value,
-      []
-    );
-
-
-  if (
-    Array.isArray(payload)
-  ) {
-    return payload;
-  }
-
-
-  if (
-    Array.isArray(
-      payload?.recommendations
-    )
-  ) {
-    return payload.recommendations;
-  }
-
-
-  return [];
+  return String(value)
+    .split(/[\s,;|]+/)
+    .map(normalizeNumber)
+    .filter(Boolean);
 }
 
 
 /*
 ========================================================
-BASE COMPLETED HISTORY
+BASE HISTORY
 ========================================================
 */
 
-async function getRecentBase(
-  db
-) {
-
+async function getRecentBase(db) {
   const response =
     await db
       .prepare(`
         SELECT
-
-          p.prediction_date,
-          p.source_date,
-          p.numbers,
-          p.recommendations_json,
-          p.created_at,
-          p.evaluated_at,
-
-          p.top1_hit,
-          p.top3_hit,
-          p.top5_hit,
-
-          r.draw_date AS result_date,
-
-          r.special,
-          r.g1,
-          r.g2,
-          r.g3,
-          r.g4,
-          r.g5,
-          r.g6,
-          r.g7
-
-        FROM prediction_tracking p
-
-        INNER JOIN results r
-          ON r.draw_date =
-             p.prediction_date
-
-        WHERE p.model = ?
-
-        ORDER BY
-          p.prediction_date DESC
-
+          prediction_date,
+          source_date,
+          numbers,
+          recommendations_json,
+          created_at,
+          evaluated,
+          evaluated_at,
+          actual_numbers,
+          actual_unique_count,
+          top1_hit,
+          top3_hit,
+          top5_hit,
+          baseline_top1,
+          baseline_top3,
+          baseline_top5
+        FROM prediction_live_v262
+        WHERE model = ?
+        ORDER BY prediction_date DESC
         LIMIT 10
       `)
-      .bind(
-        BASE_MODEL
-      )
+      .bind(BASE_MODEL)
       .all();
 
+  const rows = response.results || [];
 
-  const rows =
-    response.results || [];
-
-
-  return rows.map(
-    row =>
-      buildBaseDay(
-        row
-      )
+  return Promise.all(
+    rows.map(row => buildBaseDay(db, row))
   );
 }
 
 
-function buildBaseDay(row) {
-
-  const actualNumbers =
-    extractUniqueLoto(
-      row
-    );
-
-
-  const actualSet =
-    new Set(
-      actualNumbers
-    );
-
-
-  const recommendations =
-    readRecommendations(
-      row.recommendations_json
-    )
-      .filter(
-        item =>
-          item?.number
-      )
-      .sort(
-        (
-          a,
-          b
-        ) =>
-
-          Number(
-            a.baseRank ??
-            a.rank ??
-            9999
-          )
-
-          -
-
-          Number(
-            b.baseRank ??
-            b.rank ??
-            9999
-          )
-      );
-
-
-  const evaluated =
-    recommendations.map(
-      (
-        item,
-        index
-      ) => {
-
-        const number =
-          normalizeNumber(
-            item.number
-          );
-
-
-        return {
-
-          rank:
-            Number(
-              item.baseRank ??
-              item.rank ??
-              index + 1
-            ),
-
+async function getEvidenceForDay(db, predictionDate) {
+  const response =
+    await db
+      .prepare(`
+        SELECT
+          bridge_key,
+          bridge,
           number,
+          base_rank,
+          hit,
+          score,
+          strength
+        FROM prediction_bridge_evidence
+        WHERE prediction_date = ?
+          AND model = ?
+        ORDER BY
+          base_rank ASC,
+          score DESC
+      `)
+      .bind(
+        predictionDate,
+        BASE_MODEL
+      )
+      .all();
 
-          bridgeKey:
-            item.bridgeKey ??
-            null,
+  return response.results || [];
+}
 
-          bridge:
-            item.bridge ??
-            null,
 
-          positionA:
-            item.positionA ??
-            null,
-
-          positionB:
-            item.positionB ??
-            null,
-
-          direction:
-            item.direction ??
-            null,
-
-          score:
-            item.score ??
-            null,
-
-          strength:
-            item.strength ??
-            null,
-
-          hit:
-            number
-              ?
-              actualSet.has(
-                number
-              )
-              :
-              false
-        };
-      }
+async function buildBaseDay(db, row) {
+  const recommendations =
+    safeJSON(
+      row.recommendations_json,
+      []
     );
 
+  const evidence =
+    await getEvidenceForDay(
+      db,
+      row.prediction_date
+    );
+
+  const evidenceByKey =
+    new Map(
+      evidence.map(item => [
+        `${item.bridge_key}|${normalizeNumber(item.number)}`,
+        item
+      ])
+    );
+
+  const evaluatedRecommendations =
+    Array.isArray(recommendations)
+      ? recommendations
+          .map((item, index) => {
+            const number =
+              normalizeNumber(
+                item?.number
+              );
+
+            if (!number) {
+              return null;
+            }
+
+            const bridgeKey =
+              item.bridgeKey ||
+              item.ruleKey ||
+              null;
+
+            const evidenceRow =
+              bridgeKey
+                ? evidenceByKey.get(
+                    `${bridgeKey}|${number}`
+                  )
+                : null;
+
+            return {
+              rank:
+                Number(
+                  item.baseRank ??
+                  item.rank ??
+                  index + 1
+                ),
+
+              number,
+
+              bridgeKey,
+
+              bridge:
+                item.bridge ??
+                item.rule ??
+                evidenceRow?.bridge ??
+                null,
+
+              positionA:
+                item.positionA ?? null,
+
+              positionB:
+                item.positionB ?? null,
+
+              direction:
+                item.direction ?? null,
+
+              score:
+                item.score ??
+                evidenceRow?.score ??
+                null,
+
+              strength:
+                item.strength ??
+                evidenceRow?.strength ??
+                null,
+
+              hit:
+                Boolean(
+                  evidenceRow?.hit
+                )
+            };
+          })
+          .filter(Boolean)
+      : [];
 
   const hits =
-    evaluated.filter(
-      item =>
-        item.hit
+    evaluatedRecommendations.filter(
+      item => item.hit
     );
 
-
   return {
-
     date:
       row.prediction_date,
 
     sourceDate:
       row.source_date,
 
-    actualNumbers,
+    actualNumbers:
+      splitNumbers(
+        row.actual_numbers
+      ),
 
     predictionNumbers:
-      recommendations.map(
-        item =>
-          normalizeNumber(
-            item.number
-          )
-      )
-      .filter(Boolean),
+      evaluatedRecommendations.length
+        ? evaluatedRecommendations.map(x => x.number)
+        : splitNumbers(row.numbers),
 
     hitCount:
       hits.length,
@@ -372,335 +286,280 @@ function buildBaseDay(row) {
     hits,
 
     top1Hit:
-      evaluated
-        .slice(0, 1)
-        .some(x => x.hit),
+      Boolean(
+        Number(row.top1_hit)
+      ),
 
     top3Hit:
-      evaluated
-        .slice(0, 3)
-        .some(x => x.hit),
+      Boolean(
+        Number(row.top3_hit)
+      ),
 
     top5Hit:
-      evaluated
-        .slice(0, 5)
-        .some(x => x.hit),
+      Boolean(
+        Number(row.top5_hit)
+      ),
 
     createdAt:
       row.created_at,
 
     evaluatedAt:
-      row.evaluated_at
+      row.evaluated_at,
+
+    evaluated:
+      Boolean(
+        Number(row.evaluated)
+      )
   };
 }
 
 
 /*
 ========================================================
-CURRENT CARRY
+CURRENT CARRY / GỢI Ý ƯU TIÊN
+
+Mỗi bridge đã HIT ở ngày trước được lưu tại
+prediction_carry_v262 cho prediction_date hiện tại.
 ========================================================
 */
 
-async function getCurrentCarry(
-  db
-) {
-
+async function getLatestCarryDate(db) {
   const row =
     await db
       .prepare(`
-        SELECT
-
-          p.prediction_date,
-          p.source_date,
-          p.numbers,
-          p.recommendations_json,
-
-          p.promoted_count,
-          p.promoted_bridge_keys,
-
-          p.created_at,
-          p.evaluated_at,
-
-          p.top1_hit,
-          p.top3_hit,
-          p.top5_hit,
-
-          r.draw_date AS result_date,
-
-          r.special,
-          r.g1,
-          r.g2,
-          r.g3,
-          r.g4,
-          r.g5,
-          r.g6,
-          r.g7
-
-        FROM prediction_priority_tracking p
-
-        LEFT JOIN results r
-          ON r.draw_date =
-             p.prediction_date
-
-        WHERE p.variant = ?
-
-        ORDER BY
-          p.prediction_date DESC
-
+        SELECT prediction_date
+        FROM prediction_carry_v262
+        WHERE model = ?
+        ORDER BY prediction_date DESC
         LIMIT 1
       `)
-      .bind(
-        CARRY_MODEL
-      )
+      .bind(CARRY_MODEL)
       .first();
 
+  return row?.prediction_date || null;
+}
 
-  if (!row) {
+
+async function getCurrentCarry(db) {
+  const predictionDate =
+    await getLatestCarryDate(db);
+
+  if (!predictionDate) {
     return null;
   }
 
+  const response =
+    await db
+      .prepare(`
+        SELECT
+          prediction_date,
+          source_date,
+          previous_prediction_date,
 
-  const recommendations =
-    readRecommendations(
-      row.recommendations_json
-    )
-      .filter(
-        item =>
-          item?.number
+          bridge_key,
+          bridge,
+
+          previous_number,
+          previous_rank,
+
+          current_number,
+          current_rank,
+
+          carry_status,
+
+          previous_score,
+          current_score,
+
+          previous_strength,
+          current_strength,
+
+          hit,
+          evaluated,
+          evaluated_at,
+
+          created_at
+        FROM prediction_carry_v262
+        WHERE model = ?
+          AND prediction_date = ?
+        ORDER BY
+          CASE
+            WHEN carry_status = 'ACTIVE' THEN 0
+            WHEN carry_status = 'SHADOW' THEN 1
+            ELSE 2
+          END,
+          COALESCE(current_rank, 9999) ASC,
+          COALESCE(current_score, 0) DESC
+      `)
+      .bind(
+        CARRY_MODEL,
+        predictionDate
       )
-      .sort(
-        (
-          a,
-          b
-        ) =>
+      .all();
 
-          Number(
-            a.liveRank ??
-            a.rank ??
-            9999
-          )
+  const rows =
+    response.results || [];
 
-          -
-
-          Number(
-            b.liveRank ??
-            b.rank ??
-            9999
-          )
-      );
-
-
-  const hasResult =
-    Boolean(
-      row.result_date
-    );
-
-
-  const actualNumbers =
-    hasResult
-      ?
-      extractUniqueLoto(
-        row
-      )
-      :
-      [];
-
-
-  const actualSet =
-    new Set(
-      actualNumbers
-    );
-
+  if (!rows.length) {
+    return null;
+  }
 
   const promoted =
-    recommendations
-
+    rows
       .filter(
-        item =>
-          item.carryForward === true
+        row =>
+          row.current_number
       )
-
       .map(
-        item => {
-
-          const sources =
-            Array.isArray(
-              item.carrySources
-            )
-              ?
-              item.carrySources
-              :
-              [];
-
-
-          const primary =
-            sources[0] ||
-            {};
-
-
-          const currentNumber =
-            normalizeNumber(
-              item.number
+        (row, index) => {
+          const evaluated =
+            Boolean(
+              Number(row.evaluated)
             );
 
-
           const hit =
-            hasResult
-              ?
-              actualSet.has(
-                currentNumber
-              )
-              :
-              null;
-
+            evaluated
+              ? Boolean(
+                  Number(row.hit)
+                )
+              : null;
 
           return {
-
             liveRank:
               Number(
-                item.liveRank || 0
-              ),
+                row.current_rank
+              ) ||
+              index + 1,
 
-            currentNumber,
+            currentNumber:
+              normalizeNumber(
+                row.current_number
+              ),
 
             previousNumber:
               normalizeNumber(
-                item.previousNumber ??
-                primary.previousNumber
+                row.previous_number
               ),
 
             previousHitDate:
-              item.previousHitDate ??
-              primary.previousHitDate ??
-              null,
+              row.previous_prediction_date,
 
             bridgeKey:
-              primary.bridgeKey ??
-              item.bridgeKey ??
-              null,
+              row.bridge_key,
 
             bridge:
-              primary.bridge ??
-              item.bridge ??
-              null,
+              row.bridge,
 
             positionA:
-              primary.positionA ??
-              item.positionA ??
               null,
 
             positionB:
-              primary.positionB ??
-              item.positionB ??
               null,
 
             direction:
-              primary.direction ??
-              item.direction ??
               null,
 
+            carryStatus:
+              row.carry_status,
+
             carryHitStreak:
-              Number(
-                item.carryHitStreak ??
-                primary.carryHitStreak ??
-                0
-              ),
+              1,
 
             currentBaseQualified:
-              Boolean(
-                item.currentBaseQualified
-              ),
+              row.carry_status ===
+              "ACTIVE",
 
             currentBaseNumberMatch:
-              Boolean(
-                item.currentBaseNumberMatch
+              row.carry_status ===
+              "ACTIVE",
+
+            previousScore:
+              round2(
+                row.previous_score
               ),
+
+            currentScore:
+              round2(
+                row.current_score
+              ),
+
+            previousStrength:
+              row.previous_strength,
+
+            currentStrength:
+              row.current_strength,
 
             hit,
 
             status:
-              !hasResult
-                ?
-                "pending"
-                :
-                hit
-                  ?
-                  "hit"
-                  :
-                  "miss"
+              !evaluated
+                ? "pending"
+                : hit
+                  ? "hit"
+                  : "miss",
+
+            createdAt:
+              row.created_at,
+
+            evaluatedAt:
+              row.evaluated_at
           };
         }
       );
 
+  const numbers =
+    promoted
+      .map(item => item.currentNumber)
+      .filter(Boolean);
+
+  const allEvaluated =
+    rows.length > 0 &&
+    rows.every(
+      row =>
+        Boolean(
+          Number(row.evaluated)
+        )
+    );
 
   return {
-
     sourceDate:
-      row.source_date,
+      rows[0].source_date,
 
-    predictionDate:
-      row.prediction_date,
+    predictionDate,
 
-    numbers:
-      recommendations.map(
-        item =>
-          normalizeNumber(
-            item.number
-          )
-      )
-      .filter(Boolean),
+    numbers,
 
     top1:
-      recommendations
-        .slice(0, 1)
-        .map(
-          item =>
-            normalizeNumber(
-              item.number
-            )
-        ),
+      numbers.slice(0, 1),
 
     top3:
-      recommendations
-        .slice(0, 3)
-        .map(
-          item =>
-            normalizeNumber(
-              item.number
-            )
-        ),
+      numbers.slice(0, 3),
 
     top5:
-      recommendations
-        .slice(0, 5)
-        .map(
-          item =>
-            normalizeNumber(
-              item.number
-            )
-        ),
+      numbers.slice(0, 5),
 
     promotedCount:
       promoted.length,
 
     promoted,
 
-    hasResult,
+    hasResult:
+      allEvaluated,
 
-    actualNumbers,
+    actualNumbers:
+      [],
 
     status:
-      hasResult
-        ?
-        "completed"
-        :
-        "pending",
+      allEvaluated
+        ? "completed"
+        : "pending",
 
     createdAt:
-      row.created_at,
+      rows[0].created_at,
 
     evaluatedAt:
-      row.evaluated_at
+      allEvaluated
+        ? rows.find(x => x.evaluated_at)?.evaluated_at || null
+        : null
   };
 }
 
@@ -711,18 +570,7 @@ PERFORMANCE
 ========================================================
 */
 
-async function getPerformance(
-  db,
-  table,
-  modelColumn,
-  model
-) {
-
-  /*
-   * table và modelColumn chỉ được gọi
-   * bằng constant nội bộ phía dưới.
-   */
-
+async function getBasePerformance(db) {
   const row =
     await db
       .prepare(`
@@ -732,7 +580,7 @@ async function getPerformance(
 
           SUM(
             CASE
-              WHEN evaluated_at IS NOT NULL
+              WHEN evaluated = 1
               THEN 1
               ELSE 0
             END
@@ -741,7 +589,7 @@ async function getPerformance(
           COALESCE(
             SUM(
               CASE
-                WHEN evaluated_at IS NOT NULL
+                WHEN evaluated = 1
                 THEN top1_hit
                 ELSE 0
               END
@@ -752,7 +600,7 @@ async function getPerformance(
           COALESCE(
             SUM(
               CASE
-                WHEN evaluated_at IS NOT NULL
+                WHEN evaluated = 1
                 THEN top3_hit
                 ELSE 0
               END
@@ -763,7 +611,7 @@ async function getPerformance(
           COALESCE(
             SUM(
               CASE
-                WHEN evaluated_at IS NOT NULL
+                WHEN evaluated = 1
                 THEN top5_hit
                 ELSE 0
               END
@@ -773,101 +621,72 @@ async function getPerformance(
 
           AVG(
             CASE
-              WHEN evaluated_at IS NOT NULL
+              WHEN evaluated = 1
               THEN baseline_top1
             END
           ) AS baseline_top1,
 
           AVG(
             CASE
-              WHEN evaluated_at IS NOT NULL
+              WHEN evaluated = 1
               THEN baseline_top3
             END
           ) AS baseline_top3,
 
           AVG(
             CASE
-              WHEN evaluated_at IS NOT NULL
+              WHEN evaluated = 1
               THEN baseline_top5
             END
           ) AS baseline_top5
 
-        FROM ${table}
-
-        WHERE ${modelColumn} = ?
+        FROM prediction_live_v262
+        WHERE model = ?
       `)
-      .bind(
-        model
-      )
+      .bind(BASE_MODEL)
       .first();
 
-
   const total =
-    Number(
-      row?.total || 0
-    );
-
+    Number(row?.total || 0);
 
   const tested =
-    Number(
-      row?.tested || 0
-    );
+    Number(row?.tested || 0);
 
+  const metric =
+    (
+      hitsValue,
+      baselineValue
+    ) => {
+      const hits =
+        Number(
+          hitsValue || 0
+        );
 
-  function metric(
-    hitsValue,
-    baselineValue
-  ) {
+      const hitRate =
+        tested
+          ? hits / tested * 100
+          : 0;
 
-    const hits =
-      Number(
-        hitsValue || 0
-      );
+      const baseline =
+        Number(
+          baselineValue || 0
+        );
 
-
-    const hitRate =
-      tested
-        ?
-        hits /
-        tested *
-        100
-        :
-        0;
-
-
-    const baseline =
-      Number(
-        baselineValue || 0
-      );
-
-
-    return {
-
-      hits,
-
-      tested,
-
-      hitRate:
-        round2(
-          hitRate
-        ),
-
-      baseline:
-        round2(
-          baseline
-        ),
-
-      lift:
-        round2(
-          hitRate -
-          baseline
-        )
+      return {
+        hits,
+        tested,
+        hitRate:
+          round2(hitRate),
+        baseline:
+          round2(baseline),
+        lift:
+          round2(
+            hitRate - baseline
+          )
+      };
     };
-  }
-
 
   return {
-
     totalTracked:
       total,
 
@@ -900,24 +719,115 @@ async function getPerformance(
 }
 
 
+async function getCarryPerformance(db) {
+  const row =
+    await db
+      .prepare(`
+        SELECT
+
+          COUNT(*) AS total,
+
+          SUM(
+            CASE
+              WHEN evaluated = 1
+              THEN 1
+              ELSE 0
+            END
+          ) AS tested,
+
+          COALESCE(
+            SUM(
+              CASE
+                WHEN evaluated = 1
+                 AND hit = 1
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS hits
+
+        FROM prediction_carry_v262
+        WHERE model = ?
+          AND current_number IS NOT NULL
+      `)
+      .bind(CARRY_MODEL)
+      .first();
+
+  const total =
+    Number(row?.total || 0);
+
+  const tested =
+    Number(row?.tested || 0);
+
+  const hits =
+    Number(row?.hits || 0);
+
+  const hitRate =
+    tested
+      ? hits / tested * 100
+      : 0;
+
+  return {
+    totalTracked:
+      total,
+
+    tested,
+
+    pending:
+      Math.max(
+        0,
+        total - tested
+      ),
+
+    top1: {
+      hits,
+      tested,
+      hitRate:
+        round2(hitRate),
+      baseline:
+        0,
+      lift:
+        round2(hitRate)
+    },
+
+    top3: {
+      hits,
+      tested,
+      hitRate:
+        round2(hitRate),
+      baseline:
+        0,
+      lift:
+        round2(hitRate)
+    },
+
+    top5: {
+      hits,
+      tested,
+      hitRate:
+        round2(hitRate),
+      baseline:
+        0,
+      lift:
+        round2(hitRate)
+    }
+  };
+}
+
+
 /*
 ========================================================
 MAIN
 ========================================================
 */
 
-export async function onRequestGet(
-  context
-) {
-
+export async function onRequestGet(context) {
   try {
-
     const db =
       context.env.DB;
 
-
     if (!db) {
-
       return json(
         {
           success: false,
@@ -928,7 +838,6 @@ export async function onRequestGet(
       );
     }
 
-
     const [
       recentBase,
       currentCarry,
@@ -936,54 +845,37 @@ export async function onRequestGet(
       carryPerformance
     ] =
       await Promise.all([
-
-        getRecentBase(
-          db
-        ),
-
-        getCurrentCarry(
-          db
-        ),
-
-        getPerformance(
-          db,
-          "prediction_tracking",
-          "model",
-          BASE_MODEL
-        ),
-
-        getPerformance(
-          db,
-          "prediction_priority_tracking",
-          "variant",
-          CARRY_MODEL
-        )
+        getRecentBase(db),
+        getCurrentCarry(db),
+        getBasePerformance(db),
+        getCarryPerformance(db)
       ]);
 
+    const completed =
+      recentBase.filter(
+        day =>
+          day.evaluated
+      );
 
     const lastCompleted =
-      recentBase[0] ||
+      completed[0] ||
       null;
-
 
     const lastHit =
-      recentBase.find(
+      completed.find(
         day =>
           day.hitCount > 0
-      )
-      ||
+      ) ||
       null;
 
-
     return json({
-
       success: true,
 
       module:
         "live-validation-read",
 
       version:
-        "live-validation-ui-v1",
+        VERSION,
 
       baseModel:
         BASE_MODEL,
@@ -1000,7 +892,6 @@ export async function onRequestGet(
       recentBase,
 
       performance: {
-
         base:
           basePerformance,
 
@@ -1008,15 +899,12 @@ export async function onRequestGet(
           carryPerformance
       }
     });
-
   }
   catch (error) {
-
     console.error(
       "live-validation:",
       error
     );
-
 
     return json(
       {

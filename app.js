@@ -100,6 +100,24 @@ async function apiFetch(
 /* =====================================================
    DASHBOARD
 ===================================================== */
+/*
+========================================================
+PATCH CHO /app.js - LIVE VALIDATION V2.6.3
+
+Trong loadDashboard(), không gọi live-validation song song
+với save-prediction.
+
+Thứ tự đúng:
+1. latest/statistics/predict
+2. /api/save-prediction
+3. /api/live-validation
+========================================================
+*/
+
+/*
+Thay phần loadDashboard() của app.js hiện tại bằng function dưới.
+Các hàm render còn lại giữ nguyên.
+*/
 
 async function loadDashboard() {
   setSystemStatus(
@@ -107,11 +125,11 @@ async function loadDashboard() {
     ""
   );
 
+
   const [
     latestResult,
     statisticsResult,
-    predictResult,
-    liveResult
+    predictResult
   ] =
     await Promise.allSettled([
       apiFetch(
@@ -126,20 +144,12 @@ async function loadDashboard() {
         "/api/predict",
         {},
         20000
-      ),
-
-      apiFetch(
-        "/api/live-validation"
       )
     ]);
 
 
   let totalDraws = 0;
 
-
-  /* ===================================================
-     LATEST
-  =================================================== */
 
   if (
     latestResult.status ===
@@ -161,10 +171,6 @@ async function loadDashboard() {
     );
   }
 
-
-  /* ===================================================
-     STATISTICS
-  =================================================== */
 
   if (
     statisticsResult.status ===
@@ -190,10 +196,6 @@ async function loadDashboard() {
     );
   }
 
-
-  /* ===================================================
-     PREDICT
-  =================================================== */
 
   if (
     predictResult.status ===
@@ -236,30 +238,61 @@ async function loadDashboard() {
   }
 
 
-  /* ===================================================
-     LIVE VALIDATION
-  =================================================== */
+  /*
+  ====================================================
+  LIVE SYNC
 
-  if (
-    liveResult.status ===
-    "fulfilled"
-  ) {
-    renderLiveValidation(
-      liveResult.value
+  Phải chạy SAU Predict.
+
+  save-prediction:
+  - chấm kỳ cũ
+  - ghi số gợi ý đã HIT
+  - tạo carry ưu tiên cho kỳ mới
+
+  Sau khi hoàn tất mới đọc live-validation.
+  ====================================================
+  */
+
+  try {
+    await apiFetch(
+      "/api/save-prediction",
+      {},
+      30000
     );
   }
-  else {
+  catch (error) {
+    console.error(
+      "Live Sync:",
+      error
+    );
+  }
+
+
+  try {
+    const liveData =
+      await apiFetch(
+        "/api/live-validation",
+        {},
+        15000
+      );
+
+    renderLiveValidation(
+      liveData
+    );
+  }
+  catch (error) {
     console.error(
       "Live Validation:",
-      liveResult.reason
+      error
     );
 
     renderLiveValidationError(
-      liveResult.reason?.message ||
+      error.message ||
       "Không kết nối được Live Validation API."
     );
   }
 }
+
 
 
 /* =====================================================
