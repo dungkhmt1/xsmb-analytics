@@ -34,7 +34,7 @@ Pipeline:
 
 
 const VERSION =
-  "bridge-v2.6.2";
+  "bridge-v2.6.3-abba";
 
 
 const PRIZES = [
@@ -1285,6 +1285,430 @@ function classifyStrength(
 }
 
 
+
+/* =====================================================
+   AB-BA PAIR LAYER V2.6.3
+===================================================== */
+
+function normalize2(value) {
+  const digits =
+    String(value ?? "")
+      .replace(/\D/g, "");
+
+  if (!digits) {
+    return null;
+  }
+
+  return digits
+    .padStart(2, "0")
+    .slice(-2);
+}
+
+
+function reverse2(value) {
+  const number =
+    normalize2(value);
+
+  if (!number) {
+    return null;
+  }
+
+  return `${number[1]}${number[0]}`;
+}
+
+
+function canonicalPairKey(value) {
+  const a =
+    normalize2(value);
+
+  if (!a) {
+    return null;
+  }
+
+  const b =
+    reverse2(a);
+
+  return [a, b]
+    .sort()
+    .join("-");
+}
+
+
+function pairDisplay(a, b) {
+  if (!a) {
+    return "--";
+  }
+
+  if (!b || a === b) {
+    return a;
+  }
+
+  return `${a}-${b}`;
+}
+
+
+/*
+Mỗi recommendation gốc vẫn giữ nguyên bridgeKey.
+Layer này chỉ gom recommendation thành cặp AB-BA.
+
+PairScore KHÔNG phải xác suất.
+- 65%: cầu mạnh nhất của cặp
+- 25%: hỗ trợ của số đảo nếu cũng qualified
+- 10%: đồng thuận nhiều cầu trong cùng pair
+*/
+function buildABBARecommendations(
+  recommendations,
+  maxPairs
+) {
+  const groups =
+    new Map();
+
+
+  for (const item of recommendations) {
+    const number =
+      normalize2(
+        item.number
+      );
+
+    if (!number) {
+      continue;
+    }
+
+    const reverseNumber =
+      reverse2(number);
+
+    const key =
+      canonicalPairKey(number);
+
+    if (!groups.has(key)) {
+      groups.set(
+        key,
+        []
+      );
+    }
+
+    groups
+      .get(key)
+      .push({
+        ...item,
+        number,
+        reverseNumber
+      });
+  }
+
+
+  const pairs = [];
+
+
+  for (const [pairKey, items] of groups) {
+    const sorted =
+      [...items]
+        .sort(
+          (a, b) => {
+            const sa =
+              Number(a.score || 0);
+
+            const sb =
+              Number(b.score || 0);
+
+            return sb - sa;
+          }
+        );
+
+
+    const best =
+      sorted[0];
+
+    const number =
+      best.number;
+
+    const reverseNumber =
+      reverse2(number);
+
+
+    const reverseSupport =
+      sorted
+        .filter(
+          item =>
+            item.number ===
+            reverseNumber
+        )
+        .sort(
+          (a, b) =>
+            Number(b.score || 0) -
+            Number(a.score || 0)
+        )[0]
+      ||
+      null;
+
+
+    const bestScore =
+      Number(
+        best.score || 0
+      );
+
+    const reverseScore =
+      Number(
+        reverseSupport?.score || 0
+      );
+
+
+    const bridgeCount =
+      new Set(
+        sorted
+          .map(
+            item =>
+              item.bridgeKey
+          )
+          .filter(Boolean)
+      )
+        .size;
+
+
+    const agreementScore =
+      Math.min(
+        100,
+        bridgeCount * 20
+      );
+
+
+    const pairScore =
+      Math.max(
+        0,
+        Math.min(
+          100,
+          bestScore * 0.65 +
+          reverseScore * 0.25 +
+          agreementScore * 0.10
+        )
+      );
+
+
+    const pairNumbers =
+      number === reverseNumber
+        ? [number]
+        : [number, reverseNumber];
+
+
+    pairs.push({
+      ...best,
+
+      number,
+      reverseNumber,
+
+      pairKey,
+      pairNumbers,
+
+      pair:
+        pairDisplay(
+          number,
+          reverseNumber
+        ),
+
+      pairScore:
+        Number(
+          pairScore.toFixed(2)
+        ),
+
+      score:
+        Number(
+          pairScore.toFixed(2)
+        ),
+
+      sourceScore:
+        bestScore,
+
+      reverseSupport:
+        reverseSupport
+          ? {
+              number:
+                reverseSupport.number,
+
+              score:
+                Number(
+                  reverseSupport.score || 0
+                ),
+
+              bridgeKey:
+                reverseSupport.bridgeKey ||
+                null,
+
+              bridge:
+                reverseSupport.bridge ||
+                null
+            }
+          : null,
+
+      pairBridgeCount:
+        bridgeCount,
+
+      pairSources:
+        sorted.map(
+          source => ({
+            number:
+              source.number,
+
+            bridgeKey:
+              source.bridgeKey ||
+              null,
+
+            bridge:
+              source.bridge ||
+              null,
+
+            score:
+              Number(
+                source.score || 0
+              ),
+
+            strength:
+              source.strength ||
+              null
+          })
+        ),
+
+      hitRule:
+        "AB-or-BA"
+    });
+  }
+
+
+  pairs.sort(
+    (a, b) => {
+      const strengthOrder = {
+        "very-strong": 4,
+        "strong": 3,
+        "qualified": 2,
+        "historical": 1
+      };
+
+
+      const strengthDiff =
+        (
+          strengthOrder[
+            b.strength
+          ] || 0
+        )
+        -
+        (
+          strengthOrder[
+            a.strength
+          ] || 0
+        );
+
+
+      if (strengthDiff !== 0) {
+        return strengthDiff;
+      }
+
+
+      if (
+        b.pairScore !==
+        a.pairScore
+      ) {
+        return (
+          b.pairScore -
+          a.pairScore
+        );
+      }
+
+
+      return (
+        Number(
+          b.sourceScore || 0
+        )
+        -
+        Number(
+          a.sourceScore || 0
+        )
+      );
+    }
+  );
+
+
+  return pairs.slice(
+    0,
+    maxPairs
+  );
+}
+
+
+function buildMinimalCandidatePool(
+  active
+) {
+  return active.map(
+    item => {
+      const number =
+        normalize2(
+          item.number
+        );
+
+      const reverseNumber =
+        reverse2(number);
+
+      return {
+        number,
+
+        reverseNumber,
+
+        pairKey:
+          canonicalPairKey(
+            number
+          ),
+
+        pairNumbers:
+          number === reverseNumber
+            ? [number]
+            : [
+                number,
+                reverseNumber
+              ],
+
+        pair:
+          pairDisplay(
+            number,
+            reverseNumber
+          ),
+
+        bridgeKey:
+          item.bridgeKey ||
+          null,
+
+        bridge:
+          item.bridge ||
+          null,
+
+        positionA:
+          item.positionA ||
+          null,
+
+        positionB:
+          item.positionB ||
+          null,
+
+        direction:
+          item.direction ||
+          null,
+
+        score:
+          Number(
+            item.score || 0
+          ),
+
+        strength:
+          item.strength ||
+          null,
+
+        streak:
+          Number(
+            item.streak || 0
+          )
+      };
+    }
+  );
+}
+
+
 /* =====================================================
    API
 ===================================================== */
@@ -2246,6 +2670,25 @@ export async function onRequestGet(
 
     /*
     ====================================================
+    AB-BA OUTPUT
+    ====================================================
+    */
+
+    const pairSuggestions =
+      buildABBARecommendations(
+        recommendations,
+        MAX_RECOMMENDATIONS
+      );
+
+
+    const candidatePool =
+      buildMinimalCandidatePool(
+        active
+      );
+
+
+    /*
+    ====================================================
     RESPONSE
     ====================================================
     */
@@ -2297,13 +2740,16 @@ export async function onRequestGet(
         historicalOnly.length,
 
       returnedCount:
-        Math.min(
-          recommendations.length,
-          MAX_RECOMMENDATIONS
-        ),
+        pairSuggestions.length,
 
       uniqueNumberCount:
         recommendedNumbers.length,
+
+      uniquePairCount:
+        pairSuggestions.length,
+
+      suggestionMode:
+        "AB-BA",
 
 
       rule: {
@@ -2340,13 +2786,16 @@ export async function onRequestGet(
           true,
 
         ranking:
-          "strength-score-wilson-sample-stability",
+          "abba-strength-pairscore-wilson-sample-stability",
 
         maxRecommendations:
           MAX_RECOMMENDATIONS,
 
         scoreIsProbability:
-          false
+          false,
+
+        pairHitRule:
+          "AB hoặc BA xuất hiện đều tính HIT"
       },
 
 
@@ -2376,10 +2825,16 @@ export async function onRequestGet(
       */
 
       suggestions:
-        recommendations.slice(
-          0,
-          MAX_RECOMMENDATIONS
-        ),
+        pairSuggestions,
+
+      /*
+      Candidate pool tối giản để LIVE có thể
+      tiếp tục bridge HIT ngay cả khi bridge
+      bị filter khỏi suggestions.
+      */
+
+      candidates:
+        candidatePool,
 
 
       /*
@@ -2428,7 +2883,7 @@ export async function onRequestGet(
 
 
       note:
-        "V2.6.2 loại cầu historical-only khỏi gợi ý hiện tại, yêu cầu Wilson Edge không âm, thêm recent evidence và xếp hạng theo Strength, Final Score, Wilson Edge, sample và stability. Score không phải xác suất trúng."
+        "V2.6.3 AB-BA giữ nguyên engine cầu V2.6.2, gom mỗi số thành cặp đảo AB-BA. Một trong hai số xuất hiện đều tính HIT. PairScore chỉ là điểm xếp hạng, không phải xác suất."
     });
 
 

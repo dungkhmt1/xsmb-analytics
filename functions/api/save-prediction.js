@@ -1,44 +1,39 @@
 // ============================================================
 // functions/api/save-prediction.js
-// XSMB Analytics V2.6.3
-//
-// Live Validation + Carry Priority
+// XSMB Analytics V2.6.3 AB-BA
 //
 // Mục tiêu:
-// 1. Chấm prediction cũ khi kết quả xuất hiện.
-// 2. Ghi tất cả suggestion HIT vào bridge evidence.
-// 3. Bridge nào HIT hôm trước được ưu tiên carry cho kỳ mới.
-// 4. ACTIVE: bridge vẫn nằm trong suggestions hôm nay.
-// 5. SHADOW: bridge còn trong candidate pool nhưng đã bị filter.
-// 6. Prediction cùng ngày được lock, không ghi đè.
+// - Lưu dàn AB-BA trước khi có kết quả.
+// - Một trong hai số AB hoặc BA về => pair HIT.
+// - Ghi bridge đã HIT để ưu tiên kỳ tiếp theo.
+// - Carry theo bridgeKey, KHÔNG carry cứng số cũ.
 // ============================================================
 
 const BASE_MODEL =
-  "bridge-v2.6.2";
+  "bridge-v2.6.3-abba";
 
 const PRIORITY_MODEL =
-  "bridge-v2.6.2-live-priority-v2";
+  "bridge-v2.6.3-abba-live-priority-v1";
 
 const MODULE =
-  "v2.6.3-live-validation-priority";
+  "v2.6.3-abba-live-validation";
 
 const VERSION =
-  "live-priority-v2.6.3";
+  "abba-live-priority-v1";
 
-
-// ============================================================
-// Helpers
-// ============================================================
 
 function json(data, status = 200) {
   return new Response(
-    JSON.stringify(data, null, 2),
+    JSON.stringify(
+      data,
+      null,
+      2
+    ),
     {
       status,
       headers: {
         "content-type":
           "application/json; charset=UTF-8",
-
         "cache-control":
           "no-store"
       }
@@ -47,7 +42,10 @@ function json(data, status = 200) {
 }
 
 
-function safeJSON(value, fallback = null) {
+function safeJSON(
+  value,
+  fallback = null
+) {
   if (
     value === null ||
     value === undefined
@@ -64,24 +62,10 @@ function safeJSON(value, fallback = null) {
 
   try {
     return JSON.parse(value);
-  } catch {
+  }
+  catch {
     return fallback;
   }
-}
-
-
-function round2(value) {
-  const n =
-    Number(value);
-
-  if (!Number.isFinite(n)) {
-    return 0;
-  }
-
-  return (
-    Math.round(n * 100) /
-    100
-  );
 }
 
 
@@ -95,7 +79,6 @@ function normalizeNumber(value) {
 
   const digits =
     String(value)
-      .trim()
       .replace(/\D/g, "");
 
   if (!digits) {
@@ -103,19 +86,86 @@ function normalizeNumber(value) {
   }
 
   return digits
-    .slice(-2)
-    .padStart(2, "0");
+    .padStart(2, "0")
+    .slice(-2);
 }
 
 
-function uniqueNumbers(values = []) {
-  return [
-    ...new Set(
-      values
-        .map(normalizeNumber)
-        .filter(Boolean)
+function reverseNumber(value) {
+  const number =
+    normalizeNumber(value);
+
+  if (!number) {
+    return null;
+  }
+
+  return `${number[1]}${number[0]}`;
+}
+
+
+function canonicalPairKey(value) {
+  const a =
+    normalizeNumber(value);
+
+  if (!a) {
+    return null;
+  }
+
+  const b =
+    reverseNumber(a);
+
+  return [a, b]
+    .sort()
+    .join("-");
+}
+
+
+function pairNumbersFromItem(item) {
+  if (
+    Array.isArray(
+      item?.pairNumbers
+    ) &&
+    item.pairNumbers.length
+  ) {
+    return [
+      ...new Set(
+        item.pairNumbers
+          .map(normalizeNumber)
+          .filter(Boolean)
+      )
+    ];
+  }
+
+  const a =
+    normalizeNumber(
+      item?.number
+    );
+
+  if (!a) {
+    return [];
+  }
+
+  const b =
+    normalizeNumber(
+      item?.reverseNumber
     )
-  ];
+    ||
+    reverseNumber(a);
+
+  return a === b
+    ? [a]
+    : [a, b];
+}
+
+
+function pairDisplay(numbers) {
+  if (!numbers.length) {
+    return "--";
+  }
+
+  return numbers.length === 1
+    ? numbers[0]
+    : `${numbers[0]}-${numbers[1]}`;
 }
 
 
@@ -156,10 +206,6 @@ function addDays(
 }
 
 
-// ============================================================
-// D1 result parsing
-// ============================================================
-
 function collectStrings(
   value,
   output = []
@@ -183,9 +229,7 @@ function collectStrings(
   }
 
   if (Array.isArray(value)) {
-    for (
-      const item of value
-    ) {
+    for (const item of value) {
       collectStrings(
         item,
         output
@@ -219,141 +263,168 @@ function extractLotoFromResult(row) {
     return [];
   }
 
-  const directCandidates = [
-    row.loto,
-    row.loto_json,
-    row.lotoJson,
-    row.loto_numbers,
-    row.lotoNumbers
-  ];
-
-
-  for (
-    const candidate of
-    directCandidates
-  ) {
-    if (!candidate) {
-      continue;
-    }
-
-    const parsed =
-      safeJSON(
-        candidate,
-        candidate
-      );
-
-    const values =
-      collectStrings(parsed);
-
-    const numbers =
-      uniqueNumbers(values);
-
-    if (
-      numbers.length >= 10
-    ) {
-      return numbers;
-    }
-  }
-
-
   const prizeKeys = [
     "special",
-    "db",
-    "g0",
     "g1",
     "g2",
     "g3",
     "g4",
     "g5",
     "g6",
-    "g7",
-    "prize_special",
-    "prize1",
-    "prize2",
-    "prize3",
-    "prize4",
-    "prize5",
-    "prize6",
-    "prize7"
+    "g7"
   ];
 
+  const raw = [];
 
-  const rawValues = [];
+  for (const key of prizeKeys) {
+    const value =
+      row[key];
 
-
-  for (
-    const key of prizeKeys
-  ) {
     if (
-      row[key] === undefined ||
-      row[key] === null
+      value === null ||
+      value === undefined
     ) {
       continue;
     }
 
     const parsed =
       safeJSON(
-        row[key],
-        row[key]
+        value,
+        value
       );
 
     collectStrings(
       parsed,
-      rawValues
+      raw
     );
   }
 
+  const set =
+    new Set();
 
-  if (!rawValues.length) {
-    const possibleJSON = [
-      row.result_json,
-      row.resultJson,
-      row.data_json,
-      row.data
-    ];
+  for (const value of raw) {
+    const tokens =
+      String(value)
+        .match(/\d+/g)
+      ||
+      [];
 
-    for (
-      const item of
-      possibleJSON
-    ) {
-      if (!item) {
-        continue;
-      }
-
-      const parsed =
-        safeJSON(item);
-
-      if (parsed) {
-        collectStrings(
-          parsed,
-          rawValues
+    for (const token of tokens) {
+      if (
+        token.length >= 2
+      ) {
+        set.add(
+          token.slice(-2)
         );
       }
     }
   }
 
-
-  return uniqueNumbers(
-    rawValues
-  );
+  return [
+    ...set
+  ];
 }
 
 
-// ============================================================
-// Predict parser
-// ============================================================
+function normalizeRecommendation(
+  item,
+  index
+) {
+  if (
+    !item ||
+    typeof item !==
+    "object"
+  ) {
+    return null;
+  }
 
-function parsePredictPayload(payload) {
+  const number =
+    normalizeNumber(
+      item.number
+    );
+
+  if (!number) {
+    return null;
+  }
+
+  const pairNumbers =
+    pairNumbersFromItem(
+      item
+    );
+
+  return {
+    ...item,
+
+    rank:
+      Number(
+        item.rank
+      )
+      ||
+      index + 1,
+
+    baseRank:
+      Number(
+        item.baseRank
+      )
+      ||
+      Number(
+        item.rank
+      )
+      ||
+      index + 1,
+
+    number,
+
+    reverseNumber:
+      pairNumbers[1]
+      ||
+      pairNumbers[0],
+
+    pairNumbers,
+
+    pairKey:
+      item.pairKey
+      ||
+      canonicalPairKey(
+        number
+      ),
+
+    pair:
+      item.pair
+      ||
+      pairDisplay(
+        pairNumbers
+      ),
+
+    bridgeKey:
+      item.bridgeKey
+      ||
+      item.ruleKey
+      ||
+      null,
+
+    bridge:
+      item.bridge
+      ||
+      item.rule
+      ||
+      null
+  };
+}
+
+
+function parsePredictPayload(
+  payload
+) {
   if (
     !payload ||
     typeof payload !==
     "object"
   ) {
     throw new Error(
-      "Predict API không trả JSON object hợp lệ"
+      "Predict API không trả JSON hợp lệ"
     );
   }
-
 
   if (
     payload.success === false
@@ -361,38 +432,22 @@ function parsePredictPayload(payload) {
     throw new Error(
       payload.message ||
       payload.error ||
-      "Predict API trả success=false"
+      "Predict API success=false"
     );
   }
-
-
-  const data =
-    payload.data &&
-    typeof payload.data ===
-    "object"
-      ? payload.data
-      : {};
-
 
   const sourceDate =
     normalizeDate(
       payload.sourceDate ||
-      data.sourceDate ||
       payload.latestResult ||
-      data.latestResult ||
-      payload.latestDate ||
-      data.latestDate
+      payload.latestDate
     );
-
 
   let predictionDate =
     normalizeDate(
       payload.predictionDate ||
-      data.predictionDate ||
-      payload.targetDate ||
-      data.targetDate
+      payload.targetDate
     );
-
 
   if (
     !predictionDate &&
@@ -405,237 +460,74 @@ function parsePredictPayload(payload) {
       );
   }
 
-
-  let recommendations =
-    payload.suggestions ||
-    data.suggestions ||
-    payload.recommendations ||
-    data.recommendations ||
-    payload.topNumbers ||
-    data.topNumbers ||
-    [];
-
-
-  if (
-    !Array.isArray(
-      recommendations
+  const rawRecommendations =
+    Array.isArray(
+      payload.suggestions
     )
-  ) {
-    recommendations = [];
-  }
+      ? payload.suggestions
+      : [];
 
-
-  recommendations =
-    recommendations
+  const recommendations =
+    rawRecommendations
       .map(
-        (
-          item,
-          index
-        ) => {
-          if (
-            typeof item ===
-            "string" ||
-            typeof item ===
-            "number"
-          ) {
-            return {
-              rank:
-                index + 1,
-
-              baseRank:
-                index + 1,
-
-              number:
-                normalizeNumber(item),
-
-              bridgeKey:
-                null,
-
-              bridge:
-                null
-            };
-          }
-
-
-          if (
-            !item ||
-            typeof item !==
-            "object"
-          ) {
-            return null;
-          }
-
-
-          return {
-            ...item,
-
-            rank:
-              Number(
-                item.rank
-              ) ||
-              index + 1,
-
-            baseRank:
-              Number(
-                item.baseRank
-              ) ||
-              Number(
-                item.rank
-              ) ||
-              index + 1,
-
-            number:
-              normalizeNumber(
-                item.number ??
-                item.value ??
-                item.loto
-              ),
-
-            bridgeKey:
-              item.bridgeKey ||
-              item.ruleKey ||
-              null,
-
-            bridge:
-              item.bridge ||
-              item.rule ||
-              null
-          };
-        }
+        normalizeRecommendation
       )
-      .filter(
-        item =>
-          item &&
-          item.number
-      );
+      .filter(Boolean);
 
-
-  let candidates =
-    payload.candidates ||
-    data.candidates ||
-    payload.candidatePool ||
-    data.candidatePool ||
-    payload.activeCandidates ||
-    data.activeCandidates ||
-    [];
-
-
-  if (
-    !Array.isArray(
-      candidates
+  const rawCandidates =
+    Array.isArray(
+      payload.candidates
     )
-  ) {
-    candidates = [];
-  }
+      ? payload.candidates
+      : [];
 
-
-  candidates =
-    candidates
+  const candidates =
+    rawCandidates
       .map(
-        (
-          item,
-          index
-        ) => {
-          if (
-            !item ||
-            typeof item !==
-            "object"
-          ) {
-            return null;
-          }
-
-          return {
-            ...item,
-
-            candidateIndex:
-              index,
-
-            number:
-              normalizeNumber(
-                item.number ??
-                item.value ??
-                item.loto
-              ),
-
-            bridgeKey:
-              item.bridgeKey ||
-              item.ruleKey ||
-              null,
-
-            bridge:
-              item.bridge ||
-              item.rule ||
-              null
-          };
-        }
+        normalizeRecommendation
       )
-      .filter(
-        item =>
-          item &&
-          item.number &&
-          item.bridgeKey
-      );
-
+      .filter(Boolean);
 
   if (!sourceDate) {
     throw new Error(
-      "Predict API không có sourceDate"
+      "Predict API thiếu sourceDate"
     );
   }
-
 
   if (!predictionDate) {
     throw new Error(
-      "Không xác định được predictionDate"
+      "Predict API thiếu predictionDate"
     );
   }
-
 
   if (
     !recommendations.length
   ) {
     throw new Error(
-      "Predict API không có suggestions để theo dõi"
+      "Predict API không có AB-BA suggestions"
     );
   }
 
-
   return {
-    model:
-      payload.model ||
-      payload.version ||
-      data.model ||
-      data.version ||
-      BASE_MODEL,
-
     sourceDate,
-
     predictionDate,
-
     recommendations,
-
     candidates
   };
 }
 
 
-// ============================================================
-// Fetch Predict
-// ============================================================
-
-async function fetchPredict(request) {
+async function fetchPredict(
+  request
+) {
   const origin =
     new URL(
       request.url
     ).origin;
 
-  const url =
-    `${origin}/api/predict?t=${Date.now()}`;
-
-
   const response =
     await fetch(
-      url,
+      `${origin}/api/predict?t=${Date.now()}`,
       {
         headers: {
           Accept:
@@ -644,68 +536,28 @@ async function fetchPredict(request) {
       }
     );
 
-
-  const body =
+  const text =
     await response.text();
-
 
   let payload;
 
   try {
     payload =
-      JSON.parse(body);
+      JSON.parse(text);
   }
   catch {
-    const error =
-      new Error(
-        `Predict API không trả JSON. HTTP ${response.status}`
-      );
-
-    error.stage =
-      "predict-json";
-
-    error.status =
-      response.status;
-
-    error.url =
-      url;
-
-    error.body =
-      body.slice(
-        0,
-        1000
-      );
-
-    throw error;
+    throw new Error(
+      `Predict API không trả JSON. HTTP ${response.status}`
+    );
   }
-
 
   if (!response.ok) {
-    const error =
-      new Error(
-        payload?.message ||
-        payload?.error ||
-        `Predict API HTTP ${response.status}`
-      );
-
-    error.stage =
-      "predict-http";
-
-    error.status =
-      response.status;
-
-    error.url =
-      url;
-
-    error.body =
-      body.slice(
-        0,
-        1000
-      );
-
-    throw error;
+    throw new Error(
+      payload?.message ||
+      payload?.error ||
+      `Predict API HTTP ${response.status}`
+    );
   }
-
 
   return parsePredictPayload(
     payload
@@ -713,152 +565,202 @@ async function fetchPredict(request) {
 }
 
 
-// ============================================================
-// Schema
-// ============================================================
-
-async function ensureSchema(db) {
-  await db.prepare(`
-    CREATE TABLE IF NOT EXISTS prediction_live_v262 (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-      prediction_date TEXT NOT NULL,
-      source_date TEXT NOT NULL,
-
-      model TEXT NOT NULL,
-
-      numbers TEXT NOT NULL,
-      recommendations_json TEXT NOT NULL,
-
-      status TEXT NOT NULL DEFAULT 'locked',
-
-      evaluated INTEGER NOT NULL DEFAULT 0,
-      evaluated_at TEXT,
-
-      actual_numbers TEXT,
-      actual_unique_count INTEGER,
-
-      top1_hit INTEGER,
-      top3_hit INTEGER,
-      top5_hit INTEGER,
-
-      baseline_top1 REAL,
-      baseline_top3 REAL,
-      baseline_top5 REAL,
-
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-      UNIQUE(
-        prediction_date,
-        model
+async function ensureColumn(
+  db,
+  table,
+  column,
+  definition
+) {
+  const info =
+    await db
+      .prepare(
+        `PRAGMA table_info(${table})`
       )
-    )
-  `).run();
+      .all();
 
+  const exists =
+    (info.results || [])
+      .some(
+        item =>
+          item.name === column
+      );
 
-  await db.prepare(`
-    CREATE TABLE IF NOT EXISTS prediction_bridge_evidence (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-      prediction_date TEXT NOT NULL,
-      source_date TEXT,
-
-      model TEXT NOT NULL,
-
-      bridge_key TEXT NOT NULL,
-      bridge TEXT,
-
-      number TEXT NOT NULL,
-      base_rank INTEGER,
-
-      hit INTEGER NOT NULL DEFAULT 0,
-
-      score REAL,
-      strength TEXT,
-
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-      UNIQUE(
-        prediction_date,
-        model,
-        bridge_key,
-        number
+  if (!exists) {
+    await db
+      .prepare(
+        `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`
       )
-    )
-  `).run();
-
-
-  await db.prepare(`
-    CREATE TABLE IF NOT EXISTS prediction_carry_v262 (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-      prediction_date TEXT NOT NULL,
-      source_date TEXT NOT NULL,
-
-      previous_prediction_date TEXT NOT NULL,
-
-      model TEXT NOT NULL,
-
-      bridge_key TEXT NOT NULL,
-      bridge TEXT,
-
-      previous_number TEXT NOT NULL,
-      previous_rank INTEGER,
-
-      current_number TEXT,
-      current_rank INTEGER,
-
-      carry_status TEXT NOT NULL,
-
-      previous_score REAL,
-      current_score REAL,
-
-      previous_strength TEXT,
-      current_strength TEXT,
-
-      hit INTEGER,
-      evaluated INTEGER NOT NULL DEFAULT 0,
-      evaluated_at TEXT,
-
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-      UNIQUE(
-        prediction_date,
-        model,
-        bridge_key
-      )
-    )
-  `).run();
-
-
-  await db.prepare(`
-    CREATE INDEX IF NOT EXISTS idx_live_v262_date
-    ON prediction_live_v262(
-      prediction_date
-    )
-  `).run();
-
-
-  await db.prepare(`
-    CREATE INDEX IF NOT EXISTS idx_bridge_evidence_date
-    ON prediction_bridge_evidence(
-      prediction_date
-    )
-  `).run();
-
-
-  await db.prepare(`
-    CREATE INDEX IF NOT EXISTS idx_carry_v262_date
-    ON prediction_carry_v262(
-      prediction_date
-    )
-  `).run();
+      .run();
+  }
 }
 
 
-// ============================================================
-// Result lookup
-// ============================================================
+async function ensureSchema(db) {
+  await db
+    .prepare(`
+      CREATE TABLE IF NOT EXISTS prediction_live_v262 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        prediction_date TEXT NOT NULL,
+        source_date TEXT NOT NULL,
+        model TEXT NOT NULL,
+        numbers TEXT NOT NULL,
+        recommendations_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'locked',
+        evaluated INTEGER NOT NULL DEFAULT 0,
+        evaluated_at TEXT,
+        actual_numbers TEXT,
+        actual_unique_count INTEGER,
+        top1_hit INTEGER,
+        top3_hit INTEGER,
+        top5_hit INTEGER,
+        baseline_top1 REAL,
+        baseline_top3 REAL,
+        baseline_top5 REAL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(prediction_date, model)
+      )
+    `)
+    .run();
+
+
+  await db
+    .prepare(`
+      CREATE TABLE IF NOT EXISTS prediction_bridge_evidence (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        prediction_date TEXT NOT NULL,
+        source_date TEXT,
+        model TEXT NOT NULL,
+        bridge_key TEXT NOT NULL,
+        bridge TEXT,
+        number TEXT NOT NULL,
+        base_rank INTEGER,
+        hit INTEGER NOT NULL DEFAULT 0,
+        score REAL,
+        strength TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(
+          prediction_date,
+          model,
+          bridge_key,
+          number
+        )
+      )
+    `)
+    .run();
+
+
+  await db
+    .prepare(`
+      CREATE TABLE IF NOT EXISTS prediction_carry_v262 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        prediction_date TEXT NOT NULL,
+        source_date TEXT NOT NULL,
+        previous_prediction_date TEXT NOT NULL,
+        model TEXT NOT NULL,
+        bridge_key TEXT NOT NULL,
+        bridge TEXT,
+        previous_number TEXT NOT NULL,
+        previous_rank INTEGER,
+        current_number TEXT,
+        current_rank INTEGER,
+        carry_status TEXT NOT NULL,
+        previous_score REAL,
+        current_score REAL,
+        previous_strength TEXT,
+        current_strength TEXT,
+        hit INTEGER,
+        evaluated INTEGER NOT NULL DEFAULT 0,
+        evaluated_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(
+          prediction_date,
+          model,
+          bridge_key
+        )
+      )
+    `)
+    .run();
+
+
+  await ensureColumn(
+    db,
+    "prediction_bridge_evidence",
+    "reverse_number",
+    "TEXT"
+  );
+
+  await ensureColumn(
+    db,
+    "prediction_bridge_evidence",
+    "pair_key",
+    "TEXT"
+  );
+
+  await ensureColumn(
+    db,
+    "prediction_bridge_evidence",
+    "pair_json",
+    "TEXT"
+  );
+
+  await ensureColumn(
+    db,
+    "prediction_bridge_evidence",
+    "hit_number",
+    "TEXT"
+  );
+
+  await ensureColumn(
+    db,
+    "prediction_bridge_evidence",
+    "hit_count",
+    "INTEGER DEFAULT 0"
+  );
+
+  await ensureColumn(
+    db,
+    "prediction_carry_v262",
+    "previous_reverse_number",
+    "TEXT"
+  );
+
+  await ensureColumn(
+    db,
+    "prediction_carry_v262",
+    "current_reverse_number",
+    "TEXT"
+  );
+
+  await ensureColumn(
+    db,
+    "prediction_carry_v262",
+    "previous_hit_number",
+    "TEXT"
+  );
+
+
+  await db
+    .prepare(`
+      CREATE INDEX IF NOT EXISTS idx_live_v262_date
+      ON prediction_live_v262(prediction_date)
+    `)
+    .run();
+
+  await db
+    .prepare(`
+      CREATE INDEX IF NOT EXISTS idx_bridge_evidence_date
+      ON prediction_bridge_evidence(prediction_date)
+    `)
+    .run();
+
+  await db
+    .prepare(`
+      CREATE INDEX IF NOT EXISTS idx_carry_v262_date
+      ON prediction_carry_v262(prediction_date)
+    `)
+    .run();
+}
+
 
 async function getResultByDate(
   db,
@@ -882,7 +784,6 @@ async function getResultByDate(
   }
   catch {}
 
-
   try {
     return await db
       .prepare(`
@@ -900,49 +801,45 @@ async function getResultByDate(
 }
 
 
-// ============================================================
-// Baseline
-// ============================================================
-
 function baselineProbability(
-  k,
+  pairCount,
   uniqueCount
 ) {
+  /*
+  pairCount = số lượng cặp.
+  Mỗi cặp thường phủ 2 số.
+  Dùng số covered thực tế ở evaluate để tính.
+  */
   const m =
     Math.max(
       0,
       Math.min(
         100,
-        Number(
-          uniqueCount
-        ) || 0
+        Number(uniqueCount) || 0
       )
     );
 
-  const picks =
+  const k =
     Math.max(
       0,
       Math.min(
         100,
-        Number(k) || 0
+        Number(pairCount) || 0
       )
     );
 
-
   if (
     !m ||
-    !picks
+    !k
   ) {
     return 0;
   }
 
-
   let noHit = 1;
-
 
   for (
     let i = 0;
-    i < picks;
+    i < k;
     i++
   ) {
     const numerator =
@@ -951,33 +848,54 @@ function baselineProbability(
     const denominator =
       100 - i;
 
-
     if (
       numerator <= 0
     ) {
       noHit = 0;
-
       break;
     }
-
 
     noHit *=
       numerator /
       denominator;
   }
 
-
-  return round2(
-    (1 - noHit) * 100
+  return Number(
+    (
+      (1 - noHit) *
+      100
+    ).toFixed(2)
   );
 }
 
 
-// ============================================================
-// Evaluate BASE
-// ============================================================
+function pairHit(
+  pairNumbers,
+  actualSet
+) {
+  const hitNumbers =
+    pairNumbers.filter(
+      number =>
+        actualSet.has(
+          number
+        )
+    );
 
-async function evaluatePendingBase(db) {
+  return {
+    hit:
+      hitNumbers.length > 0,
+
+    hitNumbers,
+
+    hitCount:
+      hitNumbers.length
+  };
+}
+
+
+async function evaluatePendingBase(
+  db
+) {
   const pending =
     await db
       .prepare(`
@@ -990,7 +908,6 @@ async function evaluatePendingBase(db) {
       .bind(BASE_MODEL)
       .all();
 
-
   let evaluated = 0;
 
 
@@ -1004,72 +921,87 @@ async function evaluatePendingBase(db) {
         row.prediction_date
       );
 
-
     if (!result) {
       continue;
     }
-
 
     const actual =
       extractLotoFromResult(
         result
       );
 
-
     if (!actual.length) {
       continue;
     }
 
-
     const actualSet =
       new Set(actual);
 
-
-    const recommendations =
+    const rawRecommendations =
       safeJSON(
         row.recommendations_json,
         []
       );
 
-
-    if (
-      !Array.isArray(
-        recommendations
+    const recommendations =
+      Array.isArray(
+        rawRecommendations
       )
-    ) {
+        ? rawRecommendations
+            .map(
+              normalizeRecommendation
+            )
+            .filter(Boolean)
+        : [];
+
+    if (!recommendations.length) {
       continue;
     }
 
 
-    const numbers =
-      recommendations
-        .map(
-          item =>
-            normalizeNumber(
-              item.number
+    const evaluatedPairs =
+      recommendations.map(
+        item => ({
+          item,
+          result:
+            pairHit(
+              item.pairNumbers,
+              actualSet
             )
-        )
-        .filter(Boolean);
+        })
+      );
 
 
-    const hit =
-      list =>
-        list.some(
-          number =>
-            actualSet.has(
-              number
+    const topHit =
+      count =>
+        evaluatedPairs
+          .slice(
+            0,
+            count
+          )
+          .some(
+            entry =>
+              entry.result.hit
+          );
+
+
+    /*
+    Baseline phải dùng số lượng số thực sự được bao phủ,
+    không dùng "5 cặp = 5 số".
+    */
+    const coveredCount =
+      count =>
+        new Set(
+          recommendations
+            .slice(
+              0,
+              count
             )
-        );
-
-
-    const top1 =
-      numbers.slice(0, 1);
-
-    const top3 =
-      numbers.slice(0, 3);
-
-    const top5 =
-      numbers.slice(0, 5);
+            .flatMap(
+              item =>
+                item.pairNumbers
+            )
+        ).size;
 
 
     await db
@@ -1079,14 +1011,11 @@ async function evaluatePendingBase(db) {
         SET
           evaluated = 1,
           evaluated_at = CURRENT_TIMESTAMP,
-
           actual_numbers = ?,
           actual_unique_count = ?,
-
           top1_hit = ?,
           top3_hit = ?,
           top5_hit = ?,
-
           baseline_top1 = ?,
           baseline_top3 = ?,
           baseline_top5 = ?
@@ -1097,22 +1026,22 @@ async function evaluatePendingBase(db) {
         actual.join(","),
         actual.length,
 
-        hit(top1) ? 1 : 0,
-        hit(top3) ? 1 : 0,
-        hit(top5) ? 1 : 0,
+        topHit(1) ? 1 : 0,
+        topHit(3) ? 1 : 0,
+        topHit(5) ? 1 : 0,
 
         baselineProbability(
-          top1.length,
+          coveredCount(1),
           actual.length
         ),
 
         baselineProbability(
-          top3.length,
+          coveredCount(3),
           actual.length
         ),
 
         baselineProbability(
-          top5.length,
+          coveredCount(5),
           actual.length
         ),
 
@@ -1122,62 +1051,46 @@ async function evaluatePendingBase(db) {
 
 
     /*
-    ======================================================
-    TẤT CẢ SỐ GỢI Ý ĐÃ VỀ ĐƯỢC GHI VÀO EVIDENCE.
-
-    Đây là dữ liệu nền để tạo gợi ý ưu tiên ngày tiếp theo.
-    ======================================================
+    Mọi pair gợi ý đều được lưu evidence.
+    Nếu AB hoặc BA về -> bridge HIT.
     */
-
     for (
       let i = 0;
-      i < recommendations.length;
+      i < evaluatedPairs.length;
       i++
     ) {
-      const rec =
-        recommendations[i];
+      const {
+        item,
+        result: hitResult
+      } =
+        evaluatedPairs[i];
 
-      const number =
-        normalizeNumber(
-          rec.number
-        );
-
-      const bridgeKey =
-        rec.bridgeKey ||
-        rec.ruleKey ||
-        null;
-
-
-      if (
-        !number ||
-        !bridgeKey
-      ) {
+      if (!item.bridgeKey) {
         continue;
       }
-
 
       await db
         .prepare(`
           INSERT INTO prediction_bridge_evidence (
             prediction_date,
             source_date,
-
             model,
-
             bridge_key,
             bridge,
-
             number,
+            reverse_number,
+            pair_key,
+            pair_json,
             base_rank,
-
             hit,
-
+            hit_number,
+            hit_count,
             score,
             strength
           )
 
           VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           )
 
           ON CONFLICT(
@@ -1188,10 +1101,24 @@ async function evaluatePendingBase(db) {
           )
 
           DO UPDATE SET
-            hit = excluded.hit,
-            base_rank = excluded.base_rank,
-            score = excluded.score,
-            strength = excluded.strength
+            reverse_number =
+              excluded.reverse_number,
+            pair_key =
+              excluded.pair_key,
+            pair_json =
+              excluded.pair_json,
+            hit =
+              excluded.hit,
+            hit_number =
+              excluded.hit_number,
+            hit_count =
+              excluded.hit_count,
+            base_rank =
+              excluded.base_rank,
+            score =
+              excluded.score,
+            strength =
+              excluded.strength
         `)
         .bind(
           row.prediction_date,
@@ -1199,62 +1126,71 @@ async function evaluatePendingBase(db) {
 
           BASE_MODEL,
 
-          bridgeKey,
-          rec.bridge ||
-          rec.rule ||
+          item.bridgeKey,
+          item.bridge ||
           null,
 
-          number,
+          item.number,
+          item.reverseNumber,
+
+          item.pairKey,
+          JSON.stringify(
+            item.pairNumbers
+          ),
 
           Number(
-            rec.baseRank ||
-            rec.rank ||
+            item.baseRank ||
+            item.rank ||
             i + 1
           ),
 
-          actualSet.has(number)
+          hitResult.hit
             ? 1
             : 0,
 
-          Number(
-            rec.score
-          ) || 0,
+          hitResult.hitNumbers
+            .join(","),
 
-          rec.strength ||
+          hitResult.hitCount,
+
+          Number(
+            item.pairScore ||
+            item.score ||
+            0
+          ),
+
+          item.strength ||
           null
         )
         .run();
     }
 
-
     evaluated++;
   }
-
 
   return evaluated;
 }
 
 
-// ============================================================
-// Evaluate Carry
-// ============================================================
-
-async function evaluatePendingCarry(db) {
+async function evaluatePendingCarry(
+  db
+) {
   const pending =
     await db
       .prepare(`
         SELECT *
         FROM prediction_carry_v262
+
         WHERE model = ?
           AND evaluated = 0
           AND current_number IS NOT NULL
+
         ORDER BY prediction_date ASC
       `)
       .bind(
         PRIORITY_MODEL
       )
       .all();
-
 
   let evaluated = 0;
 
@@ -1269,37 +1205,42 @@ async function evaluatePendingCarry(db) {
         row.prediction_date
       );
 
-
     if (!result) {
       continue;
     }
-
 
     const actual =
       extractLotoFromResult(
         result
       );
 
-
     if (!actual.length) {
       continue;
     }
 
+    const actualSet =
+      new Set(actual);
 
-    const currentNumber =
-      normalizeNumber(
-        row.current_number
-      );
-
-
-    const hit =
-      currentNumber &&
-      new Set(actual)
-        .has(
-          currentNumber
+    const currentPair =
+      [
+        normalizeNumber(
+          row.current_number
+        ),
+        normalizeNumber(
+          row.current_reverse_number
         )
-        ? 1
-        : 0;
+      ]
+        .filter(Boolean);
+
+    const hitResult =
+      pairHit(
+        [
+          ...new Set(
+            currentPair
+          )
+        ],
+        actualSet
+      );
 
 
     await db
@@ -1314,23 +1255,20 @@ async function evaluatePendingCarry(db) {
         WHERE id = ?
       `)
       .bind(
-        hit,
+        hitResult.hit
+          ? 1
+          : 0,
+
         row.id
       )
       .run();
 
-
     evaluated++;
   }
-
 
   return evaluated;
 }
 
-
-// ============================================================
-// Previous HIT evidence
-// ============================================================
 
 async function getPreviousDayEvidence(
   db,
@@ -1342,7 +1280,6 @@ async function getPreviousDayEvidence(
       -1
     );
 
-
   if (!previousDate) {
     return {
       available: false,
@@ -1351,15 +1288,16 @@ async function getPreviousDayEvidence(
     };
   }
 
-
   const rows =
     await db
       .prepare(`
         SELECT *
         FROM prediction_bridge_evidence
+
         WHERE prediction_date = ?
           AND model = ?
           AND hit = 1
+
         ORDER BY
           base_rank ASC,
           score DESC
@@ -1369,7 +1307,6 @@ async function getPreviousDayEvidence(
         BASE_MODEL
       )
       .all();
-
 
   const hits =
     (rows.results || [])
@@ -1385,22 +1322,61 @@ async function getPreviousDayEvidence(
               row.number
             ),
 
+          reverseNumber:
+            normalizeNumber(
+              row.reverse_number
+            )
+            ||
+            reverseNumber(
+              row.number
+            ),
+
+          pairKey:
+            row.pair_key
+            ||
+            canonicalPairKey(
+              row.number
+            ),
+
+          pairNumbers:
+            safeJSON(
+              row.pair_json,
+              null
+            )
+            ||
+            [
+              normalizeNumber(
+                row.number
+              ),
+              normalizeNumber(
+                row.reverse_number
+              )
+              ||
+              reverseNumber(
+                row.number
+              )
+            ]
+              .filter(Boolean),
+
           bridgeKey:
             row.bridge_key,
 
           bridge:
             row.bridge,
 
+          hitNumber:
+            row.hit_number ||
+            null,
+
           score:
-            round2(
-              row.score
+            Number(
+              row.score || 0
             ),
 
           strength:
             row.strength
         })
       );
-
 
   return {
     available:
@@ -1414,10 +1390,6 @@ async function getPreviousDayEvidence(
 }
 
 
-// ============================================================
-// Save BASE
-// ============================================================
-
 async function saveBasePrediction(
   db,
   predict
@@ -1427,8 +1399,10 @@ async function saveBasePrediction(
       .prepare(`
         SELECT *
         FROM prediction_live_v262
+
         WHERE prediction_date = ?
           AND model = ?
+
         LIMIT 1
       `)
       .bind(
@@ -1436,7 +1410,6 @@ async function saveBasePrediction(
         BASE_MODEL
       )
       .first();
-
 
   if (existing) {
     return {
@@ -1452,39 +1425,21 @@ async function saveBasePrediction(
       predictionDate:
         existing.prediction_date,
 
-      numbers:
-        String(
-          existing.numbers || ""
-        )
-          .split(",")
-          .filter(Boolean),
-
       recommendations:
         safeJSON(
           existing.recommendations_json,
           []
-        ),
-
-      status:
-        existing.status,
-
-      createdAt:
-        existing.created_at
+        )
     };
   }
 
 
-  const recommendations =
-    predict.recommendations;
-
-
-  const numbers =
-    recommendations
+  const pairLabels =
+    predict.recommendations
       .map(
         item =>
-          item.number
-      )
-      .filter(Boolean);
+          item.pair
+      );
 
 
   await db
@@ -1492,12 +1447,9 @@ async function saveBasePrediction(
       INSERT INTO prediction_live_v262 (
         prediction_date,
         source_date,
-
         model,
-
         numbers,
         recommendations_json,
-
         status
       )
 
@@ -1508,13 +1460,10 @@ async function saveBasePrediction(
     .bind(
       predict.predictionDate,
       predict.sourceDate,
-
       BASE_MODEL,
-
-      numbers.join(","),
-
+      pairLabels.join(","),
       JSON.stringify(
-        recommendations
+        predict.recommendations
       )
     )
     .run();
@@ -1533,19 +1482,14 @@ async function saveBasePrediction(
     predictionDate:
       predict.predictionDate,
 
-    numbers,
+    pairs:
+      pairLabels,
 
-    recommendations,
-
-    status:
-      "locked"
+    recommendations:
+      predict.recommendations
   };
 }
 
-
-// ============================================================
-// Find bridge hôm nay
-// ============================================================
 
 function findCurrentBridge(
   bridgeKey,
@@ -1559,11 +1503,10 @@ function findCurrentBridge(
           bridgeKey
       );
 
-
   if (active) {
     return {
       status:
-        "active",
+        "ACTIVE",
 
       data:
         active
@@ -1579,11 +1522,10 @@ function findCurrentBridge(
           bridgeKey
       );
 
-
   if (shadow) {
     return {
       status:
-        "shadow",
+        "SHADOW",
 
       data:
         shadow
@@ -1593,7 +1535,7 @@ function findCurrentBridge(
 
   return {
     status:
-      "shadow-unresolved",
+      "SHADOW_UNRESOLVED",
 
     data:
       null
@@ -1601,17 +1543,12 @@ function findCurrentBridge(
 }
 
 
-// ============================================================
-// Save Carry / ưu tiên bridge đã HIT
-// ============================================================
-
 async function saveCarry(
   db,
   predict,
   previousEvidence
 ) {
   const saved = [];
-
 
   if (
     !previousEvidence?.hits?.length
@@ -1628,75 +1565,30 @@ async function saveCarry(
       continue;
     }
 
-
     const current =
       findCurrentBridge(
         previous.bridgeKey,
         predict
       );
 
+    const currentItem =
+      current.data;
 
-    let carryStatus;
-    let currentNumber = null;
-    let currentRank = null;
-    let currentScore = null;
-    let currentStrength = null;
+    const currentPair =
+      currentItem
+        ? pairNumbersFromItem(
+            currentItem
+          )
+        : [];
 
+    const currentNumber =
+      currentPair[0] ||
+      null;
 
-    if (
-      current.status ===
-      "active" &&
-      current.data
-    ) {
-      carryStatus =
-        "ACTIVE";
-
-      currentNumber =
-        normalizeNumber(
-          current.data.number
-        );
-
-      currentRank =
-        Number(
-          current.data.baseRank ||
-          current.data.rank
-        ) || null;
-
-      currentScore =
-        Number(
-          current.data.score
-        ) || 0;
-
-      currentStrength =
-        current.data.strength ||
-        null;
-    }
-    else if (
-      current.status ===
-      "shadow" &&
-      current.data
-    ) {
-      carryStatus =
-        "SHADOW";
-
-      currentNumber =
-        normalizeNumber(
-          current.data.number
-        );
-
-      currentScore =
-        Number(
-          current.data.score
-        ) || 0;
-
-      currentStrength =
-        current.data.strength ||
-        null;
-    }
-    else {
-      carryStatus =
-        "SHADOW_UNRESOLVED";
-    }
+    const currentReverseNumber =
+      currentPair[1] ||
+      currentPair[0] ||
+      null;
 
 
     await db
@@ -1704,33 +1596,28 @@ async function saveCarry(
         INSERT INTO prediction_carry_v262 (
           prediction_date,
           source_date,
-
           previous_prediction_date,
-
           model,
-
           bridge_key,
           bridge,
-
           previous_number,
+          previous_reverse_number,
+          previous_hit_number,
           previous_rank,
-
           current_number,
+          current_reverse_number,
           current_rank,
-
           carry_status,
-
           previous_score,
           current_score,
-
           previous_strength,
           current_strength
         )
 
         VALUES (
           ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?,
-          ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?
         )
 
         ON CONFLICT(
@@ -1742,46 +1629,62 @@ async function saveCarry(
         DO UPDATE SET
           current_number =
             excluded.current_number,
-
+          current_reverse_number =
+            excluded.current_reverse_number,
           current_rank =
             excluded.current_rank,
-
           carry_status =
             excluded.carry_status,
-
           current_score =
             excluded.current_score,
-
           current_strength =
             excluded.current_strength
       `)
       .bind(
         predict.predictionDate,
         predict.sourceDate,
-
         previousEvidence.date,
-
         PRIORITY_MODEL,
 
         previous.bridgeKey,
         previous.bridge ||
+        currentItem?.bridge ||
         null,
 
         previous.number,
+        previous.reverseNumber,
+        previous.hitNumber,
+
         previous.baseRank,
 
         currentNumber,
-        currentRank,
+        currentReverseNumber,
 
-        carryStatus,
+        Number(
+          currentItem?.baseRank ||
+          currentItem?.rank ||
+          0
+        )
+        ||
+        null,
 
-        previous.score || 0,
-        currentScore,
+        current.status,
+
+        Number(
+          previous.score || 0
+        ),
+
+        Number(
+          currentItem?.pairScore ||
+          currentItem?.score ||
+          0
+        ),
 
         previous.strength ||
         null,
 
-        currentStrength
+        currentItem?.strength ||
+        null
       )
       .run();
 
@@ -1790,11 +1693,13 @@ async function saveCarry(
       previousDate:
         previousEvidence.date,
 
-      previousNumber:
-        previous.number,
+      previousPair:
+        pairDisplay(
+          previous.pairNumbers
+        ),
 
-      previousRank:
-        previous.baseRank,
+      previousHitNumber:
+        previous.hitNumber,
 
       bridgeKey:
         previous.bridgeKey,
@@ -1803,31 +1708,22 @@ async function saveCarry(
         previous.bridge,
 
       status:
-        carryStatus,
+        current.status,
+
+      currentPair:
+        pairDisplay(
+          currentPair
+        ),
 
       currentNumber,
-      currentRank,
 
-      previousScore:
-        previous.score,
-
-      currentScore,
-
-      previousStrength:
-        previous.strength,
-
-      currentStrength
+      currentReverseNumber
     });
   }
-
 
   return saved;
 }
 
-
-// ============================================================
-// Main
-// ============================================================
 
 export async function onRequestGet(
   context
@@ -1835,65 +1731,43 @@ export async function onRequestGet(
   const db =
     context.env.DB;
 
-
   if (!db) {
     return json(
       {
         success: false,
-
-        module:
-          MODULE,
-
-        stage:
-          "database",
-
+        module: MODULE,
         message:
-          "Không tìm thấy binding DB"
+          "Không tìm thấy D1 binding DB"
       },
       500
     );
   }
 
 
-  let evaluatedBase = 0;
-  let evaluatedCarry = 0;
-
-
   try {
-    await ensureSchema(db);
+    await ensureSchema(
+      db
+    );
 
 
-    /*
-    1. Chấm dữ liệu cũ trước.
-
-    Số nào trong suggestions đã về sẽ được ghi
-    vào prediction_bridge_evidence với hit=1.
-    */
-    evaluatedBase =
+    const evaluatedBase =
       await evaluatePendingBase(
         db
       );
 
 
-    evaluatedCarry =
+    const evaluatedCarry =
       await evaluatePendingCarry(
         db
       );
 
 
-    /*
-    2. Tạo prediction BASE hiện tại.
-    */
     const predict =
       await fetchPredict(
         context.request
       );
 
 
-    /*
-    3. Lấy tất cả bridge đã HIT ở ngày trước.
-    Đây là nhóm được đưa sang "ưu tiên".
-    */
     const previousDayEvidence =
       await getPreviousDayEvidence(
         db,
@@ -1901,9 +1775,6 @@ export async function onRequestGet(
       );
 
 
-    /*
-    4. Lock prediction BASE.
-    */
     const basePrediction =
       await saveBasePrediction(
         db,
@@ -1911,9 +1782,6 @@ export async function onRequestGet(
       );
 
 
-    /*
-    5. Carry từng bridge HIT.
-    */
     const carry =
       await saveCarry(
         db,
@@ -1936,6 +1804,9 @@ export async function onRequestGet(
 
       priorityModel:
         PRIORITY_MODEL,
+
+      suggestionMode:
+        "AB-BA",
 
       sourceDate:
         predict.sourceDate,
@@ -1982,43 +1853,25 @@ export async function onRequestGet(
               item.status ===
               "SHADOW_UNRESOLVED"
           )
-      },
-
-      diagnostic: {
-        recommendations:
-          predict.recommendations.length,
-
-        candidatePoolExposed:
-          predict.candidates.length
       }
     });
   }
   catch (error) {
+    console.error(
+      "save-prediction ABBA:",
+      error
+    );
+
     return json(
       {
         success: false,
-
         module:
           MODULE,
-
         version:
           VERSION,
-
-        stage:
-          error.stage ||
-          "save-prediction",
-
         message:
-          error.message ||
-          String(error),
-
-        evaluatedNow: {
-          base:
-            evaluatedBase,
-
-          carry:
-            evaluatedCarry
-        }
+          error?.message ||
+          String(error)
       },
       500
     );

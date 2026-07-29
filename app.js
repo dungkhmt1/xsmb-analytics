@@ -100,24 +100,6 @@ async function apiFetch(
 /* =====================================================
    DASHBOARD
 ===================================================== */
-/*
-========================================================
-PATCH CHO /app.js - LIVE VALIDATION V2.6.3
-
-Trong loadDashboard(), không gọi live-validation song song
-với save-prediction.
-
-Thứ tự đúng:
-1. latest/statistics/predict
-2. /api/save-prediction
-3. /api/live-validation
-========================================================
-*/
-
-/*
-Thay phần loadDashboard() của app.js hiện tại bằng function dưới.
-Các hàm render còn lại giữ nguyên.
-*/
 
 async function loadDashboard() {
   setSystemStatus(
@@ -211,11 +193,11 @@ async function loadDashboard() {
 
     setSystemStatus(
       `D1 ${totalDraws} kỳ • ` +
-      `${data.version || "bridge-v2.6.2"} • ` +
+      `${data.version || "bridge-v2.6.3-abba"} • ` +
       `${Math.min(
         5,
         data.suggestions?.length || 0
-      )} số gợi ý`,
+      )} cặp AB-BA`,
       "success"
     );
   }
@@ -239,20 +221,10 @@ async function loadDashboard() {
 
 
   /*
-  ====================================================
-  LIVE SYNC
-
-  Phải chạy SAU Predict.
-
-  save-prediction:
-  - chấm kỳ cũ
-  - ghi số gợi ý đã HIT
-  - tạo carry ưu tiên cho kỳ mới
-
-  Sau khi hoàn tất mới đọc live-validation.
-  ====================================================
+  LIVE phải sync sau Predict.
+  save-prediction chấm kỳ cũ và tạo priority carry,
+  rồi live-validation mới đọc.
   */
-
   try {
     await apiFetch(
       "/api/save-prediction",
@@ -292,7 +264,6 @@ async function loadDashboard() {
     );
   }
 }
-
 
 
 /* =====================================================
@@ -616,8 +587,16 @@ function getCarryHistory(
           item.previousHitDate,
 
         number:
-          normalizeDisplayNumber(
-            item.previousNumber
+          item.previousPair
+          ||
+          (
+            Array.isArray(
+              item.previousPairNumbers
+            )
+              ? item.previousPairNumbers.join(" - ")
+              : normalizeDisplayNumber(
+                  item.previousNumber
+                )
           ),
 
         status:
@@ -635,8 +614,16 @@ function getCarryHistory(
           currentCarry.predictionDate,
 
         number:
-          normalizeDisplayNumber(
-            item.currentNumber
+          item.currentPair
+          ||
+          (
+            Array.isArray(
+              item.currentPairNumbers
+            )
+              ? item.currentPairNumbers.join(" - ")
+              : normalizeDisplayNumber(
+                  item.currentNumber
+                )
           ),
 
         status:
@@ -993,10 +980,18 @@ function renderLiveValidation(data) {
     );
 
   const currentNumber =
-    normalizeDisplayNumber(
-      item.currentNumber ||
-      item.number
-    );
+    item.currentPair
+      ||
+      (
+        Array.isArray(
+          item.currentPairNumbers
+        )
+          ? item.currentPairNumbers.join(" - ")
+          : normalizeDisplayNumber(
+              item.currentNumber ||
+              item.number
+            )
+      );
 
   const currentStatus =
     item.status ||
@@ -1178,6 +1173,72 @@ function renderLiveValidationError(
    PREDICTION
 ===================================================== */
 
+
+function getPairNumbers(item) {
+  if (
+    Array.isArray(
+      item?.pairNumbers
+    ) &&
+    item.pairNumbers.length
+  ) {
+    return [
+      ...new Set(
+        item.pairNumbers
+          .map(
+            normalizeDisplayNumber
+          )
+          .filter(
+            number =>
+              number !== "--"
+          )
+      )
+    ];
+  }
+
+  const a =
+    normalizeDisplayNumber(
+      item?.number
+    );
+
+  if (a === "--") {
+    return [];
+  }
+
+  const reverse =
+    item?.reverseNumber
+      ? normalizeDisplayNumber(
+          item.reverseNumber
+        )
+      : `${a[1]}${a[0]}`;
+
+  return a === reverse
+    ? [a]
+    : [a, reverse];
+}
+
+
+function getPairText(item) {
+  if (item?.pair) {
+    return String(
+      item.pair
+    );
+  }
+
+  const pair =
+    getPairNumbers(
+      item
+    );
+
+  if (!pair.length) {
+    return "--";
+  }
+
+  return pair.length === 1
+    ? pair[0]
+    : `${pair[0]} - ${pair[1]}`;
+}
+
+
 function strengthName(value) {
   if (value === "very-strong") {
     return "RẤT MẠNH";
@@ -1286,9 +1347,9 @@ function renderPickHistory(history) {
 
 
 function renderPrimaryPick(item) {
-  const number =
-    normalizeDisplayNumber(
-      item.number
+  const pair =
+    getPairText(
+      item
     );
 
   return `
@@ -1296,7 +1357,7 @@ function renderPrimaryPick(item) {
 
       <div class="pick-primary-top">
         <span class="pick-primary-label">
-          GỢI Ý CHÍNH
+          GỢI Ý CHÍNH AB-BA
         </span>
 
         <span
@@ -1316,14 +1377,13 @@ function renderPrimaryPick(item) {
 
       <div class="pick-primary-number">
         ${escapeHtml(
-          number
+          pair
         )}
       </div>
 
 
       <div class="pick-primary-message">
-        Số đáng chú ý nhất
-        trong nhóm gợi ý hôm nay
+        AB hoặc BA xuất hiện đều tính HIT
       </div>
 
 
@@ -1368,9 +1428,9 @@ function renderPrimaryPick(item) {
 
 
 function renderSecondaryPick(item) {
-  const number =
-    normalizeDisplayNumber(
-      item.number
+  const pair =
+    getPairText(
+      item
     );
 
   return `
@@ -1394,7 +1454,7 @@ function renderSecondaryPick(item) {
 
       <div class="pick-number">
         ${escapeHtml(
-          number
+          pair
         )}
       </div>
 
@@ -1458,7 +1518,7 @@ function renderPrediction(
         <div class="pick-panel-header">
           <div>
             <div class="pick-panel-title">
-              DÀN SỐ GỢI Ý
+              DÀN CẶP GỢI Ý AB-BA
             </div>
 
             <div class="pick-panel-subtitle">
@@ -1494,7 +1554,7 @@ function renderPrediction(
       <div class="pick-panel-header">
         <div>
           <div class="pick-panel-title">
-            DÀN SỐ GỢI Ý
+            DÀN CẶP GỢI Ý AB-BA
           </div>
 
           <div class="pick-panel-subtitle">
@@ -1510,7 +1570,7 @@ function renderPrediction(
 
         <div class="pick-count-badge">
           ${top5.length}
-          SỐ
+          CẶP
         </div>
       </div>
 
@@ -1524,7 +1584,7 @@ function renderPrediction(
         secondary.length
           ? `
             <div class="pick-secondary-title">
-              CÁC SỐ ĐÁNG CHÚ Ý KHÁC
+              CÁC CẶP ĐÁNG CHÚ Ý KHÁC
             </div>
 
             <div class="pick-grid">
@@ -1561,7 +1621,7 @@ function renderPrediction(
         </span>
 
         <span>
-          V2.6.2
+          AB-BA V2.6.3
           •
           ${totalDraws}
           kỳ dữ liệu
@@ -1590,7 +1650,7 @@ function renderPredictionError(
     <section class="pick-panel">
 
       <div class="pick-panel-title">
-        DÀN SỐ GỢI Ý
+        DÀN CẶP GỢI Ý AB-BA
       </div>
 
       <div class="simple-empty">

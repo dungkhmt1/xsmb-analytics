@@ -2,47 +2,51 @@
 ========================================================
 XSMB LIVE VALIDATION READ API
 /api/live-validation
+V2.6.3 AB-BA
+========================================================
 
-V2.6.3 - READ ONLY
+READ ONLY.
 
-Đọc trực tiếp hệ thống Live mới:
-- prediction_live_v262
-- prediction_bridge_evidence
-- prediction_carry_v262
-
-Mục tiêu:
-1. Hiển thị BASE gần nhất đã có kết quả.
-2. Xác định tất cả số gợi ý đã HIT.
-3. Hiển thị các bridge HIT làm "ưu tiên carry" cho kỳ kế tiếp.
-4. Không tự tạo prediction trong endpoint READ này.
+Hiển thị:
+- Các cặp AB-BA đã được khóa.
+- Pair nào HIT (AB hoặc BA đều tính HIT).
+- Số thực tế đã HIT trong pair.
+- Bridge đã HIT -> cặp ưu tiên kỳ tiếp theo.
 ========================================================
 */
 
-const BASE_MODEL = "bridge-v2.6.2";
-const CARRY_MODEL = "bridge-v2.6.2-live-priority-v2";
-const VERSION = "live-validation-ui-v2.6.3";
+const BASE_MODEL =
+  "bridge-v2.6.3-abba";
+
+const CARRY_MODEL =
+  "bridge-v2.6.3-abba-live-priority-v1";
+
+const VERSION =
+  "live-validation-abba-v1";
 
 
-function json(data, status = 200) {
-  return Response.json(data, {
-    status,
-    headers: {
-      "Cache-Control": "no-store, no-cache, must-revalidate"
+function json(
+  data,
+  status = 200
+) {
+  return Response.json(
+    data,
+    {
+      status,
+      headers: {
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate"
+      }
     }
-  });
-}
-
-
-function round2(value) {
-  const n = Number(value);
-  return Number.isFinite(n)
-    ? Math.round(n * 100) / 100
-    : 0;
+  );
 }
 
 
 function normalizeNumber(value) {
-  if (value === null || value === undefined) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return null;
   }
 
@@ -60,32 +64,107 @@ function normalizeNumber(value) {
 }
 
 
-function safeJSON(value, fallback = null) {
-  if (value === null || value === undefined) {
+function reverseNumber(value) {
+  const number =
+    normalizeNumber(
+      value
+    );
+
+  if (!number) {
+    return null;
+  }
+
+  return `${number[1]}${number[0]}`;
+}
+
+
+function safeJSON(
+  value,
+  fallback = null
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return fallback;
   }
 
-  if (typeof value === "object") {
+  if (
+    typeof value ===
+    "object"
+  ) {
     return value;
   }
 
   try {
     return JSON.parse(value);
-  } catch {
+  }
+  catch {
     return fallback;
   }
+}
+
+
+function pairNumbers(
+  number,
+  reverse,
+  pairJson = null
+) {
+  const parsed =
+    safeJSON(
+      pairJson,
+      null
+    );
+
+  if (
+    Array.isArray(parsed) &&
+    parsed.length
+  ) {
+    return [
+      ...new Set(
+        parsed
+          .map(normalizeNumber)
+          .filter(Boolean)
+      )
+    ];
+  }
+
+  const a =
+    normalizeNumber(
+      number
+    );
+
+  if (!a) {
+    return [];
+  }
+
+  const b =
+    normalizeNumber(
+      reverse
+    )
+    ||
+    reverseNumber(a);
+
+  return a === b
+    ? [a]
+    : [a, b];
+}
+
+
+function pairText(numbers) {
+  if (!numbers.length) {
+    return "--";
+  }
+
+  return numbers.length === 1
+    ? numbers[0]
+    : `${numbers[0]}-${numbers[1]}`;
 }
 
 
 function splitNumbers(value) {
   if (!value) {
     return [];
-  }
-
-  if (Array.isArray(value)) {
-    return value
-      .map(normalizeNumber)
-      .filter(Boolean);
   }
 
   return String(value)
@@ -95,49 +174,10 @@ function splitNumbers(value) {
 }
 
 
-/*
-========================================================
-BASE HISTORY
-========================================================
-*/
-
-async function getRecentBase(db) {
-  const response =
-    await db
-      .prepare(`
-        SELECT
-          prediction_date,
-          source_date,
-          numbers,
-          recommendations_json,
-          created_at,
-          evaluated,
-          evaluated_at,
-          actual_numbers,
-          actual_unique_count,
-          top1_hit,
-          top3_hit,
-          top5_hit,
-          baseline_top1,
-          baseline_top3,
-          baseline_top5
-        FROM prediction_live_v262
-        WHERE model = ?
-        ORDER BY prediction_date DESC
-        LIMIT 10
-      `)
-      .bind(BASE_MODEL)
-      .all();
-
-  const rows = response.results || [];
-
-  return Promise.all(
-    rows.map(row => buildBaseDay(db, row))
-  );
-}
-
-
-async function getEvidenceForDay(db, predictionDate) {
+async function getEvidence(
+  db,
+  predictionDate
+) {
   const response =
     await db
       .prepare(`
@@ -145,13 +185,21 @@ async function getEvidenceForDay(db, predictionDate) {
           bridge_key,
           bridge,
           number,
+          reverse_number,
+          pair_key,
+          pair_json,
           base_rank,
           hit,
+          hit_number,
+          hit_count,
           score,
           strength
+
         FROM prediction_bridge_evidence
+
         WHERE prediction_date = ?
           AND model = ?
+
         ORDER BY
           base_rank ASC,
           score DESC
@@ -166,7 +214,10 @@ async function getEvidenceForDay(db, predictionDate) {
 }
 
 
-async function buildBaseDay(db, row) {
+async function buildBaseDay(
+  db,
+  row
+) {
   const recommendations =
     safeJSON(
       row.recommendations_json,
@@ -174,94 +225,120 @@ async function buildBaseDay(db, row) {
     );
 
   const evidence =
-    await getEvidenceForDay(
+    await getEvidence(
       db,
       row.prediction_date
     );
 
-  const evidenceByKey =
-    new Map(
-      evidence.map(item => [
-        `${item.bridge_key}|${normalizeNumber(item.number)}`,
-        item
-      ])
+  const byBridge =
+    new Map();
+
+  for (const item of evidence) {
+    byBridge.set(
+      item.bridge_key,
+      item
     );
+  }
 
-  const evaluatedRecommendations =
-    Array.isArray(recommendations)
+
+  const evaluated =
+    Array.isArray(
+      recommendations
+    )
       ? recommendations
-          .map((item, index) => {
-            const number =
-              normalizeNumber(
-                item?.number
-              );
+          .map(
+            (
+              item,
+              index
+            ) => {
+              const ev =
+                byBridge.get(
+                  item.bridgeKey
+                );
 
-            if (!number) {
-              return null;
-            }
-
-            const bridgeKey =
-              item.bridgeKey ||
-              item.ruleKey ||
-              null;
-
-            const evidenceRow =
-              bridgeKey
-                ? evidenceByKey.get(
-                    `${bridgeKey}|${number}`
+              const pair =
+                pairNumbers(
+                  item.number,
+                  item.reverseNumber,
+                  JSON.stringify(
+                    item.pairNumbers ||
+                    []
                   )
-                : null;
+                );
 
-            return {
-              rank:
-                Number(
-                  item.baseRank ??
-                  item.rank ??
-                  index + 1
-                ),
+              return {
+                rank:
+                  Number(
+                    item.baseRank ||
+                    item.rank ||
+                    index + 1
+                  ),
 
-              number,
+                number:
+                  item.number,
 
-              bridgeKey,
+                reverseNumber:
+                  item.reverseNumber,
 
-              bridge:
-                item.bridge ??
-                item.rule ??
-                evidenceRow?.bridge ??
-                null,
+                pairNumbers:
+                  pair,
 
-              positionA:
-                item.positionA ?? null,
+                pair:
+                  pairText(
+                    pair
+                  ),
 
-              positionB:
-                item.positionB ?? null,
+                pairKey:
+                  item.pairKey,
 
-              direction:
-                item.direction ?? null,
+                bridgeKey:
+                  item.bridgeKey,
 
-              score:
-                item.score ??
-                evidenceRow?.score ??
-                null,
+                bridge:
+                  item.bridge,
 
-              strength:
-                item.strength ??
-                evidenceRow?.strength ??
-                null,
+                score:
+                  Number(
+                    item.pairScore ||
+                    item.score ||
+                    0
+                  ),
 
-              hit:
-                Boolean(
-                  evidenceRow?.hit
-                )
-            };
-          })
-          .filter(Boolean)
+                strength:
+                  item.strength ||
+                  null,
+
+                hit:
+                  Boolean(
+                    Number(
+                      ev?.hit || 0
+                    )
+                  ),
+
+                hitNumber:
+                  ev?.hit_number ||
+                  null,
+
+                hitCount:
+                  Number(
+                    ev?.hit_count || 0
+                  )
+              };
+            }
+          )
+          .filter(
+            item =>
+              item.pairNumbers.length
+          )
       : [];
 
+
   const hits =
-    evaluatedRecommendations.filter(
-      item => item.hit
+    evaluated.filter(
+      item =>
+        item.hit
     );
+
 
   return {
     date:
@@ -276,9 +353,13 @@ async function buildBaseDay(db, row) {
       ),
 
     predictionNumbers:
-      evaluatedRecommendations.length
-        ? evaluatedRecommendations.map(x => x.number)
-        : splitNumbers(row.numbers),
+      evaluated.map(
+        item =>
+          item.pair
+      ),
+
+    predictions:
+      evaluated,
 
     hitCount:
       hits.length,
@@ -287,17 +368,23 @@ async function buildBaseDay(db, row) {
 
     top1Hit:
       Boolean(
-        Number(row.top1_hit)
+        Number(
+          row.top1_hit
+        )
       ),
 
     top3Hit:
       Boolean(
-        Number(row.top3_hit)
+        Number(
+          row.top3_hit
+        )
       ),
 
     top5Hit:
       Boolean(
-        Number(row.top5_hit)
+        Number(
+          row.top5_hit
+        )
       ),
 
     createdAt:
@@ -308,100 +395,128 @@ async function buildBaseDay(db, row) {
 
     evaluated:
       Boolean(
-        Number(row.evaluated)
+        Number(
+          row.evaluated
+        )
       )
   };
 }
 
 
-/*
-========================================================
-CURRENT CARRY / GỢI Ý ƯU TIÊN
-
-Mỗi bridge đã HIT ở ngày trước được lưu tại
-prediction_carry_v262 cho prediction_date hiện tại.
-========================================================
-*/
-
-async function getLatestCarryDate(db) {
-  const row =
-    await db
-      .prepare(`
-        SELECT prediction_date
-        FROM prediction_carry_v262
-        WHERE model = ?
-        ORDER BY prediction_date DESC
-        LIMIT 1
-      `)
-      .bind(CARRY_MODEL)
-      .first();
-
-  return row?.prediction_date || null;
-}
-
-
-async function getCurrentCarry(db) {
-  const predictionDate =
-    await getLatestCarryDate(db);
-
-  if (!predictionDate) {
-    return null;
-  }
-
+async function getRecentBase(
+  db
+) {
   const response =
     await db
       .prepare(`
         SELECT
           prediction_date,
           source_date,
-          previous_prediction_date,
-
-          bridge_key,
-          bridge,
-
-          previous_number,
-          previous_rank,
-
-          current_number,
-          current_rank,
-
-          carry_status,
-
-          previous_score,
-          current_score,
-
-          previous_strength,
-          current_strength,
-
-          hit,
+          numbers,
+          recommendations_json,
+          created_at,
           evaluated,
           evaluated_at,
+          actual_numbers,
+          top1_hit,
+          top3_hit,
+          top5_hit
 
-          created_at
+        FROM prediction_live_v262
+
+        WHERE model = ?
+
+        ORDER BY
+          prediction_date DESC
+
+        LIMIT 10
+      `)
+      .bind(
+        BASE_MODEL
+      )
+      .all();
+
+  return Promise.all(
+    (response.results || [])
+      .map(
+        row =>
+          buildBaseDay(
+            db,
+            row
+          )
+      )
+  );
+}
+
+
+async function getCurrentCarry(
+  db
+) {
+  const latest =
+    await db
+      .prepare(`
+        SELECT prediction_date
         FROM prediction_carry_v262
+
+        WHERE model = ?
+
+        ORDER BY
+          prediction_date DESC
+
+        LIMIT 1
+      `)
+      .bind(
+        CARRY_MODEL
+      )
+      .first();
+
+  if (
+    !latest?.prediction_date
+  ) {
+    return null;
+  }
+
+
+  const response =
+    await db
+      .prepare(`
+        SELECT *
+        FROM prediction_carry_v262
+
         WHERE model = ?
           AND prediction_date = ?
+
         ORDER BY
           CASE
-            WHEN carry_status = 'ACTIVE' THEN 0
-            WHEN carry_status = 'SHADOW' THEN 1
+            WHEN carry_status = 'ACTIVE'
+            THEN 0
+
+            WHEN carry_status = 'SHADOW'
+            THEN 1
+
             ELSE 2
           END,
-          COALESCE(current_rank, 9999) ASC,
-          COALESCE(current_score, 0) DESC
+
+          COALESCE(
+            current_rank,
+            9999
+          ) ASC,
+
+          COALESCE(
+            current_score,
+            0
+          ) DESC
       `)
       .bind(
         CARRY_MODEL,
-        predictionDate
+        latest.prediction_date
       )
       .all();
+
 
   const rows =
     response.results || [];
 
-  if (!rows.length) {
-    return null;
-  }
 
   const promoted =
     rows
@@ -410,16 +525,35 @@ async function getCurrentCarry(db) {
           row.current_number
       )
       .map(
-        (row, index) => {
+        (
+          row,
+          index
+        ) => {
+          const previousPair =
+            pairNumbers(
+              row.previous_number,
+              row.previous_reverse_number
+            );
+
+          const currentPair =
+            pairNumbers(
+              row.current_number,
+              row.current_reverse_number
+            );
+
           const evaluated =
             Boolean(
-              Number(row.evaluated)
+              Number(
+                row.evaluated
+              )
             );
 
           const hit =
             evaluated
               ? Boolean(
-                  Number(row.hit)
+                  Number(
+                    row.hit
+                  )
                 )
               : null;
 
@@ -427,21 +561,52 @@ async function getCurrentCarry(db) {
             liveRank:
               Number(
                 row.current_rank
-              ) ||
+              )
+              ||
               index + 1,
-
-            currentNumber:
-              normalizeNumber(
-                row.current_number
-              ),
 
             previousNumber:
               normalizeNumber(
                 row.previous_number
               ),
 
+            previousReverseNumber:
+              normalizeNumber(
+                row.previous_reverse_number
+              ),
+
+            previousPairNumbers:
+              previousPair,
+
+            previousPair:
+              pairText(
+                previousPair
+              ),
+
             previousHitDate:
               row.previous_prediction_date,
+
+            previousHitNumber:
+              row.previous_hit_number ||
+              null,
+
+            currentNumber:
+              normalizeNumber(
+                row.current_number
+              ),
+
+            currentReverseNumber:
+              normalizeNumber(
+                row.current_reverse_number
+              ),
+
+            currentPairNumbers:
+              currentPair,
+
+            currentPair:
+              pairText(
+                currentPair
+              ),
 
             bridgeKey:
               row.bridge_key,
@@ -449,20 +614,8 @@ async function getCurrentCarry(db) {
             bridge:
               row.bridge,
 
-            positionA:
-              null,
-
-            positionB:
-              null,
-
-            direction:
-              null,
-
             carryStatus:
               row.carry_status,
-
-            carryHitStreak:
-              1,
 
             currentBaseQualified:
               row.carry_status ===
@@ -473,20 +626,14 @@ async function getCurrentCarry(db) {
               "ACTIVE",
 
             previousScore:
-              round2(
-                row.previous_score
+              Number(
+                row.previous_score || 0
               ),
 
             currentScore:
-              round2(
-                row.current_score
+              Number(
+                row.current_score || 0
               ),
-
-            previousStrength:
-              row.previous_strength,
-
-            currentStrength:
-              row.current_strength,
 
             hit,
 
@@ -497,45 +644,95 @@ async function getCurrentCarry(db) {
                   ? "hit"
                   : "miss",
 
-            createdAt:
-              row.created_at,
+            history: [
+              {
+                date:
+                  row.previous_prediction_date,
 
-            evaluatedAt:
-              row.evaluated_at
+                number:
+                  pairText(
+                    previousPair
+                  ),
+
+                status:
+                  "hit",
+
+                hitNumber:
+                  row.previous_hit_number ||
+                  null
+              },
+
+              {
+                date:
+                  row.prediction_date,
+
+                number:
+                  pairText(
+                    currentPair
+                  ),
+
+                status:
+                  !evaluated
+                    ? "pending"
+                    : hit
+                      ? "hit"
+                      : "miss"
+              }
+            ]
           };
         }
       );
 
-  const numbers =
-    promoted
-      .map(item => item.currentNumber)
-      .filter(Boolean);
 
   const allEvaluated =
     rows.length > 0 &&
     rows.every(
       row =>
         Boolean(
-          Number(row.evaluated)
+          Number(
+            row.evaluated
+          )
         )
     );
 
+
   return {
     sourceDate:
-      rows[0].source_date,
+      rows[0]?.source_date ||
+      null,
 
-    predictionDate,
+    predictionDate:
+      latest.prediction_date,
 
-    numbers,
+    numbers:
+      promoted.map(
+        item =>
+          item.currentPair
+      ),
 
     top1:
-      numbers.slice(0, 1),
+      promoted
+        .slice(0, 1)
+        .map(
+          item =>
+            item.currentPair
+        ),
 
     top3:
-      numbers.slice(0, 3),
+      promoted
+        .slice(0, 3)
+        .map(
+          item =>
+            item.currentPair
+        ),
 
     top5:
-      numbers.slice(0, 5),
+      promoted
+        .slice(0, 5)
+        .map(
+          item =>
+            item.currentPair
+        ),
 
     promotedCount:
       promoted.length,
@@ -545,39 +742,37 @@ async function getCurrentCarry(db) {
     hasResult:
       allEvaluated,
 
-    actualNumbers:
-      [],
-
     status:
       allEvaluated
         ? "completed"
         : "pending",
 
     createdAt:
-      rows[0].created_at,
+      rows[0]?.created_at ||
+      null,
 
     evaluatedAt:
       allEvaluated
-        ? rows.find(x => x.evaluated_at)?.evaluated_at || null
+        ? rows.find(
+            row =>
+              row.evaluated_at
+          )
+            ?.evaluated_at
+          ||
+          null
         : null
   };
 }
 
 
-/*
-========================================================
-PERFORMANCE
-========================================================
-*/
-
-async function getBasePerformance(db) {
-  const row =
+async function getPerformance(
+  db
+) {
+  const base =
     await db
       .prepare(`
         SELECT
-
           COUNT(*) AS total,
-
           SUM(
             CASE
               WHEN evaluated = 1
@@ -617,116 +812,23 @@ async function getBasePerformance(db) {
               END
             ),
             0
-          ) AS top5_hits,
-
-          AVG(
-            CASE
-              WHEN evaluated = 1
-              THEN baseline_top1
-            END
-          ) AS baseline_top1,
-
-          AVG(
-            CASE
-              WHEN evaluated = 1
-              THEN baseline_top3
-            END
-          ) AS baseline_top3,
-
-          AVG(
-            CASE
-              WHEN evaluated = 1
-              THEN baseline_top5
-            END
-          ) AS baseline_top5
+          ) AS top5_hits
 
         FROM prediction_live_v262
+
         WHERE model = ?
       `)
-      .bind(BASE_MODEL)
+      .bind(
+        BASE_MODEL
+      )
       .first();
 
-  const total =
-    Number(row?.total || 0);
 
-  const tested =
-    Number(row?.tested || 0);
-
-  const metric =
-    (
-      hitsValue,
-      baselineValue
-    ) => {
-      const hits =
-        Number(
-          hitsValue || 0
-        );
-
-      const hitRate =
-        tested
-          ? hits / tested * 100
-          : 0;
-
-      const baseline =
-        Number(
-          baselineValue || 0
-        );
-
-      return {
-        hits,
-        tested,
-        hitRate:
-          round2(hitRate),
-        baseline:
-          round2(baseline),
-        lift:
-          round2(
-            hitRate - baseline
-          )
-      };
-    };
-
-  return {
-    totalTracked:
-      total,
-
-    tested,
-
-    pending:
-      Math.max(
-        0,
-        total - tested
-      ),
-
-    top1:
-      metric(
-        row?.top1_hits,
-        row?.baseline_top1
-      ),
-
-    top3:
-      metric(
-        row?.top3_hits,
-        row?.baseline_top3
-      ),
-
-    top5:
-      metric(
-        row?.top5_hits,
-        row?.baseline_top5
-      )
-  };
-}
-
-
-async function getCarryPerformance(db) {
-  const row =
+  const carry =
     await db
       .prepare(`
         SELECT
-
           COUNT(*) AS total,
-
           SUM(
             CASE
               WHEN evaluated = 1
@@ -748,81 +850,147 @@ async function getCarryPerformance(db) {
           ) AS hits
 
         FROM prediction_carry_v262
+
         WHERE model = ?
           AND current_number IS NOT NULL
       `)
-      .bind(CARRY_MODEL)
+      .bind(
+        CARRY_MODEL
+      )
       .first();
 
-  const total =
-    Number(row?.total || 0);
 
-  const tested =
-    Number(row?.tested || 0);
-
-  const hits =
-    Number(row?.hits || 0);
-
-  const hitRate =
+  function metric(
+    hits,
     tested
-      ? hits / tested * 100
-      : 0;
+  ) {
+    const h =
+      Number(
+        hits || 0
+      );
+
+    const t =
+      Number(
+        tested || 0
+      );
+
+    return {
+      hits:
+        h,
+
+      tested:
+        t,
+
+      hitRate:
+        t
+          ? Number(
+              (
+                h /
+                t *
+                100
+              )
+                .toFixed(2)
+            )
+          : 0
+    };
+  }
+
+
+  const baseTested =
+    Number(
+      base?.tested || 0
+    );
+
+
+  const carryTested =
+    Number(
+      carry?.tested || 0
+    );
+
 
   return {
-    totalTracked:
-      total,
+    base: {
+      totalTracked:
+        Number(
+          base?.total || 0
+        ),
 
-    tested,
+      tested:
+        baseTested,
 
-    pending:
-      Math.max(
-        0,
-        total - tested
-      ),
+      pending:
+        Math.max(
+          0,
+          Number(
+            base?.total || 0
+          )
+          -
+          baseTested
+        ),
 
-    top1: {
-      hits,
-      tested,
-      hitRate:
-        round2(hitRate),
-      baseline:
-        0,
-      lift:
-        round2(hitRate)
+      top1:
+        metric(
+          base?.top1_hits,
+          baseTested
+        ),
+
+      top3:
+        metric(
+          base?.top3_hits,
+          baseTested
+        ),
+
+      top5:
+        metric(
+          base?.top5_hits,
+          baseTested
+        )
     },
 
-    top3: {
-      hits,
-      tested,
-      hitRate:
-        round2(hitRate),
-      baseline:
-        0,
-      lift:
-        round2(hitRate)
-    },
+    carry: {
+      totalTracked:
+        Number(
+          carry?.total || 0
+        ),
 
-    top5: {
-      hits,
-      tested,
-      hitRate:
-        round2(hitRate),
-      baseline:
-        0,
-      lift:
-        round2(hitRate)
+      tested:
+        carryTested,
+
+      pending:
+        Math.max(
+          0,
+          Number(
+            carry?.total || 0
+          )
+          -
+          carryTested
+        ),
+
+      top1:
+        metric(
+          carry?.hits,
+          carryTested
+        ),
+
+      top3:
+        metric(
+          carry?.hits,
+          carryTested
+        ),
+
+      top5:
+        metric(
+          carry?.hits,
+          carryTested
+        )
     }
   };
 }
 
 
-/*
-========================================================
-MAIN
-========================================================
-*/
-
-export async function onRequestGet(context) {
+export async function onRequestGet(
+  context
+) {
   try {
     const db =
       context.env.DB;
@@ -838,35 +1006,33 @@ export async function onRequestGet(context) {
       );
     }
 
+
     const [
       recentBase,
       currentCarry,
-      basePerformance,
-      carryPerformance
+      performance
     ] =
       await Promise.all([
-        getRecentBase(db),
-        getCurrentCarry(db),
-        getBasePerformance(db),
-        getCarryPerformance(db)
+        getRecentBase(
+          db
+        ),
+
+        getCurrentCarry(
+          db
+        ),
+
+        getPerformance(
+          db
+        )
       ]);
+
 
     const completed =
       recentBase.filter(
-        day =>
-          day.evaluated
+        item =>
+          item.evaluated
       );
 
-    const lastCompleted =
-      completed[0] ||
-      null;
-
-    const lastHit =
-      completed.find(
-        day =>
-          day.hitCount > 0
-      ) ||
-      null;
 
     return json({
       success: true,
@@ -877,42 +1043,46 @@ export async function onRequestGet(context) {
       version:
         VERSION,
 
+      suggestionMode:
+        "AB-BA",
+
       baseModel:
         BASE_MODEL,
 
       carryModel:
         CARRY_MODEL,
 
-      lastCompleted,
+      lastCompleted:
+        completed[0] ||
+        null,
 
-      lastHit,
+      lastHit:
+        completed.find(
+          item =>
+            item.hitCount > 0
+        )
+        ||
+        null,
 
       currentCarry,
 
       recentBase,
 
-      performance: {
-        base:
-          basePerformance,
-
-        carry:
-          carryPerformance
-      }
+      performance
     });
   }
   catch (error) {
     console.error(
-      "live-validation:",
+      "live-validation ABBA:",
       error
     );
 
     return json(
       {
         success: false,
-
         message:
           error?.message ||
-          "Không đọc được Live Validation"
+          "Không đọc được Live Validation AB-BA"
       },
       500
     );
