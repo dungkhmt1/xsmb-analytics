@@ -1914,6 +1914,7 @@ async function loadPredictionHistory() {
       "tracking-table"
     );
 
+
   if (
     !summary ||
     !table
@@ -1924,7 +1925,7 @@ async function loadPredictionHistory() {
 
   summary.innerHTML = `
     <div class="skeleton-box">
-      Đang tải lịch sử...
+      Đang tải toàn bộ cặp AB-BA...
     </div>
   `;
 
@@ -1934,8 +1935,11 @@ async function loadPredictionHistory() {
   try {
     const data =
       await apiFetch(
-        "/api/prediction-history"
+        "/api/prediction-history?limit=30",
+        {},
+        15000
       );
+
 
     const s =
       data.summary || {};
@@ -1945,81 +1949,73 @@ async function loadPredictionHistory() {
       <div class="tracking-summary-grid">
 
         <div>
-          <small>
-            Kỳ hoàn thành
-          </small>
-
-          <strong>
-            ${s.completed || 0}
-          </strong>
+          <small>Kỳ hoàn thành</small>
+          <strong>${s.completed || 0}</strong>
         </div>
-
 
         <div>
-          <small>
-            Tổng lần về
-          </small>
-
-          <strong>
-            ${s.totalHits || 0}
-          </strong>
+          <small>Cặp đã chấm</small>
+          <strong>${s.evaluatedPairs || 0}</strong>
         </div>
-
 
         <div>
-          <small>
-            Tiền đánh
-          </small>
-
-          <strong>
-            ${money(
-              s.totalCost || 0
-            )}
-          </strong>
+          <small>Cặp HIT</small>
+          <strong class="profit">${s.hitPairs || 0}</strong>
         </div>
-
 
         <div>
-          <small>
-            Tiền nhận
-          </small>
-
-          <strong>
-            ${money(
-              s.totalPayout || 0
-            )}
-          </strong>
+          <small>Cặp MISS</small>
+          <strong class="loss">${s.missPairs || 0}</strong>
         </div>
-
 
         <div>
-          <small>
-            Lãi/Lỗ
-          </small>
-
-          <strong
-            class="${
-              Number(
-                s.totalProfit || 0
-              ) >= 0
-                ? "profit"
-                : "loss"
-            }"
-          >
-            ${
-              Number(
-                s.totalProfit || 0
-              ) > 0
-                ? "+"
-                : ""
-            }
-
-            ${money(
-              s.totalProfit || 0
-            )}
+          <small>Tỷ lệ HIT</small>
+          <strong class="profit">
+            ${Number(
+              s.pairHitRate || 0
+            ).toFixed(1)}%
           </strong>
         </div>
 
+        <div>
+          <small>Tỷ lệ MISS</small>
+          <strong class="loss">
+            ${Number(
+              s.pairMissRate || 0
+            ).toFixed(1)}%
+          </strong>
+        </div>
+
+      </div>
+
+
+      <div class="warning-box">
+        Top1:
+        <strong>
+          ${Number(
+            s.top1?.hitRate || 0
+          ).toFixed(1)}%
+        </strong>
+
+        · Top3:
+        <strong>
+          ${Number(
+            s.top3?.hitRate || 0
+          ).toFixed(1)}%
+        </strong>
+
+        · Top5:
+        <strong>
+          ${Number(
+            s.top5?.hitRate || 0
+          ).toFixed(1)}%
+        </strong>
+
+        <br>
+
+        Một cặp được tính HIT khi
+        <strong>AB hoặc BA</strong>
+        xuất hiện trong kết quả.
       </div>
     `;
 
@@ -2035,7 +2031,7 @@ async function loadPredictionHistory() {
     if (!history.length) {
       table.innerHTML = `
         <div class="skeleton-box">
-          Chưa có lịch sử dự đoán.
+          Chưa có lịch sử AB-BA.
         </div>
       `;
 
@@ -2043,156 +2039,180 @@ async function loadPredictionHistory() {
     }
 
 
-    const rows =
+    table.innerHTML =
       history
         .map(
-          row => {
-            const numbers =
+          day => {
+            const pairs =
               Array.isArray(
-                row.numbers
+                day.pairs
               )
-                ? row.numbers
+                ? day.pairs
                 : [];
 
-            const hits =
-              numbers
-                .map(
-                  number => {
-                    const count =
-                      row
-                        .hitsByNumber
-                        ?.[number]
-                      ||
-                      0;
 
-                    return (
-                      `${escapeHtml(
-                        number
-                      )}: ` +
-                      `${count} lần`
-                    );
+            const rows =
+              pairs
+                .map(
+                  item => {
+                    const status =
+                      item.status ||
+                      "pending";
+
+                    const statusText =
+                      status === "hit"
+                        ? `✓ HIT${
+                            item.hitNumber
+                              ? ` (${escapeHtml(
+                                  item.hitNumber
+                                )})`
+                              : ""
+                          }`
+                        : status === "miss"
+                          ? "✕ MISS"
+                          : "• CHỜ";
+
+                    const statusClass =
+                      status === "hit"
+                        ? "profit"
+                        : status === "miss"
+                          ? "loss"
+                          : "";
+
+
+                    return `
+                      <tr>
+
+                        <td>
+                          #${escapeHtml(
+                            item.rank
+                          )}
+                        </td>
+
+                        <td>
+                          <strong>
+                            ${escapeHtml(
+                              item.pair
+                            )}
+                          </strong>
+                        </td>
+
+                        <td class="${statusClass}">
+                          <strong>
+                            ${statusText}
+                          </strong>
+                        </td>
+
+                        <td>
+                          ${escapeHtml(
+                            item.bridge || "-"
+                          )}
+                        </td>
+
+                        <td>
+                          ${Number(
+                            item.score || 0
+                          ).toFixed(1)}
+                        </td>
+
+                      </tr>
+                    `;
                   }
                 )
-                .join("<br>");
+                .join("");
 
-            const pending =
-              row.status ===
-              "pending";
 
-            const profit =
-              Number(
-                row.profit || 0
-              );
+            const dayStatus =
+              day.status ===
+              "completed"
+                ? `
+                  <span class="profit">
+                    ${day.hitPairs || 0} HIT
+                  </span>
+                  /
+                  <span class="loss">
+                    ${day.missPairs || 0} MISS
+                  </span>
+                  ·
+                  ${Number(
+                    day.pairHitRate || 0
+                  ).toFixed(1)}%
+                `
+                : `
+                  <span>Chờ kết quả</span>
+                `;
+
 
             return `
-              <tr>
+              <div
+                class="prediction-card"
+                style="margin-bottom:14px;"
+              >
 
-                <td>
-                  ${formatDate(
-                    row.date
-                  )}
-                </td>
-
-                <td>
-                  <strong>
-                    ${
-                      numbers
-                        .map(
-                          escapeHtml
-                        )
-                        .join(
-                          " - "
-                        )
-                    }
-                  </strong>
-                </td>
-
-                <td>
-                  ${
-                    pending
-                      ? "Chưa xổ"
-                      : hits
-                  }
-                </td>
-
-                <td>
-                  ${
-                    pending
-                      ? "-"
-                      : row.totalHits || 0
-                  }
-                </td>
-
-                <td>
-                  ${money(
-                    row.cost
-                  )}
-                </td>
-
-                <td>
-                  ${
-                    pending
-                      ? "-"
-                      : money(
-                          row.payout
-                        )
-                  }
-                </td>
-
-                <td
-                  class="${
-                    profit >= 0
-                      ? "profit"
-                      : "loss"
-                  }"
+                <div
+                  class="card-header"
+                  style="margin-bottom:12px;"
                 >
-                  ${
-                    pending
-                      ? "-"
-                      : `${
-                          profit > 0
-                            ? "+"
-                            : ""
-                        }${money(
-                          profit
-                        )}`
-                  }
-                </td>
+                  <div>
+                    <div class="section-label">
+                      ${formatDate(
+                        day.date
+                      )}
+                    </div>
 
-              </tr>
+                    <h3
+                      style="
+                        margin:4px 0 0;
+                        font-size:16px;
+                      "
+                    >
+                      ${day.pairCount || 0}
+                      cặp AB-BA
+                    </h3>
+                  </div>
+
+                  <div
+                    style="
+                      text-align:right;
+                      font-size:13px;
+                    "
+                  >
+                    ${dayStatus}
+                  </div>
+                </div>
+
+
+                <div class="table-wrapper">
+
+                  <table class="tracking-table">
+
+                    <thead>
+                      <tr>
+                        <th>Rank</th>
+                        <th>Cặp</th>
+                        <th>Kết quả</th>
+                        <th>Cầu</th>
+                        <th>Điểm</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      ${rows}
+                    </tbody>
+
+                  </table>
+
+                </div>
+
+              </div>
             `;
           }
         )
         .join("");
-
-
-    table.innerHTML = `
-      <div class="table-wrapper">
-
-        <table class="tracking-table">
-          <thead>
-            <tr>
-              <th>Ngày</th>
-              <th>Dàn số</th>
-              <th>Kết quả</th>
-              <th>Lần về</th>
-              <th>Tiền đánh</th>
-              <th>Tiền nhận</th>
-              <th>Lãi/Lỗ</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            ${rows}
-          </tbody>
-        </table>
-
-      </div>
-    `;
   }
   catch (error) {
     console.error(
-      "Tracking:",
+      "Tracking AB-BA:",
       error
     );
 

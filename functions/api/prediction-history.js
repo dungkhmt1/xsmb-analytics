@@ -1,285 +1,688 @@
-export async function onRequestGet(context) {
+/*
+========================================================
+XSMB AB-BA PREDICTION HISTORY API
+/api/prediction-history
+V2.6.3
+========================================================
+
+Theo dõi TOÀN BỘ cặp AB-BA đã gợi ý.
+
+Quy ước:
+- AB hoặc BA xuất hiện => HIT.
+- Không xuất hiện => MISS.
+- Chưa có kết quả => PENDING.
+========================================================
+*/
+
+const MODEL =
+  "bridge-v2.6.3-abba";
+
+const VERSION =
+  "prediction-history-abba-v1";
+
+
+function json(data, status = 200) {
+  return Response.json(data, {
+    status,
+    headers: {
+      "Cache-Control":
+        "no-store, no-cache, must-revalidate"
+    }
+  });
+}
+
+
+function normalizeNumber(value) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
+  const digits =
+    String(value)
+      .replace(/\D/g, "");
+
+  if (!digits) {
+    return null;
+  }
+
+  return digits
+    .padStart(2, "0")
+    .slice(-2);
+}
+
+
+function reverseNumber(value) {
+  const number =
+    normalizeNumber(value);
+
+  if (!number) {
+    return null;
+  }
+
+  return `${number[1]}${number[0]}`;
+}
+
+
+function safeJSON(
+  value,
+  fallback = null
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return fallback;
+  }
+
+  if (
+    typeof value ===
+    "object"
+  ) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  }
+  catch {
+    return fallback;
+  }
+}
+
+
+function pairNumbersFromItem(item) {
+  if (
+    Array.isArray(
+      item?.pairNumbers
+    ) &&
+    item.pairNumbers.length
+  ) {
+    return [
+      ...new Set(
+        item.pairNumbers
+          .map(normalizeNumber)
+          .filter(Boolean)
+      )
+    ];
+  }
+
+  const a =
+    normalizeNumber(
+      item?.number
+    );
+
+  if (!a) {
+    return [];
+  }
+
+  const b =
+    normalizeNumber(
+      item?.reverseNumber
+    )
+    ||
+    reverseNumber(a);
+
+  return a === b
+    ? [a]
+    : [a, b];
+}
+
+
+function pairText(numbers) {
+  if (!numbers.length) {
+    return "--";
+  }
+
+  return numbers.length === 1
+    ? numbers[0]
+    : `${numbers[0]}-${numbers[1]}`;
+}
+
+
+function splitNumbers(value) {
+  if (!value) {
+    return [];
+  }
+
+  return String(value)
+    .split(/[\s,;|]+/)
+    .map(normalizeNumber)
+    .filter(Boolean);
+}
+
+
+async function getEvidence(
+  db,
+  predictionDate
+) {
+  const response =
+    await db
+      .prepare(`
+        SELECT
+          bridge_key,
+          number,
+          reverse_number,
+          pair_key,
+          pair_json,
+          hit,
+          hit_number,
+          hit_count,
+          score,
+          strength
+
+        FROM prediction_bridge_evidence
+
+        WHERE prediction_date = ?
+          AND model = ?
+      `)
+      .bind(
+        predictionDate,
+        MODEL
+      )
+      .all();
+
+  return response.results || [];
+}
+
+
+async function buildDay(
+  db,
+  row
+) {
+  const recommendations =
+    safeJSON(
+      row.recommendations_json,
+      []
+    );
+
+  const evidence =
+    await getEvidence(
+      db,
+      row.prediction_date
+    );
+
+  const evidenceMap =
+    new Map();
+
+  for (const item of evidence) {
+    const key =
+      `${item.bridge_key}|${normalizeNumber(item.number)}`;
+
+    evidenceMap.set(
+      key,
+      item
+    );
+  }
+
+
+  const pairs =
+    Array.isArray(recommendations)
+      ? recommendations
+          .map(
+            (
+              item,
+              index
+            ) => {
+              const numbers =
+                pairNumbersFromItem(
+                  item
+                );
+
+              if (!numbers.length) {
+                return null;
+              }
+
+              const bridgeKey =
+                item.bridgeKey ||
+                item.ruleKey ||
+                null;
+
+              const number =
+                normalizeNumber(
+                  item.number
+                );
+
+              const ev =
+                bridgeKey && number
+                  ? evidenceMap.get(
+                      `${bridgeKey}|${number}`
+                    )
+                  : null;
+
+              const evaluated =
+                Boolean(
+                  Number(
+                    row.evaluated
+                  )
+                );
+
+              const hit =
+                evaluated
+                  ? Boolean(
+                      Number(
+                        ev?.hit || 0
+                      )
+                    )
+                  : null;
+
+              return {
+                rank:
+                  Number(
+                    item.baseRank ||
+                    item.rank ||
+                    index + 1
+                  ),
+
+                pair:
+                  item.pair ||
+                  pairText(
+                    numbers
+                  ),
+
+                pairNumbers:
+                  numbers,
+
+                pairKey:
+                  item.pairKey ||
+                  null,
+
+                bridgeKey,
+
+                bridge:
+                  item.bridge ||
+                  item.rule ||
+                  null,
+
+                score:
+                  Number(
+                    item.pairScore ||
+                    item.score ||
+                    0
+                  ),
+
+                strength:
+                  item.strength ||
+                  null,
+
+                evaluated,
+
+                hit,
+
+                miss:
+                  evaluated
+                    ? !hit
+                    : false,
+
+                status:
+                  !evaluated
+                    ? "pending"
+                    : hit
+                      ? "hit"
+                      : "miss",
+
+                hitNumber:
+                  ev?.hit_number ||
+                  null,
+
+                hitCount:
+                  Number(
+                    ev?.hit_count || 0
+                  )
+              };
+            }
+          )
+          .filter(Boolean)
+      : [];
+
+
+  const evaluatedPairs =
+    pairs.filter(
+      item =>
+        item.evaluated
+    );
+
+  const hitPairs =
+    evaluatedPairs.filter(
+      item =>
+        item.hit
+    );
+
+  const missPairs =
+    evaluatedPairs.filter(
+      item =>
+        item.miss
+    );
+
+
+  return {
+    date:
+      row.prediction_date,
+
+    sourceDate:
+      row.source_date,
+
+    createdAt:
+      row.created_at,
+
+    evaluatedAt:
+      row.evaluated_at,
+
+    evaluated:
+      Boolean(
+        Number(
+          row.evaluated
+        )
+      ),
+
+    status:
+      Boolean(
+        Number(
+          row.evaluated
+        )
+      )
+        ? "completed"
+        : "pending",
+
+    actualNumbers:
+      splitNumbers(
+        row.actual_numbers
+      ),
+
+    pairCount:
+      pairs.length,
+
+    evaluatedPairCount:
+      evaluatedPairs.length,
+
+    hitPairs:
+      hitPairs.length,
+
+    missPairs:
+      missPairs.length,
+
+    pairHitRate:
+      evaluatedPairs.length
+        ? Number(
+            (
+              hitPairs.length /
+              evaluatedPairs.length *
+              100
+            ).toFixed(2)
+          )
+        : 0,
+
+    pairs
+  };
+}
+
+
+export async function onRequestGet(
+  context
+) {
   try {
     const db =
       context.env.DB;
 
-    /*
-     * Giá trị theo quy ước của bạn
-     */
+    if (!db) {
+      return json(
+        {
+          success: false,
+          message:
+            "Không tìm thấy D1 binding DB"
+        },
+        500
+      );
+    }
 
-    const COST_PER_POINT =
-      27000;
 
-    const PAYOUT_PER_HIT =
-      99000;
+    const url =
+      new URL(
+        context.request.url
+      );
 
-    /*
-     * Lấy lịch sử dự đoán
-     */
+    const rawLimit =
+      Number.parseInt(
+        url.searchParams.get(
+          "limit"
+        ) || "30",
+        10
+      );
 
-    const {
-      results: predictions
-    } =
+    const limit =
+      Math.min(
+        100,
+        Math.max(
+          1,
+          Number.isFinite(rawLimit)
+            ? rawLimit
+            : 30
+        )
+      );
+
+
+    const response =
       await db
         .prepare(`
           SELECT
             prediction_date,
-            numbers,
-            points,
-            model,
+            source_date,
+            recommendations_json,
+            evaluated,
+            evaluated_at,
+            actual_numbers,
             created_at
-          FROM prediction_daily
-          ORDER BY prediction_date DESC
+
+          FROM prediction_live_v262
+
+          WHERE model = ?
+
+          ORDER BY
+            prediction_date DESC
+
+          LIMIT ?
         `)
+        .bind(
+          MODEL,
+          limit
+        )
         .all();
 
-    const rows = [];
 
-    let totalCost = 0;
-    let totalPayout = 0;
-    let totalProfit = 0;
-    let totalHits = 0;
+    const history =
+      await Promise.all(
+        (response.results || [])
+          .map(
+            row =>
+              buildDay(
+                db,
+                row
+              )
+          )
+      );
 
-    for (
-      const prediction
-      of predictions
+
+    const completedDays =
+      history.filter(
+        day =>
+          day.evaluated
+      );
+
+    const pendingDays =
+      history.filter(
+        day =>
+          !day.evaluated
+      );
+
+    const allPairs =
+      history.flatMap(
+        day =>
+          day.pairs
+      );
+
+    const evaluatedPairs =
+      allPairs.filter(
+        item =>
+          item.evaluated
+      );
+
+    const hitPairs =
+      evaluatedPairs.filter(
+        item =>
+          item.hit
+      );
+
+    const missPairs =
+      evaluatedPairs.filter(
+        item =>
+          item.miss
+      );
+
+
+    function rankDayMetric(
+      maxRank
     ) {
-      const numbers =
-        String(
-          prediction.numbers
-        )
-          .split(",")
-          .map(x => x.trim())
-          .filter(Boolean);
-
-      const points =
-        Number(
-          prediction.points || 1
-        );
-
-      /*
-       * Tiền bỏ ra:
-       *
-       * số lượng số
-       * × điểm
-       * × 27.000
-       */
-
-      const cost =
-        numbers.length *
-        points *
-        COST_PER_POINT;
-
-      /*
-       * Kiểm tra xem kỳ đó
-       * đã có kết quả chưa
-       */
-
-      const resultExists =
-        await db
-          .prepare(`
-            SELECT draw_date
-            FROM results
-            WHERE draw_date = ?
-            LIMIT 1
-          `)
-          .bind(
-            prediction.prediction_date
-          )
-          .first();
-
-      /*
-       * Nếu chưa xổ
-       */
-
-      if (!resultExists) {
-        rows.push({
-          date:
-            prediction.prediction_date,
-
-          numbers,
-
-          points,
-
-          status:
-            "pending",
-
-          hitsByNumber: {},
-
-          totalHits: 0,
-
-          cost,
-
-          payout: 0,
-
-          profit: null,
-
-          model:
-            prediction.model
-        });
-
-        continue;
-      }
-
-      /*
-       * Đọc loto của đúng kỳ
-       *
-       * bảng loto đã lưu:
-       * number + count
-       */
-
-      const placeholders =
-        numbers
-          .map(() => "?")
-          .join(",");
-
-      const query = `
-        SELECT
-          number,
-          count
-        FROM loto
-        WHERE draw_date = ?
-        AND number IN (${placeholders})
-      `;
-
-      const {
-        results: lotoRows
-      } =
-        await db
-          .prepare(query)
-          .bind(
-            prediction.prediction_date,
-            ...numbers
-          )
-          .all();
-
-      /*
-       * Mặc định mỗi số = 0 lần
-       */
-
-      const hitsByNumber = {};
+      let tested = 0;
+      let hits = 0;
 
       for (
-        const number
-        of numbers
+        const day of
+        completedDays
       ) {
-        hitsByNumber[number] = 0;
-      }
-
-      let hitCount = 0;
-
-      for (
-        const loto
-        of lotoRows
-      ) {
-        const count =
-          Number(
-            loto.count || 0
+        const selected =
+          day.pairs.filter(
+            item =>
+              item.rank <=
+              maxRank
           );
 
-        hitsByNumber[
-          String(loto.number)
-            .padStart(2, "0")
-        ] =
-          count;
+        if (!selected.length) {
+          continue;
+        }
 
-        hitCount +=
-          count;
+        tested++;
+
+        if (
+          selected.some(
+            item =>
+              item.hit
+          )
+        ) {
+          hits++;
+        }
       }
 
-      /*
-       * Tiền nhận:
-       *
-       * số lần về
-       * × điểm
-       * × 99.000
-       */
+      return {
+        hits,
+        tested,
 
-      const payout =
-        hitCount *
-        points *
-        PAYOUT_PER_HIT;
-
-      const profit =
-        payout -
-        cost;
-
-      totalCost += cost;
-      totalPayout += payout;
-      totalProfit += profit;
-      totalHits += hitCount;
-
-      rows.push({
-        date:
-          prediction.prediction_date,
-
-        numbers,
-
-        points,
-
-        status:
-          "completed",
-
-        hitsByNumber,
-
-        totalHits:
-          hitCount,
-
-        cost,
-
-        payout,
-
-        profit,
-
-        model:
-          prediction.model
-      });
+        hitRate:
+          tested
+            ? Number(
+                (
+                  hits /
+                  tested *
+                  100
+                ).toFixed(2)
+              )
+            : 0
+      };
     }
 
-    return Response.json({
+
+    return json({
       success: true,
 
-      rules: {
-        costPerPoint:
-          COST_PER_POINT,
+      module:
+        "prediction-history-abba",
 
-        payoutPerHit:
-          PAYOUT_PER_HIT
-      },
+      version:
+        VERSION,
+
+      model:
+        MODEL,
+
+      suggestionMode:
+        "AB-BA",
 
       summary: {
-        totalPredictions:
-          rows.length,
+        totalDays:
+          history.length,
 
         completed:
-          rows.filter(
-            x =>
-              x.status ===
-              "completed"
-          ).length,
+          completedDays.length,
 
-        totalHits,
+        pending:
+          pendingDays.length,
 
-        totalCost,
+        totalPairs:
+          allPairs.length,
 
-        totalPayout,
+        evaluatedPairs:
+          evaluatedPairs.length,
 
-        totalProfit
+        pendingPairs:
+          allPairs.length -
+          evaluatedPairs.length,
+
+        hitPairs:
+          hitPairs.length,
+
+        missPairs:
+          missPairs.length,
+
+        pairHitRate:
+          evaluatedPairs.length
+            ? Number(
+                (
+                  hitPairs.length /
+                  evaluatedPairs.length *
+                  100
+                ).toFixed(2)
+              )
+            : 0,
+
+        pairMissRate:
+          evaluatedPairs.length
+            ? Number(
+                (
+                  missPairs.length /
+                  evaluatedPairs.length *
+                  100
+                ).toFixed(2)
+              )
+            : 0,
+
+        top1:
+          rankDayMetric(1),
+
+        top3:
+          rankDayMetric(3),
+
+        top5:
+          rankDayMetric(5)
       },
 
-      history:
-        rows
+      history
     });
+  }
+  catch (error) {
+    console.error(
+      "prediction-history ABBA:",
+      error
+    );
 
-  } catch (error) {
-    return Response.json(
+    return json(
       {
         success: false,
-        message: error.message
+
+        message:
+          error?.message ||
+          "Không đọc được lịch sử AB-BA"
       },
-      {
-        status: 500
-      }
+      500
     );
   }
 }
