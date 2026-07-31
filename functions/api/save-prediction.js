@@ -10,16 +10,16 @@
 // ============================================================
 
 const BASE_MODEL =
-  "bridge-v2.6.3-abba";
+  "bridge-v2.6.4-abba-carry-all-hits";
 
 const PRIORITY_MODEL =
-  "bridge-v2.6.3-abba-live-priority-v1";
+  "bridge-v2.6.4-abba-live-priority-v1";
 
 const MODULE =
-  "v2.6.3-abba-live-validation";
+  "v2.6.4-abba-live-validation";
 
 const VERSION =
-  "abba-live-priority-v1";
+  "abba-live-priority-all-hits-v1";
 
 
 function json(data, status = 200) {

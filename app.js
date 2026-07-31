@@ -103,15 +103,44 @@ async function apiFetch(
 
 async function loadDashboard() {
   setSystemStatus(
-    "Đang kết nối dữ liệu...",
+    "Đang cập nhật các vị trí đã HIT...",
     ""
   );
 
 
+  /*
+  1. Sync trước:
+     - chấm prediction cũ;
+     - ghi tất cả pair HIT;
+     - tạo carry cho tất cả vị trí HIT.
+
+  save-prediction tự gọi /api/predict bên trong,
+  nhưng chạy evaluate TRƯỚC khi gọi predict.
+  */
+  try {
+    await apiFetch(
+      "/api/save-prediction",
+      {},
+      30000
+    );
+  }
+  catch (error) {
+    console.error(
+      "Live Sync:",
+      error
+    );
+  }
+
+
+  /*
+  2. Sau sync mới đọc prediction để giao diện nhận
+     đầy đủ nhóm ưu tiên từ các HIT ngày trước.
+  */
   const [
     latestResult,
     statisticsResult,
-    predictResult
+    predictResult,
+    liveResult
   ] =
     await Promise.allSettled([
       apiFetch(
@@ -126,6 +155,12 @@ async function loadDashboard() {
         "/api/predict",
         {},
         20000
+      ),
+
+      apiFetch(
+        "/api/live-validation",
+        {},
+        15000
       )
     ]);
 
@@ -191,13 +226,24 @@ async function loadDashboard() {
       totalDraws
     );
 
+    const carryCount =
+      Number(
+        data.carryPriority
+          ?.promotedCount || 0
+      );
+
     setSystemStatus(
       `D1 ${totalDraws} kỳ • ` +
-      `${data.version || "bridge-v2.6.3-abba"} • ` +
+      `${data.version || "bridge-v2.6.4"} • ` +
       `${Math.min(
         5,
         data.suggestions?.length || 0
-      )} cặp AB-BA`,
+      )} cặp AB-BA` +
+      (
+        carryCount
+          ? ` • ${carryCount} vị trí HIT ưu tiên`
+          : ""
+      ),
       "success"
     );
   }
@@ -220,46 +266,22 @@ async function loadDashboard() {
   }
 
 
-  /*
-  LIVE phải sync sau Predict.
-  save-prediction chấm kỳ cũ và tạo priority carry,
-  rồi live-validation mới đọc.
-  */
-  try {
-    await apiFetch(
-      "/api/save-prediction",
-      {},
-      30000
-    );
-  }
-  catch (error) {
-    console.error(
-      "Live Sync:",
-      error
-    );
-  }
-
-
-  try {
-    const liveData =
-      await apiFetch(
-        "/api/live-validation",
-        {},
-        15000
-      );
-
+  if (
+    liveResult.status ===
+    "fulfilled"
+  ) {
     renderLiveValidation(
-      liveData
+      liveResult.value
     );
   }
-  catch (error) {
+  else {
     console.error(
       "Live Validation:",
-      error
+      liveResult.reason
     );
 
     renderLiveValidationError(
-      error.message ||
+      liveResult.reason?.message ||
       "Không kết nối được Live Validation API."
     );
   }
@@ -1383,7 +1405,17 @@ function renderPrimaryPick(item) {
 
 
       <div class="pick-primary-message">
-        AB hoặc BA xuất hiện đều tính HIT
+        ${
+          item.carryPriority
+            ? `ƯU TIÊN: tiếp tục vị trí đã HIT ${
+                item.previousHitDate
+                  ? formatDate(
+                      item.previousHitDate
+                    )
+                  : ""
+              }`
+            : "AB hoặc BA xuất hiện đều tính HIT"
+        }
       </div>
 
 
@@ -1460,6 +1492,12 @@ function renderSecondaryPick(item) {
 
 
       <div class="pick-card-bridge">
+        ${
+          item.carryPriority
+            ? `<strong>ƯU TIÊN HIT</strong><br>`
+            : ""
+        }
+
         ${escapeHtml(
           item.bridge || "-"
         )}
@@ -1914,7 +1952,6 @@ async function loadPredictionHistory() {
       "tracking-table"
     );
 
-
   if (
     !summary ||
     !table
@@ -1925,7 +1962,7 @@ async function loadPredictionHistory() {
 
   summary.innerHTML = `
     <div class="skeleton-box">
-      Đang tải toàn bộ cặp AB-BA...
+      Đang tải lịch sử...
     </div>
   `;
 
@@ -1935,11 +1972,8 @@ async function loadPredictionHistory() {
   try {
     const data =
       await apiFetch(
-        "/api/prediction-history?limit=30",
-        {},
-        15000
+        "/api/prediction-history"
       );
-
 
     const s =
       data.summary || {};
@@ -1949,73 +1983,81 @@ async function loadPredictionHistory() {
       <div class="tracking-summary-grid">
 
         <div>
-          <small>Kỳ hoàn thành</small>
-          <strong>${s.completed || 0}</strong>
-        </div>
+          <small>
+            Kỳ hoàn thành
+          </small>
 
-        <div>
-          <small>Cặp đã chấm</small>
-          <strong>${s.evaluatedPairs || 0}</strong>
-        </div>
-
-        <div>
-          <small>Cặp HIT</small>
-          <strong class="profit">${s.hitPairs || 0}</strong>
-        </div>
-
-        <div>
-          <small>Cặp MISS</small>
-          <strong class="loss">${s.missPairs || 0}</strong>
-        </div>
-
-        <div>
-          <small>Tỷ lệ HIT</small>
-          <strong class="profit">
-            ${Number(
-              s.pairHitRate || 0
-            ).toFixed(1)}%
+          <strong>
+            ${s.completed || 0}
           </strong>
         </div>
 
+
         <div>
-          <small>Tỷ lệ MISS</small>
-          <strong class="loss">
-            ${Number(
-              s.pairMissRate || 0
-            ).toFixed(1)}%
+          <small>
+            Tổng lần về
+          </small>
+
+          <strong>
+            ${s.totalHits || 0}
           </strong>
         </div>
 
-      </div>
+
+        <div>
+          <small>
+            Tiền đánh
+          </small>
+
+          <strong>
+            ${money(
+              s.totalCost || 0
+            )}
+          </strong>
+        </div>
 
 
-      <div class="warning-box">
-        Top1:
-        <strong>
-          ${Number(
-            s.top1?.hitRate || 0
-          ).toFixed(1)}%
-        </strong>
+        <div>
+          <small>
+            Tiền nhận
+          </small>
 
-        · Top3:
-        <strong>
-          ${Number(
-            s.top3?.hitRate || 0
-          ).toFixed(1)}%
-        </strong>
+          <strong>
+            ${money(
+              s.totalPayout || 0
+            )}
+          </strong>
+        </div>
 
-        · Top5:
-        <strong>
-          ${Number(
-            s.top5?.hitRate || 0
-          ).toFixed(1)}%
-        </strong>
 
-        <br>
+        <div>
+          <small>
+            Lãi/Lỗ
+          </small>
 
-        Một cặp được tính HIT khi
-        <strong>AB hoặc BA</strong>
-        xuất hiện trong kết quả.
+          <strong
+            class="${
+              Number(
+                s.totalProfit || 0
+              ) >= 0
+                ? "profit"
+                : "loss"
+            }"
+          >
+            ${
+              Number(
+                s.totalProfit || 0
+              ) > 0
+                ? "+"
+                : ""
+            }
+
+            ${money(
+              s.totalProfit || 0
+            )}
+          </strong>
+        </div>
+
       </div>
     `;
 
@@ -2031,7 +2073,7 @@ async function loadPredictionHistory() {
     if (!history.length) {
       table.innerHTML = `
         <div class="skeleton-box">
-          Chưa có lịch sử AB-BA.
+          Chưa có lịch sử dự đoán.
         </div>
       `;
 
@@ -2039,180 +2081,156 @@ async function loadPredictionHistory() {
     }
 
 
-    table.innerHTML =
+    const rows =
       history
         .map(
-          day => {
-            const pairs =
+          row => {
+            const numbers =
               Array.isArray(
-                day.pairs
+                row.numbers
               )
-                ? day.pairs
+                ? row.numbers
                 : [];
 
-
-            const rows =
-              pairs
+            const hits =
+              numbers
                 .map(
-                  item => {
-                    const status =
-                      item.status ||
-                      "pending";
+                  number => {
+                    const count =
+                      row
+                        .hitsByNumber
+                        ?.[number]
+                      ||
+                      0;
 
-                    const statusText =
-                      status === "hit"
-                        ? `✓ HIT${
-                            item.hitNumber
-                              ? ` (${escapeHtml(
-                                  item.hitNumber
-                                )})`
-                              : ""
-                          }`
-                        : status === "miss"
-                          ? "✕ MISS"
-                          : "• CHỜ";
-
-                    const statusClass =
-                      status === "hit"
-                        ? "profit"
-                        : status === "miss"
-                          ? "loss"
-                          : "";
-
-
-                    return `
-                      <tr>
-
-                        <td>
-                          #${escapeHtml(
-                            item.rank
-                          )}
-                        </td>
-
-                        <td>
-                          <strong>
-                            ${escapeHtml(
-                              item.pair
-                            )}
-                          </strong>
-                        </td>
-
-                        <td class="${statusClass}">
-                          <strong>
-                            ${statusText}
-                          </strong>
-                        </td>
-
-                        <td>
-                          ${escapeHtml(
-                            item.bridge || "-"
-                          )}
-                        </td>
-
-                        <td>
-                          ${Number(
-                            item.score || 0
-                          ).toFixed(1)}
-                        </td>
-
-                      </tr>
-                    `;
+                    return (
+                      `${escapeHtml(
+                        number
+                      )}: ` +
+                      `${count} lần`
+                    );
                   }
                 )
-                .join("");
+                .join("<br>");
 
+            const pending =
+              row.status ===
+              "pending";
 
-            const dayStatus =
-              day.status ===
-              "completed"
-                ? `
-                  <span class="profit">
-                    ${day.hitPairs || 0} HIT
-                  </span>
-                  /
-                  <span class="loss">
-                    ${day.missPairs || 0} MISS
-                  </span>
-                  ·
-                  ${Number(
-                    day.pairHitRate || 0
-                  ).toFixed(1)}%
-                `
-                : `
-                  <span>Chờ kết quả</span>
-                `;
-
+            const profit =
+              Number(
+                row.profit || 0
+              );
 
             return `
-              <div
-                class="prediction-card"
-                style="margin-bottom:14px;"
-              >
+              <tr>
 
-                <div
-                  class="card-header"
-                  style="margin-bottom:12px;"
+                <td>
+                  ${formatDate(
+                    row.date
+                  )}
+                </td>
+
+                <td>
+                  <strong>
+                    ${
+                      numbers
+                        .map(
+                          escapeHtml
+                        )
+                        .join(
+                          " - "
+                        )
+                    }
+                  </strong>
+                </td>
+
+                <td>
+                  ${
+                    pending
+                      ? "Chưa xổ"
+                      : hits
+                  }
+                </td>
+
+                <td>
+                  ${
+                    pending
+                      ? "-"
+                      : row.totalHits || 0
+                  }
+                </td>
+
+                <td>
+                  ${money(
+                    row.cost
+                  )}
+                </td>
+
+                <td>
+                  ${
+                    pending
+                      ? "-"
+                      : money(
+                          row.payout
+                        )
+                  }
+                </td>
+
+                <td
+                  class="${
+                    profit >= 0
+                      ? "profit"
+                      : "loss"
+                  }"
                 >
-                  <div>
-                    <div class="section-label">
-                      ${formatDate(
-                        day.date
-                      )}
-                    </div>
+                  ${
+                    pending
+                      ? "-"
+                      : `${
+                          profit > 0
+                            ? "+"
+                            : ""
+                        }${money(
+                          profit
+                        )}`
+                  }
+                </td>
 
-                    <h3
-                      style="
-                        margin:4px 0 0;
-                        font-size:16px;
-                      "
-                    >
-                      ${day.pairCount || 0}
-                      cặp AB-BA
-                    </h3>
-                  </div>
-
-                  <div
-                    style="
-                      text-align:right;
-                      font-size:13px;
-                    "
-                  >
-                    ${dayStatus}
-                  </div>
-                </div>
-
-
-                <div class="table-wrapper">
-
-                  <table class="tracking-table">
-
-                    <thead>
-                      <tr>
-                        <th>Rank</th>
-                        <th>Cặp</th>
-                        <th>Kết quả</th>
-                        <th>Cầu</th>
-                        <th>Điểm</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      ${rows}
-                    </tbody>
-
-                  </table>
-
-                </div>
-
-              </div>
+              </tr>
             `;
           }
         )
         .join("");
+
+
+    table.innerHTML = `
+      <div class="table-wrapper">
+
+        <table class="tracking-table">
+          <thead>
+            <tr>
+              <th>Ngày</th>
+              <th>Dàn số</th>
+              <th>Kết quả</th>
+              <th>Lần về</th>
+              <th>Tiền đánh</th>
+              <th>Tiền nhận</th>
+              <th>Lãi/Lỗ</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+
+      </div>
+    `;
   }
   catch (error) {
     console.error(
-      "Tracking AB-BA:",
+      "Tracking:",
       error
     );
 

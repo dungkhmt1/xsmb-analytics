@@ -34,7 +34,7 @@ Pipeline:
 
 
 const VERSION =
-  "bridge-v2.6.3-abba";
+  "bridge-v2.6.4-abba-carry-all-hits";
 
 
 const PRIZES = [
@@ -1286,6 +1286,381 @@ function classifyStrength(
 
 
 
+
+/* =====================================================
+   CARRY TẤT CẢ VỊ TRÍ ĐÃ HIT - V2.6.4
+===================================================== */
+
+function addDaysISO(
+  dateString,
+  days
+) {
+  const date =
+    new Date(
+      `${dateString}T00:00:00Z`
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  date.setUTCDate(
+    date.getUTCDate() + days
+  );
+
+  return date
+    .toISOString()
+    .slice(0, 10);
+}
+
+
+function parseBridgeKey(
+  bridgeKey
+) {
+  const parts =
+    String(
+      bridgeKey || ""
+    )
+      .split("|");
+
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  return {
+    positionAKey:
+      parts[0],
+
+    positionBKey:
+      parts[1],
+
+    direction:
+      parts[2]
+  };
+}
+
+
+/*
+Đọc TẤT CẢ bridge đã HIT ở ngày liền trước.
+
+Ví dụ:
+- 30/07 HIT 08
+  => 31/07 tiếp tục đúng vị trí bridge tạo 08.
+
+- 31/07 HIT 35, 24, 05, 54
+  => 01/08 tiếp tục cả 4 vị trí bridge tương ứng.
+*/
+async function getPreviousHitEvidence(
+  db,
+  predictionDate
+) {
+  const previousDate =
+    addDaysISO(
+      predictionDate,
+      -1
+    );
+
+  if (!previousDate) {
+    return {
+      date: null,
+      hits: []
+    };
+  }
+
+  try {
+    const response =
+      await db
+        .prepare(`
+          SELECT
+            bridge_key,
+            bridge,
+            number,
+            reverse_number,
+            pair_key,
+            hit_number,
+            base_rank,
+            score,
+            strength
+
+          FROM prediction_bridge_evidence
+
+          WHERE prediction_date = ?
+            AND model = ?
+            AND hit = 1
+
+          ORDER BY
+            base_rank ASC,
+            score DESC
+        `)
+        .bind(
+          previousDate,
+          VERSION
+        )
+        .all();
+
+    return {
+      date:
+        previousDate,
+
+      hits:
+        response.results || []
+    };
+  }
+  catch (error) {
+    console.error(
+      "carry evidence:",
+      error
+    );
+
+    return {
+      date:
+        previousDate,
+
+      hits: []
+    };
+  }
+}
+
+
+/*
+Tính số mới trực tiếp từ ĐÚNG VỊ TRÍ bridge đã HIT.
+
+Không yêu cầu bridge hôm nay phải còn streak,
+qualified hoặc nằm trong candidate pool.
+*/
+function buildCarryPriorityRecommendations(
+  latest,
+  positions,
+  evidence
+) {
+  const byKey =
+    new Map(
+      positions.map(
+        position => [
+          position.key,
+          position
+        ]
+      )
+    );
+
+  const priorities = [];
+  const usedBridgeKeys =
+    new Set();
+
+
+  for (
+    const hit of
+    evidence?.hits || []
+  ) {
+    const bridgeKey =
+      hit.bridge_key;
+
+    if (
+      !bridgeKey ||
+      usedBridgeKeys.has(
+        bridgeKey
+      )
+    ) {
+      continue;
+    }
+
+
+    const parsed =
+      parseBridgeKey(
+        bridgeKey
+      );
+
+    if (!parsed) {
+      continue;
+    }
+
+
+    const positionA =
+      byKey.get(
+        parsed.positionAKey
+      );
+
+    const positionB =
+      byKey.get(
+        parsed.positionBKey
+      );
+
+
+    if (
+      !positionA ||
+      !positionB
+    ) {
+      continue;
+    }
+
+
+    const reverse =
+      parsed.direction ===
+      "B+A";
+
+
+    const number =
+      makeNumber(
+        latest,
+        positionA,
+        positionB,
+        reverse
+      );
+
+
+    if (!number) {
+      continue;
+    }
+
+
+    const nameA =
+      positionName(
+        positionA
+      );
+
+    const nameB =
+      positionName(
+        positionB
+      );
+
+
+    const bridge =
+      reverse
+        ? `${nameB} + ${nameA}`
+        : `${nameA} + ${nameB}`;
+
+
+    priorities.push({
+      number,
+
+      streak:
+        1,
+
+      history:
+        [],
+
+      positionA,
+      positionB,
+
+      positionAKey:
+        positionA.key,
+
+      positionBKey:
+        positionB.key,
+
+      positionAName:
+        nameA,
+
+      positionBName:
+        nameB,
+
+      reverse,
+
+      direction:
+        parsed.direction,
+
+      bridge,
+
+      bridgeKey,
+
+      /*
+      Ưu tiên cao hơn cầu thường,
+      nhưng score vẫn chỉ là ranking.
+      */
+      score:
+        100,
+
+      sourceScore:
+        Number(
+          hit.score || 0
+        ),
+
+      strength:
+        "very-strong",
+
+      recentStatus:
+        "carry-hit-priority",
+
+      carryPriority:
+        true,
+
+      previousHitDate:
+        evidence.date,
+
+      previousNumber:
+        normalize2(
+          hit.number
+        ),
+
+      previousReverseNumber:
+        normalize2(
+          hit.reverse_number
+        ),
+
+      previousHitNumber:
+        hit.hit_number ||
+        null,
+
+      carryReason:
+        `Tiếp tục vị trí đã HIT ngày ${evidence.date}`
+    });
+
+
+    usedBridgeKeys.add(
+      bridgeKey
+    );
+  }
+
+
+  return priorities;
+}
+
+
+function mergeCarryWithRecommendations(
+  carryItems,
+  normalItems
+) {
+  const merged = [];
+  const seenBridge =
+    new Set();
+
+
+  for (
+    const item of [
+      ...carryItems,
+      ...normalItems
+    ]
+  ) {
+    const key =
+      item.bridgeKey ||
+      `${item.number}|${item.bridge}`;
+
+    if (
+      seenBridge.has(
+        key
+      )
+    ) {
+      continue;
+    }
+
+    seenBridge.add(
+      key
+    );
+
+    merged.push(
+      item
+    );
+  }
+
+
+  return merged;
+}
+
+
 /* =====================================================
    AB-BA PAIR LAYER V2.6.3
 ===================================================== */
@@ -1901,6 +2276,33 @@ export async function onRequestGet(
     const positions =
       getPositions(
         latest
+      );
+
+
+    /*
+    ====================================================
+    ƯU TIÊN VỊ TRÍ HIT NGÀY TRƯỚC
+    ====================================================
+    */
+
+    const predictionDate =
+      nextDate(
+        latest.draw_date
+      );
+
+
+    const previousHitEvidence =
+      await getPreviousHitEvidence(
+        db,
+        predictionDate
+      );
+
+
+    const carryPriorityRecommendations =
+      buildCarryPriorityRecommendations(
+        latest,
+        positions,
+        previousHitEvidence
       );
 
 
@@ -2674,16 +3076,33 @@ export async function onRequestGet(
     ====================================================
     */
 
+    /*
+    Carry priority đứng trước recommendation thường.
+
+    Nếu ngày trước có nhiều HIT thì giữ TẤT CẢ bridge HIT,
+    không chỉ lấy một bridge.
+    */
+
+    const recommendationsWithCarry =
+      mergeCarryWithRecommendations(
+        carryPriorityRecommendations,
+        recommendations
+      );
+
+
     const pairSuggestions =
       buildABBARecommendations(
-        recommendations,
+        recommendationsWithCarry,
         MAX_RECOMMENDATIONS
       );
 
 
     const candidatePool =
       buildMinimalCandidatePool(
-        active
+        mergeCarryWithRecommendations(
+          carryPriorityRecommendations,
+          active
+        )
       );
 
 
@@ -2705,10 +3124,7 @@ export async function onRequestGet(
       sourceDate:
         latest.draw_date,
 
-      predictionDate:
-        nextDate(
-          latest.draw_date
-        ),
+      predictionDate,
 
       analyzedDraws:
         rows.length,
@@ -2750,6 +3166,45 @@ export async function onRequestGet(
 
       suggestionMode:
         "AB-BA",
+
+      carryPriority: {
+        sourceHitDate:
+          previousHitEvidence.date,
+
+        hitBridgeCount:
+          previousHitEvidence.hits.length,
+
+        promotedCount:
+          carryPriorityRecommendations.length,
+
+        promoted:
+          carryPriorityRecommendations.map(
+            item => ({
+              previousNumber:
+                item.previousNumber,
+
+              previousHitNumber:
+                item.previousHitNumber,
+
+              bridgeKey:
+                item.bridgeKey,
+
+              bridge:
+                item.bridge,
+
+              currentNumber:
+                item.number,
+
+              currentPair:
+                pairDisplay(
+                  item.number,
+                  reverse2(
+                    item.number
+                  )
+                )
+            })
+          )
+      },
 
 
       rule: {
@@ -2883,7 +3338,7 @@ export async function onRequestGet(
 
 
       note:
-        "V2.6.3 AB-BA giữ nguyên engine cầu V2.6.2, gom mỗi số thành cặp đảo AB-BA. Một trong hai số xuất hiện đều tính HIT. PairScore chỉ là điểm xếp hạng, không phải xác suất."
+        "V2.6.4 AB-BA tiếp tục toàn bộ vị trí bridge đã HIT ở ngày liền trước. Nếu nhiều cặp HIT, tất cả vị trí HIT đều được đưa vào nhóm ưu tiên kỳ kế tiếp. AB hoặc BA xuất hiện đều tính HIT."
     });
 
 
