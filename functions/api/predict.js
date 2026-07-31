@@ -34,7 +34,7 @@ Pipeline:
 
 
 const VERSION =
-  "bridge-v2.6.4-abba-carry-all-hits";
+  "bridge-v2.7-abba-carry";
 
 
 const PRIZES = [
@@ -1288,7 +1288,10 @@ function classifyStrength(
 
 
 /* =====================================================
-   CARRY TẤT CẢ VỊ TRÍ ĐÃ HIT - V2.6.4
+   CARRY TẤT CẢ VỊ TRÍ ĐÃ HIT - V2.7
+
+Predict không ghi DB. Endpoint chỉ đọc evidence đã được save-prediction chấm,
+sau đó tái tính đúng bridgeKey trên kết quả mới nhất.
 ===================================================== */
 
 function addDaysISO(
@@ -1662,7 +1665,7 @@ function mergeCarryWithRecommendations(
 
 
 /* =====================================================
-   AB-BA PAIR LAYER V2.6.3
+   AB-BA PAIR LAYER V2.7
 ===================================================== */
 
 function normalize2(value) {
@@ -2091,6 +2094,21 @@ function buildMinimalCandidatePool(
 export async function onRequestGet(
   context
 ) {
+  const db =
+    context.env.DB;
+
+  if (!db) {
+    return Response.json(
+      {
+        success: false,
+        module: "bridge-predict",
+        version: VERSION,
+        message: "Không tìm thấy D1 binding DB"
+      },
+      { status: 500 }
+    );
+  }
+
   try {
     const DB =
       context.env.DB;
@@ -3338,7 +3356,7 @@ export async function onRequestGet(
 
 
       note:
-        "V2.6.4 AB-BA tiếp tục toàn bộ vị trí bridge đã HIT ở ngày liền trước. Nếu nhiều cặp HIT, tất cả vị trí HIT đều được đưa vào nhóm ưu tiên kỳ kế tiếp. AB hoặc BA xuất hiện đều tính HIT."
+        "V2.7 AB-BA tiếp tục toàn bộ vị trí bridge đã HIT ở ngày liền trước. Nếu nhiều cặp HIT, tất cả vị trí HIT đều được đưa vào nhóm ưu tiên kỳ kế tiếp. AB hoặc BA xuất hiện đều tính HIT."
     });
 
 

@@ -2,7 +2,7 @@
 ========================================================
 XSMB LIVE VALIDATION READ API
 /api/live-validation
-V2.6.3 AB-BA
+V2.7 AB-BA
 ========================================================
 
 READ ONLY.
@@ -16,13 +16,13 @@ Hiển thị:
 */
 
 const BASE_MODEL =
-  "bridge-v2.6.4-abba-carry-all-hits";
+  "bridge-v2.7-abba-carry";
 
 const CARRY_MODEL =
-  "bridge-v2.6.4-abba-live-priority-v1";
+  "bridge-v2.7-abba-live-priority-v1";
 
 const VERSION =
-  "live-validation-abba-all-hits-v1";
+  "live-validation-abba-v2.7";
 
 
 function json(

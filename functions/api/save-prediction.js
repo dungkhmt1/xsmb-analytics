@@ -1,6 +1,6 @@
 // ============================================================
 // functions/api/save-prediction.js
-// XSMB Analytics V2.6.3 AB-BA
+// XSMB Analytics V2.7 AB-BA
 //
 // Mục tiêu:
 // - Lưu dàn AB-BA trước khi có kết quả.
@@ -10,16 +10,16 @@
 // ============================================================
 
 const BASE_MODEL =
-  "bridge-v2.6.4-abba-carry-all-hits";
+  "bridge-v2.7-abba-carry";
 
 const PRIORITY_MODEL =
-  "bridge-v2.6.4-abba-live-priority-v1";
+  "bridge-v2.7-abba-live-priority-v1";
 
 const MODULE =
-  "v2.6.4-abba-live-validation";
+  "v2.7-abba-live-validation";
 
 const VERSION =
-  "abba-live-priority-all-hits-v1";
+  "abba-live-priority-v2.7";
 
 
 function json(data, status = 200) {
@@ -1825,6 +1825,8 @@ export async function onRequestGet(
       previousDayEvidence,
 
       basePrediction,
+
+      carryAllHitPositions: true,
 
       prioritySuggestions: {
         count:
