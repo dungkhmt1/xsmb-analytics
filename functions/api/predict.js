@@ -34,7 +34,7 @@ Pipeline:
 
 
 const VERSION =
-  "bridge-v2.7-abba-carry";
+  "bridge-v2.7.1-abba-auto-tracking";
 
 
 const PRIZES = [
@@ -2141,6 +2141,47 @@ export async function onRequestGet(
       );
 
 
+    /*
+    ====================================================
+    WALK-FORWARD AS-OF DATE
+
+    /api/predict?asOf=2026-08-01
+
+    Chỉ dùng kết quả <= asOf.
+    Nhờ vậy tracking-sync có thể backfill lịch sử
+    mà không nhìn thấy dữ liệu tương lai.
+    ====================================================
+    */
+
+    const asOf =
+      url.searchParams.get(
+        "asOf"
+      );
+
+
+    if (
+      asOf &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(
+        asOf
+      )
+    ) {
+      return Response.json(
+        {
+          success: false,
+          module:
+            "bridge-predict",
+          version:
+            VERSION,
+          message:
+            "asOf phải có định dạng YYYY-MM-DD"
+        },
+        {
+          status: 400
+        }
+      );
+    }
+
+
     const historyDraws =
       clamp(
         Number(
@@ -2216,29 +2257,58 @@ export async function onRequestGet(
     */
 
     const query =
-      await DB
-        .prepare(`
-          SELECT
-            draw_date,
-            special,
-            g1,
-            g2,
-            g3,
-            g4,
-            g5,
-            g6,
-            g7
+      asOf
+        ?
+        await DB
+          .prepare(`
+            SELECT
+              draw_date,
+              special,
+              g1,
+              g2,
+              g3,
+              g4,
+              g5,
+              g6,
+              g7
 
-          FROM results
+            FROM results
 
-          ORDER BY draw_date DESC
+            WHERE draw_date <= ?
 
-          LIMIT ?
-        `)
-        .bind(
-          historyDraws
-        )
-        .all();
+            ORDER BY draw_date DESC
+
+            LIMIT ?
+          `)
+          .bind(
+            asOf,
+            historyDraws
+          )
+          .all()
+        :
+        await DB
+          .prepare(`
+            SELECT
+              draw_date,
+              special,
+              g1,
+              g2,
+              g3,
+              g4,
+              g5,
+              g6,
+              g7
+
+            FROM results
+
+            ORDER BY draw_date DESC
+
+            LIMIT ?
+          `)
+          .bind(
+            historyDraws
+          )
+          .all();
 
 
     const rows =
@@ -3184,6 +3254,17 @@ export async function onRequestGet(
 
       suggestionMode:
         "AB-BA",
+
+      walkForward: {
+        asOf:
+          asOf || latest.draw_date,
+
+        latestUsedDate:
+          latest.draw_date,
+
+        futureDataUsed:
+          false
+      },
 
       carryPriority: {
         sourceHitDate:

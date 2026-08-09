@@ -103,38 +103,21 @@ async function apiFetch(
 
 async function loadDashboard() {
   setSystemStatus(
-    "Đang cập nhật các vị trí đã HIT...",
+    "Đang kết nối dữ liệu...",
     ""
   );
 
 
   /*
-  1. Sync trước:
-     - chấm prediction cũ;
-     - ghi tất cả pair HIT;
-     - tạo carry cho tất cả vị trí HIT.
+  V2.7.1:
+  Homepage chỉ READ.
 
-  save-prediction tự gọi /api/predict bên trong,
-  nhưng chạy evaluate TRƯỚC khi gọi predict.
-  */
-  try {
-    await apiFetch(
-      "/api/save-prediction",
-      {},
-      30000
-    );
-  }
-  catch (error) {
-    console.error(
-      "Live Sync:",
-      error
-    );
-  }
+  Việc lưu/chấm prediction nhiều ngày do:
+  /api/update
+        ↓
+  /api/tracking-sync
 
-
-  /*
-  2. Sau sync mới đọc prediction để giao diện nhận
-     đầy đủ nhóm ưu tiên từ các HIT ngày trước.
+  Không còn phụ thuộc người dùng mở website.
   */
   const [
     latestResult,
@@ -226,24 +209,13 @@ async function loadDashboard() {
       totalDraws
     );
 
-    const carryCount =
-      Number(
-        data.carryPriority
-          ?.promotedCount || 0
-      );
-
     setSystemStatus(
       `D1 ${totalDraws} kỳ • ` +
-      `${data.version || "bridge-v2.7"} • ` +
+      `${data.version || "bridge-v2.7.1"} • ` +
       `${Math.min(
         5,
         data.suggestions?.length || 0
-      )} cặp AB-BA` +
-      (
-        carryCount
-          ? ` • ${carryCount} vị trí HIT ưu tiên`
-          : ""
-      ),
+      )} cặp AB-BA`,
       "success"
     );
   }

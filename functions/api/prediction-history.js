@@ -2,7 +2,7 @@
 ========================================================
 XSMB AB-BA PREDICTION HISTORY API
 /api/prediction-history
-V2.6.3
+V2.7
 ========================================================
 
 Theo dõi TOÀN BỘ cặp AB-BA đã gợi ý.
@@ -15,10 +15,10 @@ Quy ước:
 */
 
 const MODEL =
-  "bridge-v2.6.3-abba";
+  "bridge-v2.7.1-abba-auto-tracking";
 
 const VERSION =
-  "prediction-history-abba-v1";
+  "prediction-history-abba-v2.7";
 
 
 function json(data, status = 200) {

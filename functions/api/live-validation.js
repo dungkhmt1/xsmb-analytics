@@ -16,7 +16,7 @@ Hiển thị:
 */
 
 const BASE_MODEL =
-  "bridge-v2.7-abba-carry";
+  "bridge-v2.7.1-abba-auto-tracking";
 
 const CARRY_MODEL =
   "bridge-v2.7-abba-live-priority-v1";

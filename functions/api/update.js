@@ -1,4 +1,7 @@
-function extractPrize(html, prize) {
+function extractPrize(
+  html,
+  prize
+) {
   const pattern =
     new RegExp(
       `<span[^>]*id=(?:"|')?mb_prize${prize}_item\\d+(?:"|')?[^>]*>([^<]*)<\\/span>`,
@@ -6,15 +9,29 @@ function extractPrize(html, prize) {
     );
 
   const values = [];
+
   let match;
 
-  while ((match = pattern.exec(html)) !== null) {
-    const value = match[1]
-      .replace(/<[^>]*>/g, "")
-      .trim();
+  while (
+    (
+      match =
+        pattern.exec(html)
+    ) !== null
+  ) {
+    const value =
+      String(
+        match[1] || ""
+      )
+        .replace(
+          /<[^>]*>/g,
+          ""
+        )
+        .trim();
 
     if (value) {
-      values.push(value);
+      values.push(
+        value
+      );
     }
   }
 
@@ -22,69 +39,233 @@ function extractPrize(html, prize) {
 }
 
 
-function getLastTwoDigits(value) {
+function getLastTwoDigits(
+  value
+) {
   return String(value)
     .trim()
     .slice(-2)
-    .padStart(2, "0");
+    .padStart(
+      2,
+      "0"
+    );
 }
 
 
-function formatDateForUrl(date) {
-  // Input: 2026-07-20
-  // Output: 20-07-2026
+function formatDateForUrl(
+  date
+) {
+  const parts =
+    String(date)
+      .split("-");
 
-  const parts = date.split("-");
-
-  if (parts.length !== 3) {
+  if (
+    parts.length !== 3
+  ) {
     throw new Error(
       "Ngày phải có định dạng YYYY-MM-DD"
     );
   }
 
-  return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  return (
+    `${parts[2]}-` +
+    `${parts[1]}-` +
+    `${parts[0]}`
+  );
 }
 
 
-export async function onRequestGet(context) {
+function vietnamToday() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Asia/Ho_Chi_Minh",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit"
+      }
+    )
+      .formatToParts(
+        new Date()
+      );
+
+  const map =
+    Object.fromEntries(
+      parts.map(
+        item => [
+          item.type,
+          item.value
+        ]
+      )
+    );
+
+  return (
+    `${map.year}-` +
+    `${map.month}-` +
+    `${map.day}`
+  );
+}
+
+
+function isValidNumber(
+  value,
+  length
+) {
+  const text =
+    String(value)
+      .trim();
+
+  return (
+    new RegExp(
+      `^\\d{${length}}$`
+    )
+  )
+    .test(text);
+}
+
+
+async function runTrackingSync(
+  request,
+  drawDate
+) {
+  const origin =
+    new URL(
+      request.url
+    ).origin;
+
+  const syncUrl =
+    `${origin}/api/tracking-sync` +
+    `?through=${encodeURIComponent(drawDate)}` +
+    `&maxDays=14` +
+    `&t=${Date.now()}`;
+
 
   try {
+    const response =
+      await fetch(
+        syncUrl,
+        {
+          headers: {
+            Accept:
+              "application/json"
+          }
+        }
+      );
 
-    /*
-      Cách dùng:
+    const text =
+      await response.text();
 
-      /api/update?date=2026-07-20
+    let payload = null;
 
-      Nếu không truyền date,
-      mặc định dùng ngày hiện tại theo UTC.
-    */
+    try {
+      payload =
+        JSON.parse(text);
+    }
+    catch {
+      payload = {
+        success:
+          false,
 
-    const url = new URL(context.request.url);
+        message:
+          `tracking-sync không trả JSON. HTTP ${response.status}`
+      };
+    }
 
-    let drawDate = url.searchParams.get("date");
+    return {
+      ok:
+        response.ok &&
+        payload?.success !== false,
+
+      status:
+        response.status,
+
+      payload
+    };
+  }
+  catch (error) {
+    return {
+      ok:
+        false,
+
+      status:
+        null,
+
+      payload: {
+        success:
+          false,
+
+        message:
+          error.message
+      }
+    };
+  }
+}
+
+
+export async function onRequestGet(
+  context
+) {
+  try {
+    const url =
+      new URL(
+        context.request.url
+      );
+
+
+    let drawDate =
+      url.searchParams.get(
+        "date"
+      );
 
 
     if (!drawDate) {
-
-      const now = new Date();
-
+      /*
+      Dùng ngày Việt Nam,
+      không dùng UTC như bản cũ.
+      */
       drawDate =
-        now.toISOString().slice(0, 10);
+        vietnamToday();
+    }
 
+
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(
+        drawDate
+      )
+    ) {
+      return Response.json(
+        {
+          success:
+            false,
+
+          message:
+            "date phải có định dạng YYYY-MM-DD"
+        },
+        {
+          status:
+            400
+        }
+      );
     }
 
 
     const formattedDate =
-      formatDateForUrl(drawDate);
+      formatDateForUrl(
+        drawDate
+      );
 
 
     const SOURCE_URL =
       `https://xoso.com.vn/xsmb-${formattedDate}.html`;
 
-
-    /*
-      Tải HTML
-    */
 
     const response =
       await fetch(
@@ -99,20 +280,25 @@ export async function onRequestGet(context) {
 
 
     if (!response.ok) {
-
       return Response.json(
         {
-          success: false,
+          success:
+            false,
+
           message:
             "Không tải được website nguồn",
-          status: response.status,
-          source: SOURCE_URL
+
+          status:
+            response.status,
+
+          source:
+            SOURCE_URL
         },
         {
-          status: 500
+          status:
+            500
         }
       );
-
     }
 
 
@@ -120,16 +306,11 @@ export async function onRequestGet(context) {
       await response.text();
 
 
-    /*
-      Lấy từng giải
-    */
-
     const special =
       extractPrize(
         html,
         "DB"
       );
-
 
     const g1 =
       extractPrize(
@@ -137,13 +318,11 @@ export async function onRequestGet(context) {
         "1"
       );
 
-
     const g2 =
       extractPrize(
         html,
         "2"
       );
-
 
     const g3 =
       extractPrize(
@@ -151,13 +330,11 @@ export async function onRequestGet(context) {
         "3"
       );
 
-
     const g4 =
       extractPrize(
         html,
         "4"
       );
-
 
     const g5 =
       extractPrize(
@@ -165,13 +342,11 @@ export async function onRequestGet(context) {
         "5"
       );
 
-
     const g6 =
       extractPrize(
         html,
         "6"
       );
-
 
     const g7 =
       extractPrize(
@@ -180,42 +355,78 @@ export async function onRequestGet(context) {
       );
 
 
-    /*
-      Kiểm tra cấu trúc chuẩn XSMB
-    */
+    const valid =
+      special.length === 1 &&
+      special.every(
+        x =>
+          isValidNumber(
+            x,
+            5
+          )
+      ) &&
 
-function isValidNumber(value, length) {
-  const text = String(value).trim();
+      g1.length === 1 &&
+      g1.every(
+        x =>
+          isValidNumber(
+            x,
+            5
+          )
+      ) &&
 
-  return (
-    new RegExp(`^\\d{${length}}$`)
-  ).test(text);
-}
+      g2.length === 2 &&
+      g2.every(
+        x =>
+          isValidNumber(
+            x,
+            5
+          )
+      ) &&
 
-const valid =
-  special.length === 1 &&
-  special.every(x => isValidNumber(x, 5)) &&
+      g3.length === 6 &&
+      g3.every(
+        x =>
+          isValidNumber(
+            x,
+            5
+          )
+      ) &&
 
-  g1.length === 1 &&
-  g1.every(x => isValidNumber(x, 5)) &&
+      g4.length === 4 &&
+      g4.every(
+        x =>
+          isValidNumber(
+            x,
+            4
+          )
+      ) &&
 
-  g2.length === 2 &&
-  g2.every(x => isValidNumber(x, 5)) &&
+      g5.length === 6 &&
+      g5.every(
+        x =>
+          isValidNumber(
+            x,
+            4
+          )
+      ) &&
 
-  g3.length === 6 &&
-  g3.every(x => isValidNumber(x, 5)) &&
+      g6.length === 3 &&
+      g6.every(
+        x =>
+          isValidNumber(
+            x,
+            3
+          )
+      ) &&
 
-  g4.length === 4 &&
-  g4.every(x => isValidNumber(x, 4)) &&
-
-  g5.length === 6 &&
-  g5.every(x => isValidNumber(x, 4)) &&
-
-  g6.length === 3 &&
-  g6.every(x => isValidNumber(x, 3)) &&
-
-  g7.length === 4 &&
-  g7.every(x => isValidNumber(x, 2));
+      g7.length === 4 &&
+      g7.every(
+        x =>
+          isValidNumber(
+            x,
+            2
+          )
+      );
 
 
     const totalNumbers =
@@ -230,11 +441,10 @@ const valid =
 
 
     if (!valid) {
-
       return Response.json(
         {
-
-          success: false,
+          success:
+            false,
 
           message:
             "Dữ liệu không đầy đủ hoặc cấu trúc website đã thay đổi",
@@ -245,7 +455,6 @@ const valid =
           totalNumbers,
 
           found: {
-
             DB:
               special.length,
 
@@ -269,33 +478,42 @@ const valid =
 
             G7:
               g7.length
-
           }
-
         },
         {
-          status: 400
+          status:
+            400
         }
       );
-
     }
 
-
-    /*
-      Kết nối database
-    */
 
     const db =
       context.env.DB;
 
 
-    /*
-      Lưu kết quả chính
-    */
+    if (!db) {
+      return Response.json(
+        {
+          success:
+            false,
 
+          message:
+            "Không tìm thấy D1 binding DB"
+        },
+        {
+          status:
+            500
+        }
+      );
+    }
+
+
+    /*
+    Lưu results trước.
+    */
     await db
-      .prepare(
-        `
+      .prepare(`
         INSERT INTO results (
           draw_date,
           special,
@@ -315,7 +533,6 @@ const valid =
         ON CONFLICT(draw_date)
 
         DO UPDATE SET
-
           special =
             excluded.special,
 
@@ -339,112 +556,66 @@ const valid =
 
           g7 =
             excluded.g7
-        `
-      )
-
+      `)
       .bind(
-
         drawDate,
-
         special[0],
-
         g1[0],
-
         g2.join(" "),
-
         g3.join(" "),
-
         g4.join(" "),
-
         g5.join(" "),
-
         g6.join(" "),
-
         g7.join(" ")
-
       )
-
       .run();
 
 
-    /*
-      Gom toàn bộ 27 số
-    */
-
     const allNumbers = [
-
       ...special,
-
       ...g1,
-
       ...g2,
-
       ...g3,
-
       ...g4,
-
       ...g5,
-
       ...g6,
-
       ...g7
-
     ];
 
-
-    /*
-      Tách loto 2 số cuối
-    */
 
     const lotoCount = {};
 
 
     for (
-      const number
-      of allNumbers
+      const number of
+      allNumbers
     ) {
-
       const loto =
         getLastTwoDigits(
           number
         );
 
-
       lotoCount[loto] =
         (
-          lotoCount[loto]
-          || 0
+          lotoCount[loto] ||
+          0
         )
-        + 1;
-
+        +
+        1;
     }
 
 
-    /*
-      Xóa dữ liệu loto cũ
-      của ngày này nếu cập nhật lại
-    */
-
     await db
-
-      .prepare(
-        `
+      .prepare(`
         DELETE
         FROM loto
         WHERE draw_date = ?
-        `
-      )
-
+      `)
       .bind(
         drawDate
       )
-
       .run();
 
-
-    /*
-      Lưu loto
-    */
 
     for (
       const [
@@ -456,11 +627,8 @@ const valid =
         lotoCount
       )
     ) {
-
       await db
-
-        .prepare(
-          `
+        .prepare(`
           INSERT INTO loto (
             draw_date,
             number,
@@ -470,27 +638,39 @@ const valid =
           VALUES (
             ?, ?, ?
           )
-          `
-        )
-
+        `)
         .bind(
           drawDate,
           number,
           count
         )
-
         .run();
-
     }
 
 
     /*
-      Trả kết quả
+    ====================================================
+    AUTO TRACKING
+
+    Chỉ chạy SAU KHI:
+    - results đã lưu xong
+    - loto đã lưu xong
+
+    Nếu tracking lỗi, kết quả xổ số vẫn được coi là
+    đã import thành công. Response sẽ báo riêng lỗi tracking.
+    ====================================================
     */
 
-    return Response.json({
+    const trackingSync =
+      await runTrackingSync(
+        context.request,
+        drawDate
+      );
 
-      success: true,
+
+    return Response.json({
+      success:
+        true,
 
       message:
         "Cập nhật XSMB thành công",
@@ -505,50 +685,37 @@ const valid =
         allNumbers.length,
 
       results: {
-
         special:
           special[0],
 
         g1,
-
         g2,
-
         g3,
-
         g4,
-
         g5,
-
         g6,
-
         g7
-
       },
 
       loto:
-        lotoCount
+        lotoCount,
 
+      trackingSync
     });
-
-
   }
-
   catch (error) {
-
     return Response.json(
       {
-
-        success: false,
+        success:
+          false,
 
         message:
           error.message
-
       },
       {
-        status: 500
+        status:
+          500
       }
     );
-
   }
-
 }
