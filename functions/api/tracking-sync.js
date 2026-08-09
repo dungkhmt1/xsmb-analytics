@@ -3,7 +3,7 @@
 XSMB TRACKING SYNC
 /api/tracking-sync
 
-V2.7.3 RECOVERY
+V2.7.3.2 CHUNKED RECOVERY
 
 Mục tiêu:
 - Backfill tuần tự theo strict walk-forward.
@@ -19,7 +19,7 @@ const MODEL =
   "bridge-v2.7.1-abba-auto-tracking";
 
 const VERSION =
-  "tracking-sync-v2.7.3.1-recovery";
+  "tracking-sync-v2.7.3.2-chunked";
 
 
 function json(data, status = 200) {
@@ -1253,9 +1253,19 @@ export async function onRequestGet(
     }
 
 
+    /*
+    Cloudflare Pages Functions có giới hạn CPU.
+    Predict là endpoint nặng, vì vậy recovery phải chia nhỏ.
+
+    - maxSaves: số prediction thực sự được tạo trong 1 request.
+    - maxScans: tổng số sourceDate được duyệt trong 1 request,
+      kể cả NO_SIGNAL / EXISTING.
+
+    Mặc định chỉ xử lý 1 prediction và tối đa 3 ngày.
+    */
     const maxSaves =
       Math.min(
-        60,
+        3,
         Math.max(
           1,
           Number.parseInt(
@@ -1267,11 +1277,30 @@ export async function onRequestGet(
               "maxDays"
             )
             ||
-            "20",
+            "1",
             10
           )
           ||
-          20
+          1
+        )
+      );
+
+
+    const maxScans =
+      Math.min(
+        5,
+        Math.max(
+          1,
+          Number.parseInt(
+            url.searchParams.get(
+              "maxScans"
+            )
+            ||
+            "3",
+            10
+          )
+          ||
+          3
         )
       );
 
@@ -1326,6 +1355,9 @@ export async function onRequestGet(
     let alreadyResolvedCount = 0;
     let scannedCount = 0;
 
+    let lastScannedSourceDate =
+      null;
+
 
     /*
     Strict walk-forward theo thứ tự thời gian.
@@ -1336,6 +1368,17 @@ export async function onRequestGet(
       const sourceDate of
       sourceDates
     ) {
+      /*
+      Chia recovery thành các chunk rất nhỏ để tránh Error 1102.
+      */
+      if (
+        scannedCount >=
+        maxScans
+      ) {
+        break;
+      }
+
+
       const predictionDate =
         addDays(
           sourceDate,
@@ -1349,6 +1392,9 @@ export async function onRequestGet(
 
 
       scannedCount++;
+
+      lastScannedSourceDate =
+        sourceDate;
 
 
       /*
@@ -1593,6 +1639,10 @@ export async function onRequestGet(
 
       alreadyResolvedCount,
 
+      maxSaves,
+
+      maxScans,
+
       processed:
         actions.length,
 
@@ -1604,10 +1654,28 @@ export async function onRequestGet(
         latest ||
         null,
 
+      /*
+      nextFrom dùng chính sourceDate cuối vừa scan.
+      Lần gọi tiếp theo endpoint sẽ tự bỏ qua record đã resolved
+      rồi tiến sang ngày kế tiếp.
+      */
+      nextFrom:
+        lastScannedSourceDate,
+
+      hasMore:
+        Boolean(
+          lastScannedSourceDate &&
+          lastScannedSourceDate <
+          effectiveThrough
+        ),
+
       remainingNote:
-        savedCount >= maxSaves
-          ? `Đã đạt maxSaves=${maxSaves}. Gọi lại tracking-sync để tiếp tục nếu còn ngày cần lưu.`
-          : "Đã scan hết phạm vi recovery. Ngày NO_SIGNAL đã được đánh dấu và sẽ không chặn các ngày sau."
+        (
+          scannedCount >= maxScans ||
+          savedCount >= maxSaves
+        )
+          ? "Đã hoàn thành một chunk nhỏ để tránh Error 1102. Gọi lại endpoint với nextFrom để tiếp tục."
+          : "Đã scan hết phạm vi recovery hiện tại."
     });
   }
   catch (error) {

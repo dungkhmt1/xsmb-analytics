@@ -141,10 +141,15 @@ async function runTrackingSync(
       request.url
     ).origin;
 
+  /*
+  Chỉ sync một chunk nhỏ sau mỗi lần update.
+  Nếu có backlog lớn, chạy tracking-sync thủ công nhiều lần.
+  Việc này tránh Worker vượt CPU và phát sinh Error 1102.
+  */
   const syncUrl =
     `${origin}/api/tracking-sync` +
     `?through=${encodeURIComponent(drawDate)}` +
-    `&maxDays=14` +
+    `&maxSaves=1&maxScans=2` +
     `&t=${Date.now()}`;
 
 
