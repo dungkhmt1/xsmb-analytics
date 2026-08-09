@@ -22,7 +22,7 @@ const CARRY_MODEL =
   "bridge-v2.7-abba-live-priority-v1";
 
 const VERSION =
-  "live-validation-abba-v2.7";
+  "live-validation-abba-v2.7.2-full-history";
 
 
 function json(
@@ -449,6 +449,386 @@ async function getRecentBase(
 }
 
 
+
+/*
+========================================================
+FULL BRIDGE HISTORY
+========================================================
+
+Trả toàn bộ lịch sử đã được chấm của một bridgeKey
+trong model AB-BA hiện tại.
+
+Mỗi record gồm:
+- ngày prediction
+- cặp AB-BA của bridge trong ngày đó
+- HIT / MISS
+- số thực tế HIT
+- điểm / strength
+
+Sau đó getCurrentCarry() sẽ append kỳ hiện tại
+nếu kỳ đó chưa nằm trong evidence.
+========================================================
+*/
+
+async function getFullBridgeHistory(
+  db,
+  bridgeKey
+) {
+  if (!bridgeKey) {
+    return [];
+  }
+
+
+  const response =
+    await db
+      .prepare(`
+        SELECT
+          prediction_date,
+          source_date,
+          bridge_key,
+          bridge,
+          number,
+          reverse_number,
+          pair_key,
+          pair_json,
+          base_rank,
+          hit,
+          hit_number,
+          hit_count,
+          score,
+          strength,
+          created_at
+
+        FROM prediction_bridge_evidence
+
+        WHERE bridge_key = ?
+          AND model = ?
+
+        ORDER BY
+          prediction_date ASC,
+          base_rank ASC,
+          score DESC
+      `)
+      .bind(
+        bridgeKey,
+        BASE_MODEL
+      )
+      .all();
+
+
+  const rows =
+    response.results || [];
+
+
+  /*
+  Một bridgeKey chỉ cần một record/ngày.
+  Nếu do dữ liệu cũ có record trùng, giữ record rank tốt hơn.
+  */
+  const byDate =
+    new Map();
+
+
+  for (const row of rows) {
+    const pair =
+      pairNumbers(
+        row.number,
+        row.reverse_number,
+        row.pair_json
+      );
+
+
+    if (!pair.length) {
+      continue;
+    }
+
+
+    const historyRow = {
+      date:
+        row.prediction_date,
+
+      sourceDate:
+        row.source_date,
+
+      pairNumbers:
+        pair,
+
+      pair:
+        pairText(
+          pair
+        ),
+
+      number:
+        pairText(
+          pair
+        ),
+
+      bridgeKey:
+        row.bridge_key,
+
+      bridge:
+        row.bridge,
+
+      rank:
+        Number(
+          row.base_rank || 0
+        )
+        ||
+        null,
+
+      score:
+        Number(
+          row.score || 0
+        ),
+
+      strength:
+        row.strength ||
+        null,
+
+      hit:
+        Boolean(
+          Number(
+            row.hit || 0
+          )
+        ),
+
+      hitNumber:
+        row.hit_number ||
+        null,
+
+      hitCount:
+        Number(
+          row.hit_count || 0
+        ),
+
+      status:
+        Boolean(
+          Number(
+            row.hit || 0
+          )
+        )
+          ? "hit"
+          : "miss",
+
+      createdAt:
+        row.created_at
+    };
+
+
+    const existing =
+      byDate.get(
+        row.prediction_date
+      );
+
+
+    if (
+      !existing ||
+      (
+        historyRow.rank !== null &&
+        (
+          existing.rank === null ||
+          historyRow.rank <
+          existing.rank
+        )
+      )
+    ) {
+      byDate.set(
+        row.prediction_date,
+        historyRow
+      );
+    }
+  }
+
+
+  return [
+    ...byDate.values()
+  ]
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        String(a.date)
+          .localeCompare(
+            String(b.date)
+          )
+    );
+}
+
+
+function appendCurrentHistoryRow(
+  history,
+  row,
+  currentPair,
+  evaluated,
+  hit
+) {
+  const output =
+    Array.isArray(history)
+      ? [...history]
+      : [];
+
+
+  const exists =
+    output.some(
+      item =>
+        item.date ===
+        row.prediction_date
+    );
+
+
+  if (!exists) {
+    output.push({
+      date:
+        row.prediction_date,
+
+      sourceDate:
+        row.source_date,
+
+      pairNumbers:
+        currentPair,
+
+      pair:
+        pairText(
+          currentPair
+        ),
+
+      number:
+        pairText(
+          currentPair
+        ),
+
+      bridgeKey:
+        row.bridge_key,
+
+      bridge:
+        row.bridge,
+
+      rank:
+        Number(
+          row.current_rank || 0
+        )
+        ||
+        null,
+
+      score:
+        Number(
+          row.current_score || 0
+        ),
+
+      strength:
+        row.current_strength ||
+        null,
+
+      hit:
+        evaluated
+          ? hit
+          : null,
+
+      hitNumber:
+        null,
+
+      hitCount:
+        evaluated && hit
+          ? 1
+          : 0,
+
+      status:
+        !evaluated
+          ? "pending"
+          : hit
+            ? "hit"
+            : "miss",
+
+      createdAt:
+        row.created_at
+    });
+  }
+
+
+  return output
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        String(a.date)
+          .localeCompare(
+            String(b.date)
+          )
+    );
+}
+
+
+function bridgeHistoryStats(
+  history
+) {
+  const rows =
+    Array.isArray(history)
+      ? history
+      : [];
+
+
+  const completed =
+    rows.filter(
+      item =>
+        item.status ===
+        "hit" ||
+        item.status ===
+        "miss"
+    );
+
+
+  const hits =
+    completed.filter(
+      item =>
+        item.status ===
+        "hit"
+    ).length;
+
+
+  const misses =
+    completed.filter(
+      item =>
+        item.status ===
+        "miss"
+    ).length;
+
+
+  const pending =
+    rows.filter(
+      item =>
+        item.status ===
+        "pending"
+    ).length;
+
+
+  return {
+    totalDays:
+      rows.length,
+
+    completed:
+      completed.length,
+
+    hits,
+
+    misses,
+
+    pending,
+
+    hitRate:
+      completed.length
+        ? Number(
+            (
+              hits /
+              completed.length *
+              100
+            ).toFixed(2)
+          )
+        : 0
+  };
+}
+
+
 async function getCurrentCarry(
   db
 ) {
@@ -469,6 +849,7 @@ async function getCurrentCarry(
         CARRY_MODEL
       )
       .first();
+
 
   if (
     !latest?.prediction_date
@@ -518,170 +899,230 @@ async function getCurrentCarry(
     response.results || [];
 
 
+  /*
+  Tải FULL HISTORY cho từng bridge song song.
+  */
   const promoted =
-    rows
-      .filter(
-        row =>
-          row.current_number
-      )
-      .map(
-        (
-          row,
-          index
-        ) => {
-          const previousPair =
-            pairNumbers(
-              row.previous_number,
-              row.previous_reverse_number
-            );
-
-          const currentPair =
-            pairNumbers(
-              row.current_number,
-              row.current_reverse_number
-            );
-
-          const evaluated =
-            Boolean(
-              Number(
-                row.evaluated
-              )
-            );
-
-          const hit =
-            evaluated
-              ? Boolean(
-                  Number(
-                    row.hit
-                  )
-                )
-              : null;
-
-          return {
-            liveRank:
-              Number(
-                row.current_rank
-              )
-              ||
-              index + 1,
-
-            previousNumber:
-              normalizeNumber(
-                row.previous_number
-              ),
-
-            previousReverseNumber:
-              normalizeNumber(
+    await Promise.all(
+      rows
+        .filter(
+          row =>
+            row.current_number
+        )
+        .map(
+          async (
+            row,
+            index
+          ) => {
+            const previousPair =
+              pairNumbers(
+                row.previous_number,
                 row.previous_reverse_number
-              ),
+              );
 
-            previousPairNumbers:
-              previousPair,
 
-            previousPair:
-              pairText(
-                previousPair
-              ),
-
-            previousHitDate:
-              row.previous_prediction_date,
-
-            previousHitNumber:
-              row.previous_hit_number ||
-              null,
-
-            currentNumber:
-              normalizeNumber(
-                row.current_number
-              ),
-
-            currentReverseNumber:
-              normalizeNumber(
+            const currentPair =
+              pairNumbers(
+                row.current_number,
                 row.current_reverse_number
-              ),
+              );
 
-            currentPairNumbers:
-              currentPair,
 
-            currentPair:
-              pairText(
-                currentPair
-              ),
+            const evaluated =
+              Boolean(
+                Number(
+                  row.evaluated
+                )
+              );
 
-            bridgeKey:
-              row.bridge_key,
 
-            bridge:
-              row.bridge,
+            const hit =
+              evaluated
+                ? Boolean(
+                    Number(
+                      row.hit
+                    )
+                  )
+                : null;
 
-            carryStatus:
-              row.carry_status,
 
-            currentBaseQualified:
-              row.carry_status ===
-              "ACTIVE",
+            const fullHistory =
+              await getFullBridgeHistory(
+                db,
+                row.bridge_key
+              );
 
-            currentBaseNumberMatch:
-              row.carry_status ===
-              "ACTIVE",
 
-            previousScore:
-              Number(
-                row.previous_score || 0
-              ),
+            const history =
+              appendCurrentHistoryRow(
+                fullHistory,
+                row,
+                currentPair,
+                evaluated,
+                hit
+              );
 
-            currentScore:
-              Number(
-                row.current_score || 0
-              ),
 
-            hit,
+            const historyStats =
+              bridgeHistoryStats(
+                history
+              );
 
-            status:
-              !evaluated
-                ? "pending"
-                : hit
-                  ? "hit"
-                  : "miss",
 
-            history: [
-              {
-                date:
-                  row.previous_prediction_date,
+            return {
+              liveRank:
+                Number(
+                  row.current_rank
+                )
+                ||
+                index + 1,
 
-                number:
-                  pairText(
-                    previousPair
-                  ),
 
-                status:
-                  "hit",
+              previousNumber:
+                normalizeNumber(
+                  row.previous_number
+                ),
 
-                hitNumber:
-                  row.previous_hit_number ||
-                  null
-              },
 
-              {
-                date:
-                  row.prediction_date,
+              previousReverseNumber:
+                normalizeNumber(
+                  row.previous_reverse_number
+                ),
 
-                number:
-                  pairText(
-                    currentPair
-                  ),
 
-                status:
-                  !evaluated
-                    ? "pending"
-                    : hit
-                      ? "hit"
-                      : "miss"
-              }
-            ]
-          };
-        }
-      );
+              previousPairNumbers:
+                previousPair,
+
+
+              previousPair:
+                pairText(
+                  previousPair
+                ),
+
+
+              previousHitDate:
+                row.previous_prediction_date,
+
+
+              previousHitNumber:
+                row.previous_hit_number ||
+                null,
+
+
+              currentNumber:
+                normalizeNumber(
+                  row.current_number
+                ),
+
+
+              currentReverseNumber:
+                normalizeNumber(
+                  row.current_reverse_number
+                ),
+
+
+              currentPairNumbers:
+                currentPair,
+
+
+              currentPair:
+                pairText(
+                  currentPair
+                ),
+
+
+              bridgeKey:
+                row.bridge_key,
+
+
+              bridge:
+                row.bridge,
+
+
+              carryStatus:
+                row.carry_status,
+
+
+              currentBaseQualified:
+                row.carry_status ===
+                "ACTIVE",
+
+
+              currentBaseNumberMatch:
+                row.carry_status ===
+                "ACTIVE",
+
+
+              previousScore:
+                Number(
+                  row.previous_score || 0
+                ),
+
+
+              currentScore:
+                Number(
+                  row.current_score || 0
+                ),
+
+
+              hit,
+
+
+              status:
+                !evaluated
+                  ? "pending"
+                  : hit
+                    ? "hit"
+                    : "miss",
+
+
+              /*
+              FULL HISTORY:
+              không còn chỉ 2 ngày previous/current.
+              */
+              history,
+
+
+              historyStats,
+
+
+              carryHitStreak:
+                (() => {
+                  let streak = 0;
+
+                  for (
+                    let i =
+                      history.length - 1;
+                    i >= 0;
+                    i--
+                  ) {
+                    const status =
+                      history[i].status;
+
+                    if (
+                      status ===
+                      "pending"
+                    ) {
+                      continue;
+                    }
+
+                    if (
+                      status ===
+                      "hit"
+                    ) {
+                      streak++;
+                      continue;
+                    }
+
+                    break;
+                  }
+
+                  return streak;
+                })()
+            };
+          }
+        )
+    );
 
 
   const allEvaluated =
@@ -701,14 +1142,17 @@ async function getCurrentCarry(
       rows[0]?.source_date ||
       null,
 
+
     predictionDate:
       latest.prediction_date,
+
 
     numbers:
       promoted.map(
         item =>
           item.currentPair
       ),
+
 
     top1:
       promoted
@@ -718,6 +1162,7 @@ async function getCurrentCarry(
             item.currentPair
         ),
 
+
     top3:
       promoted
         .slice(0, 3)
@@ -725,6 +1170,7 @@ async function getCurrentCarry(
           item =>
             item.currentPair
         ),
+
 
     top5:
       promoted
@@ -734,22 +1180,28 @@ async function getCurrentCarry(
             item.currentPair
         ),
 
+
     promotedCount:
       promoted.length,
 
+
     promoted,
+
 
     hasResult:
       allEvaluated,
+
 
     status:
       allEvaluated
         ? "completed"
         : "pending",
 
+
     createdAt:
       rows[0]?.created_at ||
       null,
+
 
     evaluatedAt:
       allEvaluated

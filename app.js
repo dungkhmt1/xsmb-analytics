@@ -529,39 +529,98 @@ function getCarryHistory(
 ) {
   let history = [];
 
+
   if (
-    Array.isArray(item?.history) &&
+    Array.isArray(
+      item?.history
+    ) &&
     item.history.length
   ) {
     history =
       item.history
         .map(
-          row => ({
-            date:
-              row.date ||
-              row.targetDate ||
-              row.predictionDate ||
-              null,
-
-            sourceDate:
-              row.sourceDate ||
-              null,
-
-            number:
-              normalizeDisplayNumber(
-                row.number
-              ),
-
-            status:
-              row.status ||
+          row => {
+            const rawPair =
+              row.pair ||
               (
-                row.hit === true
-                  ? "hit"
-                  : row.hit === false
-                    ? "miss"
-                    : "pending"
-              )
-          })
+                Array.isArray(
+                  row.pairNumbers
+                )
+                  ? row.pairNumbers.join(
+                      " - "
+                    )
+                  : row.number
+              );
+
+
+            return {
+              date:
+                row.date ||
+                row.targetDate ||
+                row.predictionDate ||
+                null,
+
+              sourceDate:
+                row.sourceDate ||
+                null,
+
+              /*
+              Không dùng normalizeDisplayNumber() cho pair
+              vì "35-53" sẽ bị phá thành một số đơn.
+              */
+              number:
+                rawPair
+                  ? String(
+                      rawPair
+                    )
+                      .replace(
+                        "-",
+                        " - "
+                      )
+                  : "--",
+
+              pair:
+                rawPair ||
+                "--",
+
+              bridge:
+                row.bridge ||
+                item?.bridge ||
+                null,
+
+              rank:
+                row.rank ??
+                null,
+
+              score:
+                Number(
+                  row.score || 0
+                ),
+
+              strength:
+                row.strength ||
+                null,
+
+              hitNumber:
+                row.hitNumber ||
+                null,
+
+              hitCount:
+                Number(
+                  row.hitCount || 0
+                ),
+
+              status:
+                row.status ||
+                (
+                  row.hit === true
+                    ? "hit"
+                    : row.hit === false
+                      ? "miss"
+                      : "pending"
+                )
+            };
+          }
         )
         .filter(
           row =>
@@ -571,6 +630,9 @@ function getCarryHistory(
   }
 
 
+  /*
+  Fallback cho dữ liệu cũ chưa có full history.
+  */
   if (!history.length) {
     if (
       item?.previousNumber &&
@@ -587,11 +649,17 @@ function getCarryHistory(
             Array.isArray(
               item.previousPairNumbers
             )
-              ? item.previousPairNumbers.join(" - ")
+              ? item.previousPairNumbers.join(
+                  " - "
+                )
               : normalizeDisplayNumber(
                   item.previousNumber
                 )
           ),
+
+        hitNumber:
+          item.previousHitNumber ||
+          null,
 
         status:
           "hit"
@@ -614,7 +682,9 @@ function getCarryHistory(
             Array.isArray(
               item.currentPairNumbers
             )
-              ? item.currentPairNumbers.join(" - ")
+              ? item.currentPairNumbers.join(
+                  " - "
+                )
               : normalizeDisplayNumber(
                   item.currentNumber
                 )
@@ -628,15 +698,18 @@ function getCarryHistory(
   }
 
 
+  /*
+  Một bridge chỉ hiển thị một dòng/ngày.
+  */
   const map =
     new Map();
 
-  for (const row of history) {
-    const key =
-      `${row.date}|${row.number}`;
 
+  for (const row of history) {
     map.set(
-      key,
+      String(
+        row.date
+      ),
       row
     );
   }
@@ -784,7 +857,9 @@ function renderCarryTransition(
 }
 
 
-function renderCarryFullHistory(history) {
+function renderCarryFullHistory(
+  history
+) {
   if (!history.length) {
     return `
       <div class="live-empty">
@@ -793,48 +868,109 @@ function renderCarryFullHistory(history) {
     `;
   }
 
-  const hitCount =
+
+  const completed =
     history.filter(
+      row => {
+        const status =
+          normalizeCarryStatus(
+            row.status
+          );
+
+        return (
+          status === "hit" ||
+          status === "miss"
+        );
+      }
+    );
+
+
+  const hitCount =
+    completed.filter(
       row =>
         normalizeCarryStatus(
           row.status
         ) === "hit"
     ).length;
 
+
   const missCount =
-    history.filter(
+    completed.filter(
       row =>
         normalizeCarryStatus(
           row.status
         ) === "miss"
     ).length;
 
+
+  const pendingCount =
+    history.filter(
+      row =>
+        normalizeCarryStatus(
+          row.status
+        ) === "pending"
+    ).length;
+
+
+  const hitRate =
+    completed.length
+      ? (
+          hitCount /
+          completed.length *
+          100
+        )
+          .toFixed(1)
+      : "0.0";
+
+
   return `
     <div class="live-history-section">
 
       <div class="live-history-heading">
+
         <div>
           <div class="live-history-title">
             LỊCH SỬ CẦU
           </div>
 
           <div class="live-history-summary">
-            ${history.length} ngày
+
+            ${history.length}
+            ngày
+
             •
+
             <strong>
-              ${hitCount} HIT
+              ${hitCount}
+              HIT
             </strong>
+
+            •
+
+            ${missCount}
+            MISS
+
             ${
-              missCount
-                ? `• ${missCount} MISS`
+              pendingCount
+                ? `• ${pendingCount} CHỜ`
                 : ""
             }
+
+            •
+
+            Tỷ lệ
+            <strong>
+              ${hitRate}%
+            </strong>
+
           </div>
         </div>
+
       </div>
 
 
       <div class="live-history-table">
+
         ${
           history
             .map(
@@ -847,9 +983,54 @@ function renderCarryFullHistory(history) {
                     row.status
                   );
 
+
                 const isLast =
                   index ===
                   history.length - 1;
+
+
+                const hitLabel =
+                  status === "hit" &&
+                  row.hitNumber
+                    ? `
+                      <span
+                        style="
+                          display:block;
+                          font-size:11px;
+                          margin-top:2px;
+                          opacity:.8;
+                        "
+                      >
+                        Về:
+                        ${escapeHtml(
+                          row.hitNumber
+                        )}
+                      </span>
+                    `
+                    : "";
+
+
+                const scoreLabel =
+                  Number(
+                    row.score || 0
+                  ) > 0
+                    ? `
+                      <span
+                        style="
+                          display:block;
+                          font-size:10px;
+                          margin-top:2px;
+                          opacity:.65;
+                        "
+                      >
+                        Điểm:
+                        ${Number(
+                          row.score
+                        ).toFixed(1)}
+                      </span>
+                    `
+                    : "";
+
 
                 return `
                   <div
@@ -863,11 +1044,15 @@ function renderCarryFullHistory(history) {
                       }
                     "
                   >
+
                     <div class="live-history-date">
+
                       ${formatDateShort(
                         row.date
                       )}
+
                     </div>
+
 
                     <div
                       class="
@@ -875,10 +1060,15 @@ function renderCarryFullHistory(history) {
                         ${status}
                       "
                     >
+
                       ${escapeHtml(
                         row.number
                       )}
+
+                      ${hitLabel}
+
                     </div>
+
 
                     <div
                       class="
@@ -886,6 +1076,7 @@ function renderCarryFullHistory(history) {
                         ${status}
                       "
                     >
+
                       <span>
                         ${carryStatusIcon(
                           status
@@ -895,13 +1086,18 @@ function renderCarryFullHistory(history) {
                       ${carryStatusText(
                         status
                       )}
+
+                      ${scoreLabel}
+
                     </div>
+
                   </div>
                 `;
               }
             )
             .join("")
         }
+
       </div>
 
     </div>
