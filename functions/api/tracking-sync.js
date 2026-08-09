@@ -19,7 +19,7 @@ const MODEL =
   "bridge-v2.7.1-abba-auto-tracking";
 
 const VERSION =
-  "tracking-sync-v2.7.3-recovery";
+  "tracking-sync-v2.7.3.1-recovery";
 
 
 function json(data, status = 200) {
@@ -1192,6 +1192,43 @@ export async function onRequestGet(
       từ `through`, tránh bắt đầu từ tháng 1.
     ====================================================
     */
+
+    /*
+    Tải danh sách ngày kết quả trước khi tính phạm vi recovery.
+    V2.7.3 trước bị thiếu dòng này nên phát sinh:
+    ReferenceError: dates is not defined
+    */
+    const dates =
+      await getResultDates(
+        db,
+        through
+      );
+
+
+    if (!dates.length) {
+      return json({
+        success: true,
+
+        module:
+          "tracking-sync",
+
+        version:
+          VERSION,
+
+        message:
+          "Database chưa có kết quả để sync.",
+
+        processed:
+          0,
+
+        savedCount:
+          0,
+
+        noSignalCount:
+          0
+      });
+    }
+
 
     const requestedFrom =
       url.searchParams.get(
