@@ -3,14 +3,15 @@
 XSMB TRACKING SYNC
 /api/tracking-sync
 
-V2.7.1
+V2.7.3 RECOVERY
 
 Mục tiêu:
-- Tự tìm các ngày prediction AB-BA bị thiếu.
 - Backfill tuần tự theo strict walk-forward.
-- Prediction ngày N chỉ dùng dữ liệu <= N-1.
-- Tự chấm HIT/MISS nếu kết quả ngày N đã có.
-- Ghi bridge evidence để carry sang ngày kế tiếp.
+- Ngày NO_SIGNAL được ghi skip, KHÔNG làm dừng chuỗi.
+- Không bắt đầu scan từ tháng 1 khi chưa có tracking.
+- Tự chấm HIT/MISS và ghi bridge evidence.
+- Evidence ngày N có trước khi predict N+1.
+- Hỗ trợ from / through / maxSaves.
 ========================================================
 */
 
@@ -18,7 +19,7 @@ const MODEL =
   "bridge-v2.7.1-abba-auto-tracking";
 
 const VERSION =
-  "tracking-sync-v2.7.1";
+  "tracking-sync-v2.7.3-recovery";
 
 
 function json(data, status = 200) {
@@ -412,6 +413,45 @@ async function ensureSchema(db) {
       )
     `)
     .run();
+
+
+  /*
+  Ghi những ngày thuật toán hợp lệ nhưng không có signal.
+  Nhờ vậy tracking-sync không lặp vô hạn ở cùng ngày.
+  */
+  await db
+    .prepare(`
+      CREATE TABLE IF NOT EXISTS prediction_tracking_skips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        source_date TEXT NOT NULL,
+        prediction_date TEXT NOT NULL,
+
+        model TEXT NOT NULL,
+
+        reason TEXT NOT NULL,
+        details_json TEXT,
+
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+        UNIQUE(
+          prediction_date,
+          model
+        )
+      )
+    `)
+    .run();
+
+
+  await db
+    .prepare(`
+      CREATE INDEX IF NOT EXISTS idx_tracking_skips_model_date
+      ON prediction_tracking_skips(
+        model,
+        prediction_date
+      )
+    `)
+    .run();
 }
 
 
@@ -502,11 +542,24 @@ async function savePrediction(
       ? payload.suggestions
       : [];
 
+
+  /*
+  Không signal KHÔNG phải lỗi.
+  Không tạo prediction giả vì sẽ làm sai HIT/MISS.
+  */
   if (!recommendations.length) {
-    throw new Error(
-      `Prediction ${payload.predictionDate} không có suggestions`
-    );
+    return {
+      saved:
+        false,
+
+      noSignal:
+        true,
+
+      reason:
+        "NO_SIGNAL"
+    };
   }
+
 
   const labels =
     recommendations
@@ -520,6 +573,7 @@ async function savePrediction(
               .join("-")
           )
       );
+
 
   await db
     .prepare(`
@@ -551,6 +605,165 @@ async function savePrediction(
       )
     )
     .run();
+
+
+  return {
+    saved:
+      true,
+
+    noSignal:
+      false,
+
+    count:
+      recommendations.length
+  };
+}
+
+
+async function skipExists(
+  db,
+  predictionDate
+) {
+  const row =
+    await db
+      .prepare(`
+        SELECT id
+        FROM prediction_tracking_skips
+
+        WHERE prediction_date = ?
+          AND model = ?
+
+        LIMIT 1
+      `)
+      .bind(
+        predictionDate,
+        MODEL
+      )
+      .first();
+
+
+  return Boolean(
+    row
+  );
+}
+
+
+async function saveSkip(
+  db,
+  sourceDate,
+  predictionDate,
+  payload
+) {
+  await db
+    .prepare(`
+      INSERT INTO prediction_tracking_skips (
+        source_date,
+        prediction_date,
+        model,
+        reason,
+        details_json
+      )
+
+      VALUES (?, ?, ?, 'NO_SIGNAL', ?)
+
+      ON CONFLICT(
+        prediction_date,
+        model
+      )
+
+      DO UPDATE SET
+        source_date =
+          excluded.source_date,
+
+        reason =
+          excluded.reason,
+
+        details_json =
+          excluded.details_json
+    `)
+    .bind(
+      sourceDate,
+      predictionDate,
+      MODEL,
+      JSON.stringify({
+        version:
+          payload?.version ||
+          null,
+
+        analyzedDraws:
+          payload?.analyzedDraws ||
+          null,
+
+        activeCandidateCount:
+          payload?.activeCandidateCount ||
+          0,
+
+        qualifiedCount:
+          payload?.qualifiedCount ||
+          0,
+
+        recommendationCount:
+          payload?.recommendationCount ||
+          0
+      })
+    )
+    .run();
+}
+
+
+async function getLatestResolvedDate(
+  db
+) {
+  const prediction =
+    await db
+      .prepare(`
+        SELECT prediction_date
+        FROM prediction_live_v262
+
+        WHERE model = ?
+
+        ORDER BY prediction_date DESC
+
+        LIMIT 1
+      `)
+      .bind(
+        MODEL
+      )
+      .first();
+
+
+  const skipped =
+    await db
+      .prepare(`
+        SELECT prediction_date
+        FROM prediction_tracking_skips
+
+        WHERE model = ?
+
+        ORDER BY prediction_date DESC
+
+        LIMIT 1
+      `)
+      .bind(
+        MODEL
+      )
+      .first();
+
+
+  const dates =
+    [
+      prediction?.prediction_date,
+      skipped?.prediction_date
+    ]
+      .filter(Boolean)
+      .sort();
+
+
+  return dates.length
+    ? dates[
+        dates.length - 1
+      ]
+    : null;
 }
 
 
@@ -966,146 +1179,285 @@ export async function onRequestGet(
     }
 
 
-    const maxDays =
-      Math.min(
-        30,
-        Math.max(
-          1,
-          Number.parseInt(
-            url.searchParams.get(
-              "maxDays"
-            ) || "14",
-            10
-          )
-          ||
-          14
-        )
-      );
+    /*
+    ====================================================
+    RECOVERY RANGE
 
+    from:
+      ngày source bắt đầu scan.
 
-    const dates =
-      await getResultDates(
-        db,
-        through
+    Nếu không truyền from:
+    - dùng ngày tracking/skip cuối cùng nếu đã có;
+    - nếu hoàn toàn chưa có tracking, chỉ nhìn lùi 30 ngày
+      từ `through`, tránh bắt đầu từ tháng 1.
+    ====================================================
+    */
+
+    const requestedFrom =
+      url.searchParams.get(
+        "from"
       );
 
 
     if (
-      dates.length < 31
+      requestedFrom &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(
+        requestedFrom
+      )
     ) {
-      return json({
-        success: true,
-        version:
-          VERSION,
-        message:
-          "Chưa đủ 31 kỳ để sync tracking.",
-        processed:
-          0
-      });
+      return json(
+        {
+          success: false,
+          message:
+            "from phải là YYYY-MM-DD"
+        },
+        400
+      );
     }
+
+
+    const maxSaves =
+      Math.min(
+        60,
+        Math.max(
+          1,
+          Number.parseInt(
+            url.searchParams.get(
+              "maxSaves"
+            )
+            ||
+            url.searchParams.get(
+              "maxDays"
+            )
+            ||
+            "20",
+            10
+          )
+          ||
+          20
+        )
+      );
+
+
+    const latestResolvedDate =
+      await getLatestResolvedDate(
+        db
+      );
+
+
+    const effectiveThrough =
+      through ||
+      dates.at(-1);
+
+
+    let effectiveFrom =
+      requestedFrom
+      ||
+      latestResolvedDate
+      ||
+      addDays(
+        effectiveThrough,
+        -30
+      );
 
 
     /*
-    Source date đầu tiên phải có ít nhất 30 kỳ lịch sử.
-    target = source + 1.
+    Nếu resolved date là prediction N,
+    source N vẫn cần được scan để tạo prediction N+1.
     */
-    const candidates =
-      dates
-        .slice(29)
-        .map(
-          sourceDate => ({
-            sourceDate,
-
-            predictionDate:
-              addDays(
-                sourceDate,
-                1
-              )
-          })
-        );
-
-
-    const missing = [];
-
-
-    for (
-      const candidate of
-      candidates
+    if (
+      latestResolvedDate &&
+      !requestedFrom
     ) {
-      if (
-        await predictionExists(
-          db,
-          candidate.predictionDate
-        )
-      ) {
-        continue;
-      }
-
-      missing.push(
-        candidate
-      );
-
-      if (
-        missing.length >=
-        maxDays
-      ) {
-        break;
-      }
+      effectiveFrom =
+        latestResolvedDate;
     }
+
+
+    const sourceDates =
+      dates.filter(
+        date =>
+          date >= effectiveFrom &&
+          date <= effectiveThrough
+      );
 
 
     const actions = [];
 
+    let savedCount = 0;
+    let noSignalCount = 0;
+    let alreadyResolvedCount = 0;
+    let scannedCount = 0;
+
 
     /*
-    Quan trọng:
-    chạy tuần tự, không Promise.all.
-    Sau khi target N được evaluate,
-    evidence của N đã tồn tại trước khi
-    predict target N+1.
+    Strict walk-forward theo thứ tự thời gian.
+    NO_SIGNAL chỉ ghi skip rồi tiếp tục,
+    không làm dừng toàn bộ recovery.
     */
     for (
-      const item of missing
+      const sourceDate of
+      sourceDates
     ) {
+      const predictionDate =
+        addDays(
+          sourceDate,
+          1
+        );
+
+
+      if (!predictionDate) {
+        continue;
+      }
+
+
+      scannedCount++;
+
+
+      /*
+      Nếu prediction đã tồn tại:
+      chấm ngay nếu kết quả đã có,
+      rồi tiếp tục ngày sau để evidence kịp sinh.
+      */
+      if (
+        await predictionExists(
+          db,
+          predictionDate
+        )
+      ) {
+        const evaluation =
+          await evaluatePrediction(
+            db,
+            predictionDate
+          );
+
+
+        alreadyResolvedCount++;
+
+
+        actions.push({
+          sourceDate,
+          predictionDate,
+
+          action:
+            "EXISTING",
+
+          evaluation
+        });
+
+
+        continue;
+      }
+
+
+      if (
+        await skipExists(
+          db,
+          predictionDate
+        )
+      ) {
+        alreadyResolvedCount++;
+
+
+        actions.push({
+          sourceDate,
+          predictionDate,
+
+          action:
+            "SKIPPED_NO_SIGNAL"
+        });
+
+
+        continue;
+      }
+
+
+      /*
+      maxSaves chỉ giới hạn số prediction thực sự ghi.
+      Ngày NO_SIGNAL không tiêu quota.
+      */
+      if (
+        savedCount >=
+        maxSaves
+      ) {
+        break;
+      }
+
+
       const payload =
         await fetchPrediction(
           context.request,
-          item.sourceDate
+          sourceDate
         );
 
 
       if (
         payload.sourceDate !==
-        item.sourceDate
+        sourceDate
       ) {
         throw new Error(
-          `Walk-forward mismatch: yêu cầu asOf ${item.sourceDate} nhưng predict dùng ${payload.sourceDate}`
+          `Walk-forward mismatch: yêu cầu asOf ${sourceDate} nhưng predict dùng ${payload.sourceDate}`
         );
       }
 
 
-      await savePrediction(
-        db,
-        payload
-      );
+      const saveResult =
+        await savePrediction(
+          db,
+          payload
+        );
+
+
+      if (
+        saveResult.noSignal
+      ) {
+        await saveSkip(
+          db,
+          sourceDate,
+          predictionDate,
+          payload
+        );
+
+
+        noSignalCount++;
+
+
+        actions.push({
+          sourceDate,
+          predictionDate,
+
+          action:
+            "NO_SIGNAL",
+
+          analyzedDraws:
+            payload.analyzedDraws ||
+            null
+        });
+
+
+        continue;
+      }
+
+
+      savedCount++;
 
 
       const evaluation =
         await evaluatePrediction(
           db,
-          payload.predictionDate
+          predictionDate
         );
 
 
       actions.push({
-        sourceDate:
-          payload.sourceDate,
+        sourceDate,
+        predictionDate,
 
-        predictionDate:
-          payload.predictionDate,
+        action:
+          "SAVED",
 
-        saved:
-          true,
+        suggestionCount:
+          saveResult.count,
 
         evaluation
       });
@@ -1191,11 +1543,18 @@ export async function onRequestGet(
         "strict walk-forward",
 
       through:
-        through ||
-        dates.at(-1),
+        effectiveThrough,
 
-      missingFound:
-        missing.length,
+      from:
+        effectiveFrom,
+
+      scannedCount,
+
+      savedCount,
+
+      noSignalCount,
+
+      alreadyResolvedCount,
 
       processed:
         actions.length,
@@ -1209,9 +1568,9 @@ export async function onRequestGet(
         null,
 
       remainingNote:
-        missing.length >= maxDays
-          ? `Đã đạt maxDays=${maxDays}. Gọi lại tracking-sync để tiếp tục nếu còn ngày thiếu.`
-          : "Đã xử lý hết các ngày thiếu trong phạm vi hiện có."
+        savedCount >= maxSaves
+          ? `Đã đạt maxSaves=${maxSaves}. Gọi lại tracking-sync để tiếp tục nếu còn ngày cần lưu.`
+          : "Đã scan hết phạm vi recovery. Ngày NO_SIGNAL đã được đánh dấu và sẽ không chặn các ngày sau."
     });
   }
   catch (error) {

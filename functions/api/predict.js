@@ -33,8 +33,17 @@ Pipeline:
 */
 
 
-const VERSION =
+/*
+MODEL là khóa lưu trong D1.
+Giữ nguyên để không làm mất lịch sử/evidence V2.7.1.
+
+VERSION chỉ là phiên bản code đang chạy.
+*/
+const MODEL =
   "bridge-v2.7.1-abba-auto-tracking";
+
+const VERSION =
+  "bridge-v2.7.3-recovery-priority";
 
 
 const PRIZES = [
@@ -1401,7 +1410,7 @@ async function getPreviousHitEvidence(
         `)
         .bind(
           previousDate,
-          VERSION
+          MODEL
         )
         .all();
 
@@ -1941,9 +1950,56 @@ function buildABBARecommendations(
 
             strength:
               source.strength ||
-              null
+              null,
+
+            carryPriority:
+              Boolean(
+                source.carryPriority
+              )
           })
         ),
+
+      /*
+      Chỉ cần một source trong pair là cầu HIT carry
+      thì toàn pair được xem là ưu tiên.
+      */
+      carryPriority:
+        sorted.some(
+          source =>
+            Boolean(
+              source.carryPriority
+            )
+        ),
+
+      carryReason:
+        sorted.find(
+          source =>
+            Boolean(
+              source.carryPriority
+            )
+        )?.carryReason
+        ||
+        null,
+
+      previousHitDate:
+        sorted.find(
+          source =>
+            Boolean(
+              source.carryPriority
+            )
+        )?.previousHitDate
+        ||
+        null,
+
+      previousHitNumber:
+        sorted.find(
+          source =>
+            Boolean(
+              source.carryPriority
+            )
+        )?.previousHitNumber
+        ||
+        null,
 
       hitRule:
         "AB-or-BA"
@@ -1953,6 +2009,29 @@ function buildABBARecommendations(
 
   pairs.sort(
     (a, b) => {
+      /*
+      Cầu đang chạy/HIT hôm trước LUÔN đứng trước
+      recommendation thường.
+      */
+      const carryDiff =
+        Number(
+          Boolean(
+            b.carryPriority
+          )
+        )
+        -
+        Number(
+          Boolean(
+            a.carryPriority
+          )
+        );
+
+
+      if (carryDiff !== 0) {
+        return carryDiff;
+      }
+
+
       const strengthOrder = {
         "very-strong": 4,
         "strong": 3,
@@ -3208,6 +3287,9 @@ export async function onRequestGet(
 
       version:
         VERSION,
+
+      model:
+        MODEL,
 
       sourceDate:
         latest.draw_date,
