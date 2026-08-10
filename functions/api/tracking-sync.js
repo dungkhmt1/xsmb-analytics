@@ -3,7 +3,7 @@
 XSMB TRACKING SYNC
 /api/tracking-sync
 
-V2.7.3.2 CHUNKED RECOVERY
+V2.7.5 FINALIZE + CARRY REFRESH
 
 Mục tiêu:
 - Backfill tuần tự theo strict walk-forward.
@@ -19,7 +19,7 @@ const MODEL =
   "bridge-v2.7.1-abba-auto-tracking";
 
 const VERSION =
-  "tracking-sync-v2.7.3.2-chunked";
+  "tracking-sync-v2.7.5-finalize-carry";
 
 
 function json(data, status = 200) {
@@ -529,6 +529,187 @@ async function predictionExists(
 
   return Boolean(row);
 }
+
+
+async function getPredictionRow(
+  db,
+  predictionDate
+) {
+  return db
+    .prepare(`
+      SELECT *
+      FROM prediction_live_v262
+
+      WHERE prediction_date = ?
+        AND model = ?
+
+      LIMIT 1
+    `)
+    .bind(
+      predictionDate,
+      MODEL
+    )
+    .first();
+}
+
+
+/*
+========================================================
+REFRESH PENDING PREDICTION
+
+Chỉ cho phép refresh prediction khi:
+- record đã tồn tại;
+- evaluated = 0;
+- target date CHƯA có kết quả.
+
+Mục đích:
+prediction N+1 có thể đã bị lock trước khi evidence HIT
+của ngày N được ghi. Sau khi N được evaluate, ta chạy
+/api/predict?asOf=N lại và cập nhật dàn N+1.
+
+Điều này KHÔNG dùng dữ liệu tương lai:
+predict vẫn chỉ đọc <= sourceDate.
+========================================================
+*/
+
+async function refreshPendingPrediction(
+  db,
+  payload
+) {
+  const existing =
+    await getPredictionRow(
+      db,
+      payload.predictionDate
+    );
+
+
+  if (!existing) {
+    return {
+      refreshed:
+        false,
+
+      reason:
+        "missing-prediction"
+    };
+  }
+
+
+  if (
+    Number(
+      existing.evaluated
+    ) === 1
+  ) {
+    return {
+      refreshed:
+        false,
+
+      reason:
+        "already-evaluated"
+    };
+  }
+
+
+  /*
+  Nếu target đã có result thì không thay dàn đã khóa.
+  Lúc này phải giữ nguyên prediction để thống kê walk-forward.
+  */
+  const targetResult =
+    await getResultByDate(
+      db,
+      payload.predictionDate
+    );
+
+
+  if (targetResult) {
+    return {
+      refreshed:
+        false,
+
+      reason:
+        "target-result-exists"
+    };
+  }
+
+
+  const recommendations =
+    Array.isArray(
+      payload.suggestions
+    )
+      ? payload.suggestions
+      : [];
+
+
+  if (!recommendations.length) {
+    return {
+      refreshed:
+        false,
+
+      reason:
+        "no-signal"
+    };
+  }
+
+
+  const labels =
+    recommendations
+      .map(
+        item =>
+          item.pair ||
+          (
+            pairNumbersFromItem(
+              item
+            )
+              .join("-")
+          )
+      );
+
+
+  await db
+    .prepare(`
+      UPDATE prediction_live_v262
+
+      SET
+        source_date = ?,
+        numbers = ?,
+        recommendations_json = ?,
+        status = 'locked'
+
+      WHERE prediction_date = ?
+        AND model = ?
+        AND evaluated = 0
+    `)
+    .bind(
+      payload.sourceDate,
+      labels.join(","),
+      JSON.stringify(
+        recommendations
+      ),
+      payload.predictionDate,
+      MODEL
+    )
+    .run();
+
+
+  return {
+    refreshed:
+      true,
+
+    reason:
+      "pending-refreshed-after-source-evaluation",
+
+    count:
+      recommendations.length,
+
+    carryCount:
+      recommendations.filter(
+        item =>
+          Boolean(
+            item.carryPriority
+          )
+      ).length
+  };
+}
+
 
 
 async function savePrediction(
@@ -1398,17 +1579,103 @@ export async function onRequestGet(
 
 
       /*
-      Nếu prediction đã tồn tại:
-      chấm ngay nếu kết quả đã có,
-      rồi tiếp tục ngày sau để evidence kịp sinh.
+      ==================================================
+      BƯỚC 1 - FINALIZE NGÀY SOURCE
+
+      Trước khi tạo/refresh prediction N+1,
+      phải chắc chắn prediction ngày N đã được evaluate.
+
+      Đây là mắt xích tạo evidence HIT cho carryPriority.
+      ==================================================
       */
+
+      const sourceEvaluation =
+        await evaluatePrediction(
+          db,
+          sourceDate
+        );
+
+
+      /*
+      ==================================================
+      BƯỚC 2 - NẾU N+1 ĐÃ TỒN TẠI
+
+      Trường hợp stale lock:
+      N+1 đã được lưu trước khi source N được chấm HIT.
+
+      Nếu N+1 vẫn pending và chưa có kết quả:
+      - chạy predict lại asOf=N;
+      - cập nhật recommendations_json;
+      - carry HIT sẽ xuất hiện trong record tracking.
+
+      Nếu N+1 đã có kết quả:
+      - KHÔNG ghi đè;
+      - giữ nguyên lịch sử walk-forward.
+      ==================================================
+      */
+
       if (
         await predictionExists(
           db,
           predictionDate
         )
       ) {
-        const evaluation =
+        const existingRow =
+          await getPredictionRow(
+            db,
+            predictionDate
+          );
+
+
+        let refresh =
+          null;
+
+
+        if (
+          existingRow &&
+          Number(
+            existingRow.evaluated
+          ) === 0
+        ) {
+          const targetResult =
+            await getResultByDate(
+              db,
+              predictionDate
+            );
+
+
+          if (!targetResult) {
+            const payload =
+              await fetchPrediction(
+                context.request,
+                sourceDate
+              );
+
+
+            if (
+              payload.sourceDate !==
+              sourceDate
+            ) {
+              throw new Error(
+                `Walk-forward mismatch khi refresh: yêu cầu asOf ${sourceDate} nhưng predict dùng ${payload.sourceDate}`
+              );
+            }
+
+
+            refresh =
+              await refreshPendingPrediction(
+                db,
+                payload
+              );
+          }
+        }
+
+
+        /*
+        Nếu target đã có result, chấm target.
+        Nếu chưa có result, evaluate sẽ trả result-pending.
+        */
+        const targetEvaluation =
           await evaluatePrediction(
             db,
             predictionDate
@@ -1423,9 +1690,16 @@ export async function onRequestGet(
           predictionDate,
 
           action:
-            "EXISTING",
+            refresh?.refreshed
+              ? "REFRESHED_PENDING"
+              : "EXISTING",
 
-          evaluation
+          sourceEvaluation,
+
+          refresh,
+
+          evaluation:
+            targetEvaluation
         });
 
 
@@ -1638,6 +1912,13 @@ export async function onRequestGet(
       noSignalCount,
 
       alreadyResolvedCount,
+
+      refreshedPendingCount:
+        actions.filter(
+          item =>
+            item.action ===
+            "REFRESHED_PENDING"
+        ).length,
 
       maxSaves,
 
