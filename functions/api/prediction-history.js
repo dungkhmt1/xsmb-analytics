@@ -158,35 +158,88 @@ async function getEvidence(
   db,
   predictionDate
 ) {
-  const response =
-    await db
-      .prepare(`
-        SELECT
-          bridge_key,
-          number,
-          reverse_number,
-          pair_key,
-          pair_json,
-          hit,
-          hit_number,
-          hit_count,
-          direct_hit,
-          reverse_hit,
-          score,
-          strength
+  /*
+  V2.8.1:
+  direct_hit / reverse_hit là cột mới.
 
-        FROM prediction_bridge_evidence
+  Trong thời gian migration D1 chưa chạy,
+  endpoint vẫn phải đọc được lịch sử cũ thay vì trả SQLITE_ERROR.
+  */
 
-        WHERE prediction_date = ?
-          AND model = ?
-      `)
-      .bind(
-        predictionDate,
-        MODEL
-      )
-      .all();
+  try {
+    const response =
+      await db
+        .prepare(`
+          SELECT
+            bridge_key,
+            number,
+            reverse_number,
+            pair_key,
+            pair_json,
+            hit,
+            hit_number,
+            hit_count,
+            direct_hit,
+            reverse_hit,
+            score,
+            strength
 
-  return response.results || [];
+          FROM prediction_bridge_evidence
+
+          WHERE prediction_date = ?
+            AND model = ?
+        `)
+        .bind(
+          predictionDate,
+          MODEL
+        )
+        .all();
+
+    return (
+      response.results ||
+      []
+    );
+  }
+  catch (error) {
+    /*
+    Fallback cho database V2.7.x chưa có 2 cột mới.
+
+    Không giả định direct/reverse cho dữ liệu lịch sử cũ;
+    trả false/0 để tránh làm sai thống kê.
+    */
+    const response =
+      await db
+        .prepare(`
+          SELECT
+            bridge_key,
+            number,
+            reverse_number,
+            pair_key,
+            pair_json,
+            hit,
+            hit_number,
+            hit_count,
+            0 AS direct_hit,
+            0 AS reverse_hit,
+            score,
+            strength
+
+          FROM prediction_bridge_evidence
+
+          WHERE prediction_date = ?
+            AND model = ?
+        `)
+        .bind(
+          predictionDate,
+          MODEL
+        )
+        .all();
+
+    return (
+      response.results ||
+      []
+    );
+  }
 }
 
 
