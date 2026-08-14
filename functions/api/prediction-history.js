@@ -170,6 +170,8 @@ async function getEvidence(
           hit,
           hit_number,
           hit_count,
+          direct_hit,
+          reverse_hit,
           score,
           strength
 
@@ -330,6 +332,20 @@ async function buildDay(
                 hitCount:
                   Number(
                     ev?.hit_count || 0
+                  ),
+
+                directHit:
+                  Boolean(
+                    Number(
+                      ev?.direct_hit || 0
+                    )
+                  ),
+
+                reverseHit:
+                  Boolean(
+                    Number(
+                      ev?.reverse_hit || 0
+                    )
                   )
               };
             }

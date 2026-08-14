@@ -19,7 +19,7 @@ const BASE_MODEL =
   "bridge-v2.7.1-abba-auto-tracking";
 
 const VERSION =
-  "live-validation-v2.7.4-derived";
+  "live-validation-v2.8-learning";
 
 
 function json(
@@ -1185,6 +1185,19 @@ async function getCurrentCarry(
               carryReason:
                 item.carryReason ||
                 "Tiếp tục vị trí đã HIT",
+
+              carryTier:
+                item.carryTier ||
+                null,
+
+              carryScore:
+                Number(
+                  item.carryScore || 0
+                ),
+
+              bridgeState:
+                item.bridgeState ||
+                null,
 
               carryHitStreak:
                 streak,

@@ -19,7 +19,7 @@ const MODEL =
   "bridge-v2.7.1-abba-auto-tracking";
 
 const VERSION =
-  "tracking-sync-v2.7.5-finalize-carry";
+  "tracking-sync-v2.8-learning";
 
 
 function json(data, status = 200) {
@@ -393,6 +393,38 @@ async function ensureSchema(db) {
   );
 
 
+  await ensureColumn(
+    db,
+    "prediction_bridge_evidence",
+    "direct_hit",
+    "INTEGER DEFAULT 0"
+  );
+
+
+  await ensureColumn(
+    db,
+    "prediction_bridge_evidence",
+    "reverse_hit",
+    "INTEGER DEFAULT 0"
+  );
+
+
+  await ensureColumn(
+    db,
+    "prediction_bridge_evidence",
+    "generated_number",
+    "TEXT"
+  );
+
+
+  await ensureColumn(
+    db,
+    "prediction_live_v262",
+    "strategy_version",
+    "TEXT"
+  );
+
+
   await db
     .prepare(`
       CREATE INDEX IF NOT EXISTS idx_tracking_model_date
@@ -672,7 +704,8 @@ async function refreshPendingPrediction(
         source_date = ?,
         numbers = ?,
         recommendations_json = ?,
-        status = 'locked'
+        status = 'locked',
+        strategy_version = ?
 
       WHERE prediction_date = ?
         AND model = ?
@@ -684,6 +717,8 @@ async function refreshPendingPrediction(
       JSON.stringify(
         recommendations
       ),
+      payload.version ||
+      "bridge-v2.8-learning",
       payload.predictionDate,
       MODEL
     )
@@ -764,10 +799,11 @@ async function savePrediction(
         model,
         numbers,
         recommendations_json,
-        status
+        status,
+        strategy_version
       )
 
-      VALUES (?, ?, ?, ?, ?, 'locked')
+      VALUES (?, ?, ?, ?, ?, 'locked', ?)
 
       ON CONFLICT(
         prediction_date,
@@ -783,7 +819,9 @@ async function savePrediction(
       labels.join(","),
       JSON.stringify(
         recommendations
-      )
+      ),
+      payload.version ||
+      "bridge-v2.8-learning"
     )
     .run();
 
@@ -1066,6 +1104,40 @@ async function evaluatePrediction(
               item
             );
 
+          const generatedNumber =
+            normalizeNumber(
+              item.number
+            );
+
+
+          const reverseGenerated =
+            normalizeNumber(
+              item.reverseNumber
+            )
+            ||
+            reverseNumber(
+              generatedNumber
+            );
+
+
+          const directHit =
+            generatedNumber
+              ? actualSet.has(
+                  generatedNumber
+                )
+              : false;
+
+
+          const reverseHit =
+            reverseGenerated &&
+            reverseGenerated !==
+            generatedNumber
+              ? actualSet.has(
+                  reverseGenerated
+                )
+              : false;
+
+
           const hitNumbers =
             pair.filter(
               number =>
@@ -1074,11 +1146,20 @@ async function evaluatePrediction(
                 )
             );
 
+
           return {
             item,
             index,
             pair,
+
+            generatedNumber,
+            reverseGenerated,
+
+            directHit,
+            reverseHit,
+
             hitNumbers,
+
             hit:
               hitNumbers.length > 0
           };
@@ -1176,12 +1257,15 @@ async function evaluatePrediction(
           hit,
           hit_number,
           hit_count,
+          direct_hit,
+          reverse_hit,
+          generated_number,
           score,
           strength
         )
 
         VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
 
         ON CONFLICT(
@@ -1204,10 +1288,22 @@ async function evaluatePrediction(
             excluded.hit_number,
           hit_count =
             excluded.hit_count,
+
+          direct_hit =
+            excluded.direct_hit,
+
+          reverse_hit =
+            excluded.reverse_hit,
+
+          generated_number =
+            excluded.generated_number,
+
           base_rank =
             excluded.base_rank,
+
           score =
             excluded.score,
+
           strength =
             excluded.strength
       `)
@@ -1237,11 +1333,23 @@ async function evaluatePrediction(
         entry.hitNumbers
           .join(","),
         entry.hitNumbers.length,
+
+        entry.directHit
+          ? 1
+          : 0,
+
+        entry.reverseHit
+          ? 1
+          : 0,
+
+        entry.generatedNumber,
+
         Number(
           item.pairScore ||
           item.score ||
           0
         ),
+
         item.strength ||
         null
       )

@@ -43,7 +43,7 @@ const MODEL =
   "bridge-v2.7.1-abba-auto-tracking";
 
 const VERSION =
-  "bridge-v2.7.3-recovery-priority";
+  "bridge-v2.8-learning";
 
 
 const PRIZES = [
@@ -77,6 +77,27 @@ const LABELS = {
 const MIN_CURRENT_STREAK = 2;
 
 const MAX_CURRENT_STREAK = 5;
+
+/*
+========================================================
+V2.8 BRIDGE LEARNING CONFIG
+
+Các giá trị dưới đây là trọng số ranking, KHÔNG phải
+xác suất trúng. Chúng được tách riêng để sau này
+backtest và hiệu chỉnh dễ dàng.
+========================================================
+*/
+
+const BRIDGE_STATE_RECENT_WINDOW = 5;
+const BRIDGE_STATE_PRIOR_SAMPLES = 8;
+const BRIDGE_STATE_MIN_RELIABLE_SAMPLES = 20;
+
+const CARRY_WEIGHT_STREAK = 0.35;
+const CARRY_WEIGHT_RECENT = 0.25;
+const CARRY_WEIGHT_SHRUNK_RATE = 0.20;
+const CARRY_WEIGHT_SAMPLE = 0.10;
+const CARRY_WEIGHT_STABILITY = 0.10;
+
 
 const CURRENT_REJECT_FROM = 6;
 
@@ -1366,6 +1387,558 @@ Ví dụ:
 - 31/07 HIT 35, 24, 05, 54
   => 01/08 tiếp tục cả 4 vị trí bridge tương ứng.
 */
+
+/*
+========================================================
+V2.8 BRIDGE PERFORMANCE STATE
+========================================================
+
+Bridge state chỉ dùng dữ liệu TRACKING đã được khóa/chấm.
+
+Không dùng kết quả tương lai.
+Không coi carryScore là xác suất.
+
+Các biến:
+- tested: số lần bridge thực sự xuất hiện trong prediction.
+- hits: số lần pair AB-BA HIT.
+- currentHitStreak: chuỗi HIT liên tiếp gần nhất.
+- recentRate: tỷ lệ HIT trong cửa sổ gần nhất.
+- shrunkRate: hit-rate co về global tracked rate để giảm
+  overfit khi sample nhỏ.
+- directHit / reverseHit: phân biệt số gốc và số đảo về.
+*/
+
+function clamp100(value) {
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      Number(value) || 0
+    )
+  );
+}
+
+
+function round2(value) {
+  return Number(
+    (
+      Number(value) || 0
+    ).toFixed(2)
+  );
+}
+
+
+function consecutiveHitStreak(rows) {
+  let streak = 0;
+
+  for (
+    let i = rows.length - 1;
+    i >= 0;
+    i--
+  ) {
+    if (
+      Number(rows[i].hit) === 1
+    ) {
+      streak++;
+      continue;
+    }
+
+    break;
+  }
+
+  return streak;
+}
+
+
+function computeBridgeState(
+  rows,
+  globalRate
+) {
+  const ordered =
+    [...rows]
+      .sort(
+        (a, b) =>
+          String(a.prediction_date)
+            .localeCompare(
+              String(b.prediction_date)
+            )
+      );
+
+
+  const tested =
+    ordered.length;
+
+  const hits =
+    ordered.filter(
+      row =>
+        Number(row.hit) === 1
+    ).length;
+
+
+  const directHits =
+    ordered.filter(
+      row =>
+        Number(row.direct_hit) === 1
+    ).length;
+
+
+  const reverseHits =
+    ordered.filter(
+      row =>
+        Number(row.reverse_hit) === 1
+    ).length;
+
+
+  const currentHitStreak =
+    consecutiveHitStreak(
+      ordered
+    );
+
+
+  const recent =
+    ordered.slice(
+      -BRIDGE_STATE_RECENT_WINDOW
+    );
+
+
+  const recentHits =
+    recent.filter(
+      row =>
+        Number(row.hit) === 1
+    ).length;
+
+
+  const overallRate =
+    tested
+      ? hits / tested * 100
+      : 0;
+
+
+  const recentRate =
+    recent.length
+      ? recentHits / recent.length * 100
+      : 0;
+
+
+  /*
+  Empirical-Bayes style shrinkage:
+  sample nhỏ bị kéo về hit-rate chung của toàn bộ
+  bridge đã tracking, thay vì tin tuyệt đối vào 1-2 HIT.
+  */
+  const priorRate =
+    clamp100(
+      globalRate
+    );
+
+
+  const shrunkRate =
+    (
+      hits +
+      (
+        priorRate /
+        100
+      ) *
+      BRIDGE_STATE_PRIOR_SAMPLES
+    )
+    /
+    (
+      tested +
+      BRIDGE_STATE_PRIOR_SAMPLES
+    )
+    *
+    100;
+
+
+  const sampleReliability =
+    clamp100(
+      tested /
+      BRIDGE_STATE_MIN_RELIABLE_SAMPLES *
+      100
+    );
+
+
+  const stability =
+    clamp100(
+      100 -
+      Math.abs(
+        recentRate -
+        overallRate
+      )
+    );
+
+
+  const streakScore =
+    clamp100(
+      Math.min(
+        currentHitStreak,
+        3
+      )
+      /
+      3
+      *
+      100
+    );
+
+
+  const carryScore =
+    clamp100(
+      streakScore *
+      CARRY_WEIGHT_STREAK
+      +
+      recentRate *
+      CARRY_WEIGHT_RECENT
+      +
+      shrunkRate *
+      CARRY_WEIGHT_SHRUNK_RATE
+      +
+      sampleReliability *
+      CARRY_WEIGHT_SAMPLE
+      +
+      stability *
+      CARRY_WEIGHT_STABILITY
+    );
+
+
+  let carryTier =
+    "C";
+
+
+  if (
+    currentHitStreak >= 2 &&
+    carryScore >= 55
+  ) {
+    carryTier =
+      "A";
+  }
+  else if (
+    carryScore >= 40
+  ) {
+    carryTier =
+      "B";
+  }
+
+
+  return {
+    tested,
+    hits,
+
+    hitRate:
+      round2(
+        overallRate
+      ),
+
+    recentSamples:
+      recent.length,
+
+    recentHits,
+
+    recentRate:
+      round2(
+        recentRate
+      ),
+
+    shrunkRate:
+      round2(
+        shrunkRate
+      ),
+
+    globalTrackedRate:
+      round2(
+        priorRate
+      ),
+
+    sampleReliability:
+      round2(
+        sampleReliability
+      ),
+
+    stability:
+      round2(
+        stability
+      ),
+
+    currentHitStreak,
+
+    directHits,
+    reverseHits,
+
+    directHitRate:
+      tested
+        ? round2(
+            directHits /
+            tested *
+            100
+          )
+        : 0,
+
+    reverseHitRate:
+      tested
+        ? round2(
+            reverseHits /
+            tested *
+            100
+          )
+        : 0,
+
+    carryScore:
+      round2(
+        carryScore
+      ),
+
+    carryTier,
+
+    lastTrackedDate:
+      ordered.at(-1)
+        ?.prediction_date
+      ||
+      null,
+
+    recentHistory:
+      recent.map(
+        row => ({
+          date:
+            row.prediction_date,
+
+          hit:
+            Number(
+              row.hit
+            ) === 1,
+
+          directHit:
+            Number(
+              row.direct_hit
+            ) === 1,
+
+          reverseHit:
+            Number(
+              row.reverse_hit
+            ) === 1,
+
+          hitNumber:
+            row.hit_number ||
+            null,
+
+          number:
+            normalize2(
+              row.number
+            ),
+
+          reverseNumber:
+            normalize2(
+              row.reverse_number
+            )
+        })
+      )
+  };
+}
+
+
+async function getGlobalTrackedHitRate(
+  db,
+  throughDate
+) {
+  try {
+    const row =
+      await db
+        .prepare(`
+          SELECT
+            COUNT(*) AS tested,
+            COALESCE(
+              SUM(hit),
+              0
+            ) AS hits
+
+          FROM prediction_bridge_evidence
+
+          WHERE model = ?
+            AND prediction_date <= ?
+        `)
+        .bind(
+          MODEL,
+          throughDate
+        )
+        .first();
+
+
+    const tested =
+      Number(
+        row?.tested || 0
+      );
+
+
+    const hits =
+      Number(
+        row?.hits || 0
+      );
+
+
+    return tested
+      ? hits / tested * 100
+      : 0;
+  }
+  catch {
+    return 0;
+  }
+}
+
+
+async function getBridgeStates(
+  db,
+  bridgeKeys,
+  throughDate
+) {
+  const keys =
+    [
+      ...new Set(
+        bridgeKeys
+          .filter(Boolean)
+      )
+    ];
+
+
+  if (!keys.length) {
+    return new Map();
+  }
+
+
+  const globalRate =
+    await getGlobalTrackedHitRate(
+      db,
+      throughDate
+    );
+
+
+  const placeholders =
+    keys
+      .map(
+        () => "?"
+      )
+      .join(",");
+
+
+  /*
+  direct_hit / reverse_hit được thêm trong tracking-sync V2.8.
+  Nếu deployment đầu tiên chưa có cột, fallback query vẫn chạy.
+  */
+  let rows = [];
+
+
+  try {
+    const response =
+      await db
+        .prepare(`
+          SELECT
+            prediction_date,
+            bridge_key,
+            number,
+            reverse_number,
+            hit,
+            hit_number,
+            direct_hit,
+            reverse_hit
+
+          FROM prediction_bridge_evidence
+
+          WHERE model = ?
+            AND prediction_date <= ?
+            AND bridge_key IN (${placeholders})
+
+          ORDER BY
+            prediction_date ASC
+        `)
+        .bind(
+          MODEL,
+          throughDate,
+          ...keys
+        )
+        .all();
+
+    rows =
+      response.results ||
+      [];
+  }
+  catch {
+    const response =
+      await db
+        .prepare(`
+          SELECT
+            prediction_date,
+            bridge_key,
+            number,
+            reverse_number,
+            hit,
+            hit_number,
+            0 AS direct_hit,
+            0 AS reverse_hit
+
+          FROM prediction_bridge_evidence
+
+          WHERE model = ?
+            AND prediction_date <= ?
+            AND bridge_key IN (${placeholders})
+
+          ORDER BY
+            prediction_date ASC
+        `)
+        .bind(
+          MODEL,
+          throughDate,
+          ...keys
+        )
+        .all();
+
+    rows =
+      response.results ||
+      [];
+  }
+
+
+  const grouped =
+    new Map();
+
+
+  for (const row of rows) {
+    if (
+      !grouped.has(
+        row.bridge_key
+      )
+    ) {
+      grouped.set(
+        row.bridge_key,
+        []
+      );
+    }
+
+    grouped
+      .get(
+        row.bridge_key
+      )
+      .push(
+        row
+      );
+  }
+
+
+  const states =
+    new Map();
+
+
+  for (const key of keys) {
+    states.set(
+      key,
+      computeBridgeState(
+        grouped.get(key) ||
+        [],
+        globalRate
+      )
+    );
+  }
+
+
+  return states;
+}
+
+
 async function getPreviousHitEvidence(
   db,
   predictionDate
@@ -1444,7 +2017,8 @@ Tính số mới trực tiếp từ ĐÚNG VỊ TRÍ bridge đã HIT.
 Không yêu cầu bridge hôm nay phải còn streak,
 qualified hoặc nằm trong candidate pool.
 */
-function buildCarryPriorityRecommendations(
+async function buildCarryPriorityRecommendations(
+  db,
   latest,
   positions,
   evidence
@@ -1459,9 +2033,32 @@ function buildCarryPriorityRecommendations(
       )
     );
 
+
   const priorities = [];
+
   const usedBridgeKeys =
     new Set();
+
+
+  const bridgeKeys =
+    (
+      evidence?.hits ||
+      []
+    )
+      .map(
+        hit =>
+          hit.bridge_key
+      )
+      .filter(Boolean);
+
+
+  const states =
+    await getBridgeStates(
+      db,
+      bridgeKeys,
+      evidence?.date ||
+      latest.draw_date
+    );
 
 
   for (
@@ -1470,6 +2067,7 @@ function buildCarryPriorityRecommendations(
   ) {
     const bridgeKey =
       hit.bridge_key;
+
 
     if (
       !bridgeKey ||
@@ -1486,6 +2084,7 @@ function buildCarryPriorityRecommendations(
         bridgeKey
       );
 
+
     if (!parsed) {
       continue;
     }
@@ -1495,6 +2094,7 @@ function buildCarryPriorityRecommendations(
       byKey.get(
         parsed.positionAKey
       );
+
 
     const positionB =
       byKey.get(
@@ -1534,6 +2134,7 @@ function buildCarryPriorityRecommendations(
         positionA
       );
 
+
     const nameB =
       positionName(
         positionB
@@ -1546,13 +2147,42 @@ function buildCarryPriorityRecommendations(
         : `${nameA} + ${nameB}`;
 
 
+    const state =
+      states.get(
+        bridgeKey
+      )
+      ||
+      computeBridgeState(
+        [],
+        0
+      );
+
+
+    /*
+    Base ranking của carry vẫn được đặt cao hơn candidate thường,
+    nhưng KHÔNG còn tất cả carry = 100.
+
+    70..100:
+    - carry yếu vẫn được giữ,
+    - carry có streak/performance tốt sẽ đứng trước.
+    */
+    const dynamicScore =
+      70 +
+      state.carryScore *
+      0.30;
+
+
     priorities.push({
       number,
 
       streak:
-        1,
+        Math.max(
+          1,
+          state.currentHitStreak
+        ),
 
       history:
+        state.recentHistory ||
         [],
 
       positionA,
@@ -1579,12 +2209,10 @@ function buildCarryPriorityRecommendations(
 
       bridgeKey,
 
-      /*
-      Ưu tiên cao hơn cầu thường,
-      nhưng score vẫn chỉ là ranking.
-      */
       score:
-        100,
+        round2(
+          dynamicScore
+        ),
 
       sourceScore:
         Number(
@@ -1592,13 +2220,28 @@ function buildCarryPriorityRecommendations(
         ),
 
       strength:
-        "very-strong",
+        state.carryTier ===
+        "A"
+          ? "very-strong"
+          : state.carryTier ===
+            "B"
+            ? "strong"
+            : "qualified",
 
       recentStatus:
-        "carry-hit-priority",
+        "carry-hit-learning",
 
       carryPriority:
         true,
+
+      carryTier:
+        state.carryTier,
+
+      carryScore:
+        state.carryScore,
+
+      bridgeState:
+        state,
 
       previousHitDate:
         evidence.date,
@@ -1618,7 +2261,7 @@ function buildCarryPriorityRecommendations(
         null,
 
       carryReason:
-        `Tiếp tục vị trí đã HIT ngày ${evidence.date}`
+        `Bridge HIT ${evidence.date} • tier ${state.carryTier} • streak ${state.currentHitStreak} • carryScore ${state.carryScore}`
     });
 
 
@@ -1626,6 +2269,50 @@ function buildCarryPriorityRecommendations(
       bridgeKey
     );
   }
+
+
+  priorities.sort(
+    (
+      a,
+      b
+    ) => {
+      const tierRank = {
+        A: 3,
+        B: 2,
+        C: 1
+      };
+
+
+      const tierDiff =
+        (
+          tierRank[
+            b.carryTier
+          ] || 0
+        )
+        -
+        (
+          tierRank[
+            a.carryTier
+          ] || 0
+        );
+
+
+      if (tierDiff !== 0) {
+        return tierDiff;
+      }
+
+
+      return (
+        Number(
+          b.carryScore || 0
+        )
+        -
+        Number(
+          a.carryScore || 0
+        )
+      );
+    }
+  );
 
 
   return priorities;
@@ -1971,6 +2658,38 @@ function buildABBARecommendations(
             )
         ),
 
+      carryTier:
+        sorted.find(
+          source =>
+            Boolean(
+              source.carryPriority
+            )
+        )?.carryTier
+        ||
+        null,
+
+      carryScore:
+        Number(
+          sorted.find(
+            source =>
+              Boolean(
+                source.carryPriority
+              )
+          )?.carryScore
+          ||
+          0
+        ),
+
+      bridgeState:
+        sorted.find(
+          source =>
+            Boolean(
+              source.carryPriority
+            )
+        )?.bridgeState
+        ||
+        null,
+
       carryReason:
         sorted.find(
           source =>
@@ -2013,7 +2732,14 @@ function buildABBARecommendations(
       Cầu đang chạy/HIT hôm trước LUÔN đứng trước
       recommendation thường.
       */
-      const carryDiff =
+      const carryTierRank = {
+        A: 3,
+        B: 2,
+        C: 1
+      };
+
+
+      const carryPresenceDiff =
         Number(
           Boolean(
             b.carryPriority
@@ -2027,8 +2753,53 @@ function buildABBARecommendations(
         );
 
 
-      if (carryDiff !== 0) {
-        return carryDiff;
+      if (
+        carryPresenceDiff !==
+        0
+      ) {
+        return carryPresenceDiff;
+      }
+
+
+      if (
+        a.carryPriority &&
+        b.carryPriority
+      ) {
+        const tierDiff =
+          (
+            carryTierRank[
+              b.carryTier
+            ] || 0
+          )
+          -
+          (
+            carryTierRank[
+              a.carryTier
+            ] || 0
+          );
+
+
+        if (tierDiff !== 0) {
+          return tierDiff;
+        }
+
+
+        const carryScoreDiff =
+          Number(
+            b.carryScore || 0
+          )
+          -
+          Number(
+            a.carryScore || 0
+          );
+
+
+        if (
+          carryScoreDiff !==
+          0
+        ) {
+          return carryScoreDiff;
+        }
       }
 
 
@@ -2466,7 +3237,8 @@ export async function onRequestGet(
 
 
     const carryPriorityRecommendations =
-      buildCarryPriorityRecommendations(
+      await buildCarryPriorityRecommendations(
+        db,
         latest,
         positions,
         previousHitEvidence
@@ -3382,7 +4154,16 @@ export async function onRequestGet(
                   reverse2(
                     item.number
                   )
-                )
+                ),
+
+              carryTier:
+                item.carryTier,
+
+              carryScore:
+                item.carryScore,
+
+              bridgeState:
+                item.bridgeState
             })
           )
       },

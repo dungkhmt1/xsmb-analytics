@@ -529,98 +529,39 @@ function getCarryHistory(
 ) {
   let history = [];
 
-
   if (
-    Array.isArray(
-      item?.history
-    ) &&
+    Array.isArray(item?.history) &&
     item.history.length
   ) {
     history =
       item.history
         .map(
-          row => {
-            const rawPair =
-              row.pair ||
+          row => ({
+            date:
+              row.date ||
+              row.targetDate ||
+              row.predictionDate ||
+              null,
+
+            sourceDate:
+              row.sourceDate ||
+              null,
+
+            number:
+              normalizeDisplayNumber(
+                row.number
+              ),
+
+            status:
+              row.status ||
               (
-                Array.isArray(
-                  row.pairNumbers
-                )
-                  ? row.pairNumbers.join(
-                      " - "
-                    )
-                  : row.number
-              );
-
-
-            return {
-              date:
-                row.date ||
-                row.targetDate ||
-                row.predictionDate ||
-                null,
-
-              sourceDate:
-                row.sourceDate ||
-                null,
-
-              /*
-              Không dùng normalizeDisplayNumber() cho pair
-              vì "35-53" sẽ bị phá thành một số đơn.
-              */
-              number:
-                rawPair
-                  ? String(
-                      rawPair
-                    )
-                      .replace(
-                        "-",
-                        " - "
-                      )
-                  : "--",
-
-              pair:
-                rawPair ||
-                "--",
-
-              bridge:
-                row.bridge ||
-                item?.bridge ||
-                null,
-
-              rank:
-                row.rank ??
-                null,
-
-              score:
-                Number(
-                  row.score || 0
-                ),
-
-              strength:
-                row.strength ||
-                null,
-
-              hitNumber:
-                row.hitNumber ||
-                null,
-
-              hitCount:
-                Number(
-                  row.hitCount || 0
-                ),
-
-              status:
-                row.status ||
-                (
-                  row.hit === true
-                    ? "hit"
-                    : row.hit === false
-                      ? "miss"
-                      : "pending"
-                )
-            };
-          }
+                row.hit === true
+                  ? "hit"
+                  : row.hit === false
+                    ? "miss"
+                    : "pending"
+              )
+          })
         )
         .filter(
           row =>
@@ -630,9 +571,6 @@ function getCarryHistory(
   }
 
 
-  /*
-  Fallback cho dữ liệu cũ chưa có full history.
-  */
   if (!history.length) {
     if (
       item?.previousNumber &&
@@ -649,17 +587,11 @@ function getCarryHistory(
             Array.isArray(
               item.previousPairNumbers
             )
-              ? item.previousPairNumbers.join(
-                  " - "
-                )
+              ? item.previousPairNumbers.join(" - ")
               : normalizeDisplayNumber(
                   item.previousNumber
                 )
           ),
-
-        hitNumber:
-          item.previousHitNumber ||
-          null,
 
         status:
           "hit"
@@ -682,9 +614,7 @@ function getCarryHistory(
             Array.isArray(
               item.currentPairNumbers
             )
-              ? item.currentPairNumbers.join(
-                  " - "
-                )
+              ? item.currentPairNumbers.join(" - ")
               : normalizeDisplayNumber(
                   item.currentNumber
                 )
@@ -698,18 +628,15 @@ function getCarryHistory(
   }
 
 
-  /*
-  Một bridge chỉ hiển thị một dòng/ngày.
-  */
   const map =
     new Map();
 
-
   for (const row of history) {
+    const key =
+      `${row.date}|${row.number}`;
+
     map.set(
-      String(
-        row.date
-      ),
+      key,
       row
     );
   }
@@ -857,9 +784,7 @@ function renderCarryTransition(
 }
 
 
-function renderCarryFullHistory(
-  history
-) {
+function renderCarryFullHistory(history) {
   if (!history.length) {
     return `
       <div class="live-empty">
@@ -868,109 +793,48 @@ function renderCarryFullHistory(
     `;
   }
 
-
-  const completed =
-    history.filter(
-      row => {
-        const status =
-          normalizeCarryStatus(
-            row.status
-          );
-
-        return (
-          status === "hit" ||
-          status === "miss"
-        );
-      }
-    );
-
-
   const hitCount =
-    completed.filter(
+    history.filter(
       row =>
         normalizeCarryStatus(
           row.status
         ) === "hit"
     ).length;
 
-
   const missCount =
-    completed.filter(
+    history.filter(
       row =>
         normalizeCarryStatus(
           row.status
         ) === "miss"
     ).length;
 
-
-  const pendingCount =
-    history.filter(
-      row =>
-        normalizeCarryStatus(
-          row.status
-        ) === "pending"
-    ).length;
-
-
-  const hitRate =
-    completed.length
-      ? (
-          hitCount /
-          completed.length *
-          100
-        )
-          .toFixed(1)
-      : "0.0";
-
-
   return `
     <div class="live-history-section">
 
       <div class="live-history-heading">
-
         <div>
           <div class="live-history-title">
             LỊCH SỬ CẦU
           </div>
 
           <div class="live-history-summary">
-
-            ${history.length}
-            ngày
-
+            ${history.length} ngày
             •
-
             <strong>
-              ${hitCount}
-              HIT
+              ${hitCount} HIT
             </strong>
-
-            •
-
-            ${missCount}
-            MISS
-
             ${
-              pendingCount
-                ? `• ${pendingCount} CHỜ`
+              missCount
+                ? `• ${missCount} MISS`
                 : ""
             }
-
-            •
-
-            Tỷ lệ
-            <strong>
-              ${hitRate}%
-            </strong>
-
           </div>
         </div>
-
       </div>
 
 
       <div class="live-history-table">
-
         ${
           history
             .map(
@@ -983,54 +847,9 @@ function renderCarryFullHistory(
                     row.status
                   );
 
-
                 const isLast =
                   index ===
                   history.length - 1;
-
-
-                const hitLabel =
-                  status === "hit" &&
-                  row.hitNumber
-                    ? `
-                      <span
-                        style="
-                          display:block;
-                          font-size:11px;
-                          margin-top:2px;
-                          opacity:.8;
-                        "
-                      >
-                        Về:
-                        ${escapeHtml(
-                          row.hitNumber
-                        )}
-                      </span>
-                    `
-                    : "";
-
-
-                const scoreLabel =
-                  Number(
-                    row.score || 0
-                  ) > 0
-                    ? `
-                      <span
-                        style="
-                          display:block;
-                          font-size:10px;
-                          margin-top:2px;
-                          opacity:.65;
-                        "
-                      >
-                        Điểm:
-                        ${Number(
-                          row.score
-                        ).toFixed(1)}
-                      </span>
-                    `
-                    : "";
-
 
                 return `
                   <div
@@ -1044,15 +863,11 @@ function renderCarryFullHistory(
                       }
                     "
                   >
-
                     <div class="live-history-date">
-
                       ${formatDateShort(
                         row.date
                       )}
-
                     </div>
-
 
                     <div
                       class="
@@ -1060,15 +875,10 @@ function renderCarryFullHistory(
                         ${status}
                       "
                     >
-
                       ${escapeHtml(
                         row.number
                       )}
-
-                      ${hitLabel}
-
                     </div>
-
 
                     <div
                       class="
@@ -1076,7 +886,6 @@ function renderCarryFullHistory(
                         ${status}
                       "
                     >
-
                       <span>
                         ${carryStatusIcon(
                           status
@@ -1086,18 +895,13 @@ function renderCarryFullHistory(
                       ${carryStatusText(
                         status
                       )}
-
-                      ${scoreLabel}
-
                     </div>
-
                   </div>
                 `;
               }
             )
             .join("")
         }
-
       </div>
 
     </div>
@@ -1429,6 +1233,66 @@ function getPairText(item) {
 }
 
 
+
+function carryPriorityLabel(item) {
+  if (!item?.carryPriority) {
+    return "";
+  }
+
+  const tier =
+    item.carryTier ||
+    "?";
+
+  const score =
+    Number(
+      item.carryScore || 0
+    );
+
+  const streak =
+    Number(
+      item.bridgeState
+        ?.currentHitStreak
+      ||
+      item.streak
+      ||
+      0
+    );
+
+  return `
+    <div
+      class="warning-box"
+      style="margin:10px 0;"
+    >
+      <strong>
+        ƯU TIÊN CẦU ĐANG CHẠY • TIER ${escapeHtml(
+          tier
+        )}
+      </strong>
+
+      <br>
+
+      Carry score:
+      ${score.toFixed(1)}
+
+      • HIT streak:
+      ${streak}
+
+      ${
+        item.bridgeState
+          ?.tested
+          ? `
+            • Sample:
+            ${Number(
+              item.bridgeState.tested
+            )}
+          `
+          : ""
+      }
+    </div>
+  `;
+}
+
+
 function strengthName(value) {
   if (value === "very-strong") {
     return "RẤT MẠNH";
@@ -1587,6 +1451,10 @@ function renderPrimaryPick(item) {
       </div>
 
 
+      ${carryPriorityLabel(
+        item
+      )}
+
       <div class="pick-primary-bridge">
         <span>
           Vị trí cầu
@@ -1658,6 +1526,10 @@ function renderSecondaryPick(item) {
         )}
       </div>
 
+
+      ${carryPriorityLabel(
+        item
+      )}
 
       <div class="pick-card-bridge">
         ${
