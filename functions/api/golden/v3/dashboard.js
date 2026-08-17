@@ -5,7 +5,7 @@
  * Reads only results.special from the shared D1 database.
  * Does not modify V2.6.2 / V2.8 prediction tables.
  */
-const VERSION = "golden-v3.0.1";
+const VERSION = "golden-v3.1.1";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
