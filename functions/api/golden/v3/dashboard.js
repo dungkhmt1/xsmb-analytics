@@ -20,8 +20,23 @@ function json(data, status = 200) {
 const N = Array.from({ length: 100 }, (_, i) => String(i).padStart(2, "0"));
 
 function num(v) {
-  const m = String(v ?? "").match(/\d+/);
-  return m ? m[0].padStart(5, "0").slice(-5) : null;
+  if (v === null || v === undefined) {
+    return null;
+  }
+
+  const text = String(v).trim();
+
+  const digits = text.replace(/\D/g, "");
+
+  if (!digits) {
+    return null;
+  }
+
+  const normalized = digits.padStart(5, "0").slice(-5);
+
+  return /^\d{5}$/.test(normalized)
+    ? normalized
+    : null;
 }
 function pct(a,b) { return b ? a / b * 100 : 0; }
 function round(v,n=2) {
@@ -32,25 +47,31 @@ function clamp(v,a=0,b=100) { return Math.max(a, Math.min(b, Number(v)||0)); }
 function sigmoid(z) { return 1 / (1 + Math.exp(-Math.max(-12, Math.min(12,z)))); }
 
 function extractRows(results) {
-  return (results || []).map(r => {
-    const special = num(r.special);
-    const date = String(r?.draw_date ?? "").slice(0,10);
+  return (results || [])
+    .map((r) => {
+      const special = num(r.special);
+      const date = String(r?.draw_date ?? "").slice(0, 10);
 
-    if (
-      !special ||
-      !/^\\d{5}$/.test(special) ||
-      !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)
-    ) {
-      return null;
-    }
+      if (!special) {
+        return null;
+      }
 
-    return {
-      date,
-      special,
-      head: special.slice(0,2),
-      tail: special.slice(-2)
-    };
-  }).filter(Boolean);
+      if (!/^\d{5}$/.test(special)) {
+        return null;
+      }
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return null;
+      }
+
+      return {
+        date,
+        special,
+        head: special.slice(0, 2),
+        tail: special.slice(-2)
+      };
+    })
+    .filter(Boolean);
 }
 
 function makeStats(rows, key) {
