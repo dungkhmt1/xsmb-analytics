@@ -5,7 +5,7 @@
  * Reads only results.special from the shared D1 database.
  * Does not modify V2.6.2 / V2.8 prediction tables.
  */
-const VERSION = "golden-v3.0.0";
+const VERSION = "golden-v3.0.1";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -34,9 +34,18 @@ function sigmoid(z) { return 1 / (1 + Math.exp(-Math.max(-12, Math.min(12,z))));
 function extractRows(results) {
   return (results || []).map(r => {
     const special = num(r.special);
-    if (!special) return null;
+    const date = String(r?.draw_date ?? "").slice(0,10);
+
+    if (
+      !special ||
+      !/^\\d{5}$/.test(special) ||
+      !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)
+    ) {
+      return null;
+    }
+
     return {
-      date: String(r.draw_date).slice(0,10),
+      date,
       special,
       head: special.slice(0,2),
       tail: special.slice(-2)
@@ -137,8 +146,22 @@ function scoreSide(rows, key, external = {}) {
     const gapScale = Math.max(2, medianGap + 1);
     const gapScore = clamp(100 * Math.exp(-Math.abs(gap-medianGap)/gapScale));
 
-    const transition = last ? (transitions[last][x] || 0) : 0;
-    const transitionTotal = last ? Object.values(transitions[last]).reduce((a,b)=>a+b,0) : 0;
+    /*
+      V3.0.1 FIX:
+      Một số database có thể chứa giá trị head/tail không hợp lệ hoặc
+      key không tồn tại trong ma trận transition. Không được truy cập
+      transitions[last][x] trực tiếp vì sẽ gây:
+      "Cannot read properties of undefined (reading '45')".
+    */
+    const transitionRow =
+      last && transitions && transitions[last]
+        ? transitions[last]
+        : Object.fromEntries(N.map(y => [y, 0]));
+
+    const transition = Number(transitionRow[x] || 0);
+    const transitionTotal =
+      Object.values(transitionRow)
+        .reduce((a,b) => a + Number(b || 0), 0);
     const transitionRate = posteriorRate(transition, transitionTotal, 1, 9);
     const transitionScore = clamp(50 + (transitionRate - 0.1) * 250);
 
@@ -150,7 +173,11 @@ function scoreSide(rows, key, external = {}) {
       external[x] is an optional 0..100 signal obtained from the current
       V2.8 prediction. It is not used in historical walk-forward.
     */
-    const v28 = clamp(external[x] ?? 50);
+    const v28 = clamp(
+      external && Object.prototype.hasOwnProperty.call(external, x)
+        ? external[x]
+        : 50
+    );
 
     const final =
       0.25 * freqAll +
