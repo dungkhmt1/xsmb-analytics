@@ -1,6 +1,7 @@
 /*
  * GOLDEN V4 - All Prizes Bridge to Special Target (Overridden in V3 route)
  * GET /api/golden/v3/dashboard
+ * Đã cập nhật: Hiển thị vị trí cầu, số ngày chạy, và giới hạn Top 2.
  */
 const VERSION = "golden-v4-all-prizes";
 
@@ -50,14 +51,14 @@ function computeBridgeScore(hits, samples, recentHits, recentSamples, streak) {
   if (samples < 5) return 0;
   const rate = hits / samples;
   const recentRate = recentSamples > 0 ? recentHits / recentSamples : rate;
-  const score = (recentRate * 40) + (rate * 30) + (Math.min(streak, 5) / 5 * 20) + (Math.min(samples, 60) / 60 * 10);
+  // Ưu tiên cầu đang chạy dài ngày (streak)
+  const score = (recentRate * 40) + (rate * 30) + (Math.min(streak, 10) / 10 * 20) + (Math.min(samples, 60) / 60 * 10);
   return Number(score.toFixed(2));
 }
 
 function round(v,n=2) { const p = 10 ** n; return Math.round((Number(v)||0)*p)/p; }
 function pct(a,b) { return b ? a / b * 100 : 0; }
 
-// Khôi phục lại hàm tự động đối soát kết quả
 async function evaluatePending(db, rows) {
   const pending = await db.prepare(`SELECT prediction_date, pairs_json FROM golden_v3_predictions WHERE evaluated_at IS NULL`).all();
   if (!pending.results || !pending.results.length) return;
@@ -124,7 +125,6 @@ export async function onRequestGet(context) {
       return json({ success: false, message: `Cần ít nhất 20 kỳ.` }, 422);
     }
 
-    // Chạy đối soát các dự đoán cũ
     await evaluatePending(db, rows);
 
     const n = rows.length;
@@ -174,14 +174,17 @@ export async function onRequestGet(context) {
           if(!latest[i] || !latest[j]) continue;
           
           const nextNum = dir === "AB" ? `${latest[i].digit}${latest[j].digit}` : `${latest[j].digit}${latest[i].digit}`;
+          const bridgeLabel = dir === "AB" ? `${latest[i].label} + ${latest[j].label}` : `${latest[j].label} + ${latest[i].label}`;
 
-          // TẠO CẤU TRÚC OBJECT Y HỆT BẢN CŨ ĐỂ KHÔNG VỠ GIAO DIỆN FRONTEND
           const headScore = computeBridgeScore(hitsHead, totalSamples, recentHitsHead, recentSamples, streakHead);
           if (headScore > 10) {
+            // Lưu lại cầu nếu điểm cao hơn hoặc chưa tồn tại
             if (!headBridgesMap.has(nextNum) || headBridgesMap.get(nextNum).score < headScore) {
               headBridgesMap.set(nextNum, { 
                 number: nextNum, 
                 score: headScore,
+                bridgePosition: bridgeLabel,  // <-- Vị trí cầu
+                runningDays: streakHead,      // <-- Số ngày chạy liên tiếp
                 historicalRate: round((hitsHead/totalSamples)*100),
                 recent30: recentHitsHead,
                 recent60: recentHitsHead,
@@ -191,7 +194,7 @@ export async function onRequestGet(context) {
                   frequency: round((hitsHead/totalSamples)*100),
                   recent60: round((recentHitsHead/recentSamples)*100),
                   recent30: round((recentHitsHead/recentSamples)*100),
-                  cycle: streakHead * 10,
+                  cycle: streakHead,
                   transition: 50,
                   repeat: 50,
                   v28: 50
@@ -206,6 +209,8 @@ export async function onRequestGet(context) {
               tailBridgesMap.set(nextNum, { 
                 number: nextNum, 
                 score: tailScore,
+                bridgePosition: bridgeLabel,  // <-- Vị trí cầu
+                runningDays: streakTail,      // <-- Số ngày chạy liên tiếp
                 historicalRate: round((hitsTail/totalSamples)*100),
                 recent30: recentHitsTail,
                 recent60: recentHitsTail,
@@ -215,7 +220,7 @@ export async function onRequestGet(context) {
                   frequency: round((hitsTail/totalSamples)*100),
                   recent60: round((recentHitsTail/recentSamples)*100),
                   recent30: round((recentHitsTail/recentSamples)*100),
-                  cycle: streakTail * 10,
+                  cycle: streakTail,
                   transition: 50,
                   repeat: 50,
                   v28: 50
@@ -230,11 +235,15 @@ export async function onRequestGet(context) {
     const headRows = Array.from(headBridgesMap.values()).sort((a,b) => b.score - a.score);
     const tailRows = Array.from(tailBridgesMap.values()).sort((a,b) => b.score - a.score);
 
+    // GIỚI HẠN XUỐNG CHỈ CÒN TOP 2
+    const top2Head = headRows.slice(0, 2);
+    const top2Tail = tailRows.slice(0, 2);
+
     const candidates = [];
-    for(let i=0; i < Math.min(10, headRows.length); i++) {
-        for(let j=0; j < Math.min(10, tailRows.length); j++) {
-            const h = headRows[i];
-            const t = tailRows[j];
+    for(let i=0; i < top2Head.length; i++) {
+        for(let j=0; j < top2Tail.length; j++) {
+            const h = top2Head[i];
+            const t = top2Tail[j];
             const joint = Math.sqrt(h.score * t.score);
             const diversity = h.number === t.number ? -3 : 0;
             candidates.push({
@@ -243,6 +252,10 @@ export async function onRequestGet(context) {
                 pair: `${h.number}-${t.number}`,
                 headScore: h.score,
                 tailScore: t.score,
+                headBridge: h.bridgePosition, // Truyền vị trí cầu ra ngoài
+                tailBridge: t.bridgePosition,
+                headStreak: h.runningDays,    // Truyền lịch sử ngày chạy ra ngoài
+                tailStreak: t.runningDays,
                 jointScore: round(joint + diversity)
             });
         }
@@ -280,18 +293,17 @@ export async function onRequestGet(context) {
       dataScope: "ALL PRIZES -> SPECIAL TARGET",
       method: { 
         head: "2 số đầu", tail: "2 số cuối",
-        weights: { historicalFrequency: 0.25, recent60: 0.20, recent30: 0.15, cycleState: 0.10, transition: 0.10, repeatState: 0.10, v28LiveSignal: 0.10 },
-        note: "Dựa trên thuật toán Cầu All-Prizes" 
+        note: "Đã cập nhật hiển thị Vị trí cầu và Số ngày chạy. Giới hạn Top 2." 
       },
       recommendation: {
         pair1: pairs[0] || null,
         pair2: pairs[1] || null,
         pairs
       },
-      topHead: headRows.slice(0,10),
-      topTail: tailRows.slice(0,10),
+      // TRẢ VỀ ĐÚNG 2 GỢI Ý
+      topHead: top2Head,
+      topTail: top2Tail,
       
-      // BỔ SUNG TRƯỜNG NÀY ĐỂ UI KHÔNG BỊ TREO
       latestSpecial: latestSpecialFull,
       latestHead: latestSpecialFull ? latestSpecialFull.slice(0, 2) : "",
       latestTail: latestSpecialFull ? latestSpecialFull.slice(-2) : "",
