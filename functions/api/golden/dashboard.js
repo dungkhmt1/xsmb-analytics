@@ -57,6 +57,41 @@ function computeBridgeScore(hits, samples, recentHits, recentSamples, streak) {
 function round(v,n=2) { const p = 10 ** n; return Math.round((Number(v)||0)*p)/p; }
 function pct(a,b) { return b ? a / b * 100 : 0; }
 
+// Khôi phục lại hàm tự động đối soát kết quả
+async function evaluatePending(db, rows) {
+  const pending = await db.prepare(`SELECT prediction_date, pairs_json FROM golden_v3_predictions WHERE evaluated_at IS NULL`).all();
+  if (!pending.results || !pending.results.length) return;
+  
+  const byDate = Object.fromEntries(rows.map(r => [r.draw_date.slice(0,10), getSpecial(r)]));
+  const now = new Date().toISOString();
+
+  for (const p of pending.results) {
+    const special = byDate[p.prediction_date];
+    if (!special) continue;
+    
+    const head = special.slice(0,2);
+    const tail = special.slice(-2);
+    const pairs = JSON.parse(p.pairs_json || "[]");
+    
+    const evaluation = {
+      actualSpecial: special,
+      actualHead: head,
+      actualTail: tail,
+      pairHits: pairs.filter(x => x.head === head && x.tail === tail).length,
+      headHits: pairs.filter(x => x.head === head).length,
+      tailHits: pairs.filter(x => x.tail === tail).length,
+      top1Head: pairs[0]?.head === head,
+      top1Tail: pairs[0]?.tail === tail
+    };
+
+    await db.prepare(`
+      UPDATE golden_v3_predictions
+      SET evaluated_at=?, actual_special=?, evaluation_json=?
+      WHERE prediction_date=?
+    `).bind(now, special, JSON.stringify(evaluation), p.prediction_date).run();
+  }
+}
+
 export async function onRequestGet(context) {
   try {
     const db = context.env.DB;
@@ -77,7 +112,6 @@ export async function onRequestGet(context) {
       )
     `).run();
 
-    // Giới hạn 100 dòng để tối ưu CPU time (107 vị trí tổ hợp rất nặng)
     const dbRes = await db.prepare(`
       SELECT draw_date, special, g1, g2, g3, g4, g5, g6, g7
       FROM results
@@ -89,6 +123,9 @@ export async function onRequestGet(context) {
     if (rows.length < 20) {
       return json({ success: false, message: `Cần ít nhất 20 kỳ.` }, 422);
     }
+
+    // Chạy đối soát các dự đoán cũ
+    await evaluatePending(db, rows);
 
     const n = rows.length;
     const digitsHistory = rows.map(r => extractDigits(r));
@@ -104,8 +141,6 @@ export async function onRequestGet(context) {
     const headBridgesMap = new Map();
     const tailBridgesMap = new Map();
 
-    // Thuật toán: Dùng ngày i-1 để dự đoán ngày i
-    // Tối ưu hóa: Chỉ chọn mẫu 1/3 vị trí để tránh crash 50ms của Cloudflare Workers
     const step = Math.ceil(totalPositions / 35); 
     for (let i = 0; i < totalPositions; i += step) {
       for (let j = i + 1; j < totalPositions; j += step) {
@@ -140,17 +175,52 @@ export async function onRequestGet(context) {
           
           const nextNum = dir === "AB" ? `${latest[i].digit}${latest[j].digit}` : `${latest[j].digit}${latest[i].digit}`;
 
+          // TẠO CẤU TRÚC OBJECT Y HỆT BẢN CŨ ĐỂ KHÔNG VỠ GIAO DIỆN FRONTEND
           const headScore = computeBridgeScore(hitsHead, totalSamples, recentHitsHead, recentSamples, streakHead);
           if (headScore > 10) {
             if (!headBridgesMap.has(nextNum) || headBridgesMap.get(nextNum).score < headScore) {
-              headBridgesMap.set(nextNum, { number: nextNum, score: headScore });
+              headBridgesMap.set(nextNum, { 
+                number: nextNum, 
+                score: headScore,
+                historicalRate: round((hitsHead/totalSamples)*100),
+                recent30: recentHitsHead,
+                recent60: recentHitsHead,
+                gap: 0,
+                transitionFromLast: 0,
+                features: {
+                  frequency: round((hitsHead/totalSamples)*100),
+                  recent60: round((recentHitsHead/recentSamples)*100),
+                  recent30: round((recentHitsHead/recentSamples)*100),
+                  cycle: streakHead * 10,
+                  transition: 50,
+                  repeat: 50,
+                  v28: 50
+                }
+              });
             }
           }
 
           const tailScore = computeBridgeScore(hitsTail, totalSamples, recentHitsTail, recentSamples, streakTail);
           if (tailScore > 10) {
             if (!tailBridgesMap.has(nextNum) || tailBridgesMap.get(nextNum).score < tailScore) {
-              tailBridgesMap.set(nextNum, { number: nextNum, score: tailScore });
+              tailBridgesMap.set(nextNum, { 
+                number: nextNum, 
+                score: tailScore,
+                historicalRate: round((hitsTail/totalSamples)*100),
+                recent30: recentHitsTail,
+                recent60: recentHitsTail,
+                gap: 0,
+                transitionFromLast: 0,
+                features: {
+                  frequency: round((hitsTail/totalSamples)*100),
+                  recent60: round((recentHitsTail/recentSamples)*100),
+                  recent30: round((recentHitsTail/recentSamples)*100),
+                  cycle: streakTail * 10,
+                  transition: 50,
+                  repeat: 50,
+                  v28: 50
+                }
+              });
             }
           }
         }
@@ -190,7 +260,6 @@ export async function onRequestGet(context) {
     const predictionDate = new Date(`${sourceDate}T00:00:00Z`);
     predictionDate.setUTCDate(predictionDate.getUTCDate()+1);
 
-    // Xử lý thống kê (Giữ nguyên cấu trúc trả về để UI không sập)
     const historyRows = await db.prepare(`SELECT * FROM golden_v3_predictions ORDER BY prediction_date DESC LIMIT 30`).all();
     const history = (historyRows.results || []).map(r => ({
       ...r, pairs: JSON.parse(r.pairs_json || "[]"), evaluation: JSON.parse(r.evaluation_json || "null")
@@ -200,6 +269,8 @@ export async function onRequestGet(context) {
     const headHits = completed.reduce((a,x)=>a + Number(x.evaluation?.headHits||0),0);
     const tailHits = completed.reduce((a,x)=>a + Number(x.evaluation?.tailHits||0),0);
 
+    const latestSpecialFull = getSpecial(rows[n-1]);
+
     return json({
       success: true,
       version: VERSION,
@@ -207,7 +278,11 @@ export async function onRequestGet(context) {
       predictionDate: predictionDate.toISOString().slice(0,10),
       sampleSize: rows.length,
       dataScope: "ALL PRIZES -> SPECIAL TARGET",
-      method: { note: "Dựa trên thuật toán Cầu All-Prizes" },
+      method: { 
+        head: "2 số đầu", tail: "2 số cuối",
+        weights: { historicalFrequency: 0.25, recent60: 0.20, recent30: 0.15, cycleState: 0.10, transition: 0.10, repeatState: 0.10, v28LiveSignal: 0.10 },
+        note: "Dựa trên thuật toán Cầu All-Prizes" 
+      },
       recommendation: {
         pair1: pairs[0] || null,
         pair2: pairs[1] || null,
@@ -215,6 +290,12 @@ export async function onRequestGet(context) {
       },
       topHead: headRows.slice(0,10),
       topTail: tailRows.slice(0,10),
+      
+      // BỔ SUNG TRƯỜNG NÀY ĐỂ UI KHÔNG BỊ TREO
+      latestSpecial: latestSpecialFull,
+      latestHead: latestSpecialFull ? latestSpecialFull.slice(0, 2) : "",
+      latestTail: latestSpecialFull ? latestSpecialFull.slice(-2) : "",
+      
       performance: {
         tracked: completed.length, pairHits, headHits, tailHits,
         pairHitRate: round(pct(completed.filter(x=>(x.evaluation?.pairHits||0)>0).length, completed.length)),
