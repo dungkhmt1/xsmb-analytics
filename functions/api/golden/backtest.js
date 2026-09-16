@@ -1,102 +1,140 @@
-import { GOLDEN_CONFIG } from "./_lib/config.js";
-import { getDb, loadDraws } from "./_lib/db.js";
-import { analyzeDraws } from "./_lib/engine.js";
-import { chooseBestPair } from "./_lib/pairs.js";
-import { extractLotoNumbers } from "./_lib/parser.js";
-import {
-  json,
-  errorJson,
-  getPositiveInt,
-} from "./_lib/response.js";
+/**
+ * Golden V4 Walk-Forward Backtest
+ * Route: GET /api/golden/backtest
+ */
+
+const SOURCE_PRIZES = ["special", "g1", "g2", "g3", "g4", "g5", "g6", "g7"];
+
+const json = (data, status = 200) =>
+  new Response(JSON.stringify(data, null, 2), {
+    status,
+    headers: { "content-type": "application/json; charset=UTF-8" }
+  });
+
+function getSpecial(row) {
+  const v = row.special ?? row.db ?? "";
+  const d = String(v).replace(/\D/g, "");
+  return d.length >= 5 ? d.slice(-5) : "";
+}
+
+function splitPrize(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val.flatMap(splitPrize).filter(Boolean);
+  return String(val).split(/[\s,;|]+/).map(s => s.replace(/\D/g, "")).filter(Boolean);
+}
+
+function extractDigits(row) {
+  const digits = [];
+  for (const prize of SOURCE_PRIZES) {
+    const nums = splitPrize(row[prize]);
+    nums.forEach(val => {
+      const s = String(val);
+      for (let pos = 0; pos < s.length; pos++) digits.push(s[pos]);
+    });
+  }
+  return digits;
+}
 
 export async function onRequestGet(context) {
   try {
-    const db = getDb(context.env);
     const url = new URL(context.request.url);
+    const testDays = Math.min(Math.max(Number(url.searchParams.get("days") || 30), 7), 60);
 
-    const limit = getPositiveInt(
-      url.searchParams.get("limit"),
-      20,
-      GOLDEN_CONFIG.MAX_BACKTEST_DRAWS,
-    );
+    const dbRes = await context.env.DB.prepare(`
+      SELECT draw_date, special, g1, g2, g3, g4, g5, g6, g7
+      FROM results
+      WHERE special IS NOT NULL
+      ORDER BY draw_date DESC
+      LIMIT ?
+    `).bind(testDays + 60).all();
 
-    const draws = await loadDraws(
-      db,
-      Math.min(
-        GOLDEN_CONFIG.HISTORY_DRAWS,
-        limit + 80,
-      ),
-    );
+    const rows = (dbRes.results || [])
+      .filter(r => getSpecial(r).length === 5)
+      .reverse();
 
-    if (draws.length < 30) {
-      return errorJson(
-        "Cần tối thiểu 30 kỳ dữ liệu để backtest.",
-        400,
-      );
+    const n = rows.length;
+    if (n < testDays + 20) {
+      return json({ success: false, message: "Không đủ dữ liệu chạy Backtest." }, 400);
     }
 
-    const startIndex = Math.max(
-      10,
-      draws.length - limit,
-    );
+    const logs = [];
+    let hitHeadCount = 0, hitTailCount = 0, hitAnyCount = 0;
 
-    const rows = [];
+    // Chạy vòng lặp Walk-forward
+    for (let targetIdx = n - testDays; targetIdx < n; targetIdx++) {
+      const targetRow = rows[targetIdx];
+      const actualSpecial = getSpecial(targetRow);
+      const actualHead = actualSpecial.slice(0, 2);
+      const actualTail = actualSpecial.slice(-2);
 
-    for (let targetIndex = startIndex; targetIndex < draws.length; targetIndex += 1) {
-      // Chống leakage: không bao gồm target draw.
-      const training = draws.slice(
-        0,
-        targetIndex,
-      );
+      // Dự đoán cho ngày targetIdx dựa trên dữ liệu từ 0 đến targetIdx - 1
+      const trainRows = rows.slice(0, targetIdx);
+      const trainLen = trainRows.length;
+      const digitsList = trainRows.map(extractDigits);
+      const totalPos = digitsList[0].length;
 
-      const analysis = analyzeDraws(training);
-      const pair = chooseBestPair(
-        analysis.main10,
-        analysis.allNumbers,
-      );
+      let bestHead = null, bestTail = null;
+      let maxHeadScore = -1, maxTailScore = -1;
 
-      if (!pair.best) continue;
+      // Quét nhanh top cầu
+      for (let i = 0; i < totalPos; i += 2) {
+        for (let j = i + 1; j < totalPos; j += 2) {
+          let hHits = 0, tHits = 0;
+          for (let d = Math.max(1, trainLen - 25); d < trainLen; d++) {
+            const num = `${digitsList[d - 1][i]}${digitsList[d - 1][j]}`;
+            const sp = getSpecial(trainRows[d]);
+            if (num === sp.slice(0, 2)) hHits++;
+            if (num === sp.slice(-2)) tHits++;
+          }
 
-      const actualNumbers = extractLotoNumbers(
-        draws[targetIndex],
-        GOLDEN_CONFIG.RESULT_COLUMNS,
-      );
+          const lastDigits = digitsList[trainLen - 1];
+          const cand = `${lastDigits[i]}${lastDigits[j]}`;
 
-      const hitNumber =
-        pair.best.numbers.find((n) =>
-          actualNumbers.includes(n),
-        ) ?? null;
+          if (hHits > maxHeadScore) {
+            maxHeadScore = hHits;
+            bestHead = cand;
+          }
+          if (tHits > maxTailScore) {
+            maxTailScore = tHits;
+            bestTail = cand;
+          }
+        }
+      }
 
-      rows.push({
-        predictionDate: draws[targetIndex].draw_date,
-        songThu: pair.best.numbers,
-        pairScore: Number(
-          pair.best.pairScore.toFixed(2),
-        ),
-        hit: Boolean(hitNumber),
-        hitNumber,
+      const isHitHead = bestHead === actualHead;
+      const isHitTail = bestTail === actualTail;
+      const isHit = isHitHead || isHitTail;
+
+      if (isHitHead) hitHeadCount++;
+      if (isHitTail) hitTailCount++;
+      if (isHit) hitAnyCount++;
+
+      logs.push({
+        date: targetRow.draw_date,
+        predicted: `${bestHead} — ${bestTail}`,
+        actual: actualSpecial,
+        actualHead,
+        actualTail,
+        isHitHead,
+        isHitTail,
+        result: isHit ? "HIT" : "MISS"
       });
     }
 
-    const hits = rows.filter((x) => x.hit).length;
-
     return json({
       success: true,
-      methodology: "walk-forward",
-      testedDraws: rows.length,
-      hits,
-      hitRate:
-        rows.length === 0
-          ? 0
-          : Number(((hits / rows.length) * 100).toFixed(2)),
-      rows: rows.reverse(),
-      warning:
-        "Backtest là thống kê quá khứ; điểm ranking không phải xác suất tương lai.",
+      testedDays: testDays,
+      metrics: {
+        hitAnyRate: Number(((hitAnyCount / testDays) * 100).toFixed(2)),
+        hitHeadRate: Number(((hitHeadCount / testDays) * 100).toFixed(2)),
+        hitTailRate: Number(((hitTailCount / testDays) * 100).toFixed(2)),
+        hitHeadCount,
+        hitTailCount,
+        hitAnyCount
+      },
+      logs: logs.reverse()
     });
-  } catch (error) {
-    return errorJson(
-      error?.message || "Backtest thất bại.",
-      500,
-    );
+  } catch (err) {
+    return json({ success: false, error: err.message }, 500);
   }
 }
