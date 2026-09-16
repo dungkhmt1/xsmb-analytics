@@ -1,21 +1,18 @@
-/**
- * Golden V4 Walk-Forward Backtest
- * Route: GET /api/golden/backtest
+/*
+ * GET /api/golden/v3/backtest
+ * GOLDEN V4 - All Prizes Walk-Forward
  */
 
-const SOURCE_PRIZES = ["special", "g1", "g2", "g3", "g4", "g5", "g6", "g7"];
+const VERSION = "golden-v4-backtest";
 
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data, null, 2), {
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data, null, 2), {
     status,
-    headers: { "content-type": "application/json; charset=UTF-8" }
+    headers: { "content-type": "application/json; charset=UTF-8", "cache-control": "no-store" }
   });
-
-function getSpecial(row) {
-  const v = row.special ?? row.db ?? "";
-  const d = String(v).replace(/\D/g, "");
-  return d.length >= 5 ? d.slice(-5) : "";
 }
+
+const SOURCE_PRIZES = ["special", "g1", "g2", "g3", "g4", "g5", "g6", "g7"];
 
 function splitPrize(val) {
   if (!val) return [];
@@ -26,6 +23,7 @@ function splitPrize(val) {
 function extractDigits(row) {
   const digits = [];
   for (const prize of SOURCE_PRIZES) {
+    if (!row[prize]) continue;
     const nums = splitPrize(row[prize]);
     nums.forEach(val => {
       const s = String(val);
@@ -35,106 +33,96 @@ function extractDigits(row) {
   return digits;
 }
 
+function getSpecial(row) {
+  const v = row.special ?? row.db ?? "";
+  const d = String(v).replace(/\D/g, "");
+  return d.length >= 5 ? d.slice(-5) : null;
+}
+
 export async function onRequestGet(context) {
   try {
+    const db = context.env.DB;
+    if (!db) return json({ success: false, message: "No DB" }, 500);
+
     const url = new URL(context.request.url);
-    const testDays = Math.min(Math.max(Number(url.searchParams.get("days") || 30), 7), 60);
+    const limit = Math.min(60, Math.max(10, Number(url.searchParams.get("limit") || 30)));
 
-    const dbRes = await context.env.DB.prepare(`
+    const query = await db.prepare(`
       SELECT draw_date, special, g1, g2, g3, g4, g5, g6, g7
-      FROM results
-      WHERE special IS NOT NULL
-      ORDER BY draw_date DESC
-      LIMIT ?
-    `).bind(testDays + 60).all();
+      FROM results WHERE special IS NOT NULL AND TRIM(special) <> ''
+      ORDER BY draw_date DESC LIMIT ?
+    `).bind(limit + 50).all();
 
-    const rows = (dbRes.results || [])
-      .filter(r => getSpecial(r).length === 5)
-      .reverse();
+    const rows = (query.results || []).filter(r => getSpecial(r)).reverse();
+    if (rows.length < 30) return json({ success: false, message: `Cần ít nhất 30 kỳ.` }, 422);
 
-    const n = rows.length;
-    if (n < testDays + 20) {
-      return json({ success: false, message: "Không đủ dữ liệu chạy Backtest." }, 400);
-    }
+    const start = Math.max(30, rows.length - limit);
+    let tested = 0;
+    let pairHits = 0, headHits = 0, tailHits = 0;
+    const recent = [];
 
-    const logs = [];
-    let hitHeadCount = 0, hitTailCount = 0, hitAnyCount = 0;
+    const digitsHistory = rows.map(r => extractDigits(r));
+    const specialHistory = rows.map(r => {
+      const sp = getSpecial(r);
+      return { head: sp.slice(0, 2), tail: sp.slice(-2) };
+    });
 
-    // Chạy vòng lặp Walk-forward
-    for (let targetIdx = n - testDays; targetIdx < n; targetIdx++) {
-      const targetRow = rows[targetIdx];
-      const actualSpecial = getSpecial(targetRow);
-      const actualHead = actualSpecial.slice(0, 2);
-      const actualTail = actualSpecial.slice(-2);
+    const totalPositions = digitsHistory[0].length;
+    const step = Math.ceil(totalPositions / 30); // Lấy mẫu để tránh crash server
 
-      // Dự đoán cho ngày targetIdx dựa trên dữ liệu từ 0 đến targetIdx - 1
-      const trainRows = rows.slice(0, targetIdx);
-      const trainLen = trainRows.length;
-      const digitsList = trainRows.map(extractDigits);
-      const totalPos = digitsList[0].length;
-
-      let bestHead = null, bestTail = null;
+    for (let i = start; i < rows.length; i++) {
       let maxHeadScore = -1, maxTailScore = -1;
+      let bestHead = "00", bestTail = "00";
 
-      // Quét nhanh top cầu
-      for (let i = 0; i < totalPos; i += 2) {
-        for (let j = i + 1; j < totalPos; j += 2) {
+      // Train trên i-1 ngày
+      for (let x = 0; x < totalPositions; x += step) {
+        for (let y = x + 1; y < totalPositions; y += step) {
           let hHits = 0, tHits = 0;
-          for (let d = Math.max(1, trainLen - 25); d < trainLen; d++) {
-            const num = `${digitsList[d - 1][i]}${digitsList[d - 1][j]}`;
-            const sp = getSpecial(trainRows[d]);
-            if (num === sp.slice(0, 2)) hHits++;
-            if (num === sp.slice(-2)) tHits++;
+          for (let d = 1; d < i; d++) {
+            const prev = digitsHistory[d - 1];
+            if(!prev[x] || !prev[y]) continue;
+            const pred = `${prev[x]}${prev[y]}`;
+            if (pred === specialHistory[d].head) hHits++;
+            if (pred === specialHistory[d].tail) tHits++;
           }
-
-          const lastDigits = digitsList[trainLen - 1];
-          const cand = `${lastDigits[i]}${lastDigits[j]}`;
-
-          if (hHits > maxHeadScore) {
-            maxHeadScore = hHits;
-            bestHead = cand;
-          }
-          if (tHits > maxTailScore) {
-            maxTailScore = tHits;
-            bestTail = cand;
-          }
+          
+          const latest = digitsHistory[i - 1];
+          if(!latest[x] || !latest[y]) continue;
+          const cand = `${latest[x]}${latest[y]}`;
+          if (hHits > maxHeadScore) { maxHeadScore = hHits; bestHead = cand; }
+          if (tHits > maxTailScore) { maxTailScore = tHits; bestTail = cand; }
         }
       }
 
-      const isHitHead = bestHead === actualHead;
-      const isHitTail = bestTail === actualTail;
-      const isHit = isHitHead || isHitTail;
+      const actual = { date: rows[i].draw_date.slice(0,10), special: getSpecial(rows[i]), head: specialHistory[i].head, tail: specialHistory[i].tail };
+      
+      const headHit = bestHead === actual.head;
+      const tailHit = bestTail === actual.tail;
+      const pairHit = headHit && tailHit;
 
-      if (isHitHead) hitHeadCount++;
-      if (isHitTail) hitTailCount++;
-      if (isHit) hitAnyCount++;
+      if (pairHit) pairHits++;
+      if (headHit) headHits++;
+      if (tailHit) tailHits++;
+      tested++;
 
-      logs.push({
-        date: targetRow.draw_date,
-        predicted: `${bestHead} — ${bestTail}`,
-        actual: actualSpecial,
-        actualHead,
-        actualTail,
-        isHitHead,
-        isHitTail,
-        result: isHit ? "HIT" : "MISS"
+      recent.push({
+        date: actual.date,
+        actualSpecial: actual.special, actualHead: actual.head, actualTail: actual.tail,
+        pairs: [{ head: bestHead, tail: bestTail, pair: `${bestHead}-${bestTail}`, score: 99 }],
+        pairHit, headHit, tailHit
       });
     }
 
+    const rate = val => tested > 0 ? Number((val / tested * 100).toFixed(2)) : 0;
+
     return json({
-      success: true,
-      testedDays: testDays,
-      metrics: {
-        hitAnyRate: Number(((hitAnyCount / testDays) * 100).toFixed(2)),
-        hitHeadRate: Number(((hitHeadCount / testDays) * 100).toFixed(2)),
-        hitTailRate: Number(((hitTailCount / testDays) * 100).toFixed(2)),
-        hitHeadCount,
-        hitTailCount,
-        hitAnyCount
-      },
-      logs: logs.reverse()
+      success: true, version: VERSION, testedDraws: tested,
+      pairHits, headHits, tailHits,
+      pairHitRate: rate(pairHits), headHitRate: rate(headHits), tailHitRate: rate(tailHits),
+      dataScope: "ALL PRIZES BRIDGE -> SPECIAL",
+      recent: recent.reverse()
     });
-  } catch (err) {
-    return json({ success: false, error: err.message }, 500);
+  } catch (error) {
+    return json({ success: false, message: error.message }, 500);
   }
 }
