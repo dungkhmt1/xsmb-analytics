@@ -1,8 +1,8 @@
 /*
- * GOLDEN V4 ENGINE - All Prizes Bridge to Special Target
- * GET /api/golden/v3/dashboard
+ * GOLDEN V4 - Pure Bridge Engine (All Prizes -> Special Target)
+ * Logic: Quét toàn bộ vị trí giải T-1 đối soát ĐB ngày T.
+ * Ưu tiên: Xếp hạng duy nhất theo TỔNG SỐ LẦN NỔ trong lịch sử.
  */
-const VERSION = "golden-v4.2.0";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -22,22 +22,23 @@ function splitPrize(val) {
   return String(val).split(/[\s,;|]+/).map(s => s.replace(/\D/g, "")).filter(Boolean);
 }
 
-function extractDigits(row) {
-  const digits = [];
+// Bóc tách 107 vị trí con số từ toàn bộ bảng giải
+function extractCells(row) {
+  const cells = [];
   for (const prize of SOURCE_PRIZES) {
     if (!row[prize]) continue;
     const nums = splitPrize(row[prize]);
     nums.forEach((val, idx) => {
       const s = String(val);
       for (let pos = 0; pos < s.length; pos++) {
-        digits.push({
+        cells.push({
           label: `${prize.toUpperCase()}[${idx + 1}].D${pos + 1}`,
-          digit: s[pos]
+          digit: Number(s[pos])
         });
       }
     });
   }
-  return digits;
+  return cells;
 }
 
 function getSpecial(row) {
@@ -46,171 +47,104 @@ function getSpecial(row) {
   return d.length >= 5 ? d.slice(-5) : null;
 }
 
-function round(v, n = 2) { const p = 10 ** n; return Math.round((Number(v) || 0) * p) / p; }
-function pct(a, b) { return b ? a / b * 100 : 0; }
-
-async function evaluatePending(db, rows) {
-  const pending = await db.prepare(`SELECT prediction_date, pairs_json FROM golden_v3_predictions WHERE evaluated_at IS NULL`).all();
-  if (!pending.results || !pending.results.length) return;
-  
-  const byDate = Object.fromEntries(rows.map(r => [r.draw_date.slice(0, 10), getSpecial(r)]));
-  const now = new Date().toISOString();
-
-  for (const p of pending.results) {
-    const special = byDate[p.prediction_date];
-    if (!special) continue;
-    
-    const head = special.slice(0, 2);
-    const tail = special.slice(-2);
-    const pairs = JSON.parse(p.pairs_json || "[]");
-    
-    const evaluation = {
-      actualSpecial: special,
-      actualHead: head,
-      actualTail: tail,
-      pairHits: pairs.filter(x => x.head === head && x.tail === tail).length,
-      headHits: pairs.filter(x => x.head === head).length,
-      tailHits: pairs.filter(x => x.tail === tail).length,
-      top1Head: pairs[0]?.head === head,
-      top1Tail: pairs[0]?.tail === tail
-    };
-
-    await db.prepare(`
-      UPDATE golden_v3_predictions
-      SET evaluated_at=?, actual_special=?, evaluation_json=?
-      WHERE prediction_date=?
-    `).bind(now, special, JSON.stringify(evaluation), p.prediction_date).run();
-  }
-}
-
 export async function onRequestGet(context) {
   try {
     const db = context.env.DB;
     if (!db) throw new Error("Không tìm thấy DB binding");
 
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS golden_v3_predictions (
-        prediction_date TEXT PRIMARY KEY,
-        source_date TEXT NOT NULL,
-        pairs_json TEXT NOT NULL,
-        head_top_json TEXT NOT NULL,
-        tail_top_json TEXT NOT NULL,
-        model_version TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        evaluated_at TEXT,
-        actual_special TEXT,
-        evaluation_json TEXT
-      )
-    `).run();
-
+    // Lấy 60 kỳ gần nhất để thống kê nhịp cầu
     const dbRes = await db.prepare(`
       SELECT draw_date, special, g1, g2, g3, g4, g5, g6, g7
       FROM results
       WHERE special IS NOT NULL AND TRIM(special) <> ''
-      ORDER BY draw_date DESC LIMIT 70
+      ORDER BY draw_date DESC LIMIT 60
     `).all();
 
     const rows = (dbRes.results || []).filter(r => getSpecial(r)).reverse();
-    if (rows.length < 20) {
-      return json({ success: false, message: `Cần ít nhất 20 kỳ dữ liệu.` }, 422);
+    const n = rows.length;
+    if (n < 15) {
+      return json({ success: false, message: "Cần tối thiểu 15 kỳ mở thưởng để quét cầu." }, 422);
     }
 
-    await evaluatePending(db, rows);
+    const firstCells = extractCells(rows[0]);
+    const totalPos = firstCells.length;
+    const labels = firstCells.map(c => c.label);
 
-    const n = rows.length;
-    const digitsHistory = rows.map(r => extractDigits(r));
-    const specialHistory = rows.map(r => {
-      const sp = getSpecial(r);
-      return { head: sp.slice(0, 2), tail: sp.slice(-2) };
-    });
+    // Chuyển toàn bộ dữ liệu về ma trận số nguyên phẳng để tăng tốc độ quét
+    const grid = rows.map(r => extractCells(r).map(c => c.digit));
+    const heads = rows.map(r => Number(getSpecial(r).slice(0, 2)));
+    const tails = rows.map(r => Number(getSpecial(r).slice(-2)));
 
-    const totalPositions = digitsHistory[0].length;
-    const allHeadBridges = [];
-    const allTailBridges = [];
+    const headBridges = [];
+    const tailBridges = [];
+    const totalSamples = n - 1;
 
-    // Duyệt toàn bộ 107 vị trí kết hợp 2 chiều A+B và B+A
-    for (let i = 0; i < totalPositions; i++) {
-      for (let j = i + 1; j < totalPositions; j++) {
+    // Duyệt qua tất cả các cặp vị trí (i, j) và 2 chiều AB, BA
+    for (let i = 0; i < totalPos; i++) {
+      for (let j = i + 1; j < totalPos; j++) {
         for (const dir of ["AB", "BA"]) {
-          
-          // 1. Đo độ dài chuỗi ăn thông (Streak) lùi dần từ kỳ gần nhất
-          let streakHead = 0;
-          for (let d = n - 1; d >= 1; d--) {
-            const p = digitsHistory[d - 1];
-            const num = dir === "AB" ? `${p[i].digit}${p[j].digit}` : `${p[j].digit}${p[i].digit}`;
-            if (num === specialHistory[d].head) {
-              streakHead++;
+          let headHits = 0;
+          let tailHits = 0;
+          let headStreak = 0;
+          let tailStreak = 0;
+
+          // Kiểm tra lịch sử: vị trí ngày d-1 tạo ra kết quả ngày d
+          for (let d = 1; d < n; d++) {
+            const prev = grid[d - 1];
+            const num = dir === "AB" ? (prev[i] * 10 + prev[j]) : (prev[j] * 10 + prev[i]);
+
+            if (num === heads[d]) {
+              headHits++;
+              headStreak++;
             } else {
-              break; // Cầu gãy thì dừng kiểm tra streak
+              headStreak = 0;
+            }
+
+            if (num === tails[d]) {
+              tailHits++;
+              tailStreak++;
+            } else {
+              tailStreak = 0;
             }
           }
 
-          let streakTail = 0;
-          for (let d = n - 1; d >= 1; d--) {
-            const p = digitsHistory[d - 1];
-            const num = dir === "AB" ? `${p[i].digit}${p[j].digit}` : `${p[j].digit}${p[i].digit}`;
-            if (num === specialHistory[d].tail) {
-              streakTail++;
-            } else {
-              break;
-            }
-          }
+          // Lấy con số dự đoán cho ngày tiếp theo từ ngày gần nhất
+          const lastGrid = grid[n - 1];
+          const nextInt = dir === "AB" ? (lastGrid[i] * 10 + lastGrid[j]) : (lastGrid[j] * 10 + lastGrid[i]);
+          const nextNum = String(nextInt).padStart(2, "0");
+          const bridgeLabel = dir === "AB" ? `${labels[i]} + ${labels[j]}` : `${labels[j]} + ${labels[i]}`;
 
-          // Lấy con số và tên vị trí dự đoán cho kỳ tiếp theo
-          const latest = digitsHistory[n - 1];
-          const nextNum = dir === "AB" ? `${latest[i].digit}${latest[j].digit}` : `${latest[j].digit}${latest[i].digit}`;
-          const bridgeLabel = dir === "AB" ? `${latest[i].label} + ${latest[j].label}` : `${latest[j].label} + ${latest[i].label}`;
-
-          // 2. Tính điểm và lưu các cầu tiềm năng (ưu tiên cầu đang chạy)
-          if (streakHead > 0 || Math.random() < 0.05) {
-            let totalHits = 0;
-            for (let d = 1; d < n; d++) {
-              const p = digitsHistory[d - 1];
-              const num = dir === "AB" ? `${p[i].digit}${p[j].digit}` : `${p[j].digit}${p[i].digit}`;
-              if (num === specialHistory[d].head) totalHits++;
-            }
-            const score = round(50 + (streakHead * 18) + (totalHits / (n - 1)) * 40, 1);
-            allHeadBridges.push({
+          if (headHits > 0) {
+            headBridges.push({
               number: nextNum,
               bridgePosition: bridgeLabel,
-              runningDays: streakHead,
-              hits: totalHits,
-              samples: n - 1,
-              historicalRate: round((totalHits / (n - 1)) * 100, 1),
-              score
+              totalHits: headHits,
+              runningDays: headStreak,
+              samples: totalSamples
             });
           }
 
-          if (streakTail > 0 || Math.random() < 0.05) {
-            let totalHits = 0;
-            for (let d = 1; d < n; d++) {
-              const p = digitsHistory[d - 1];
-              const num = dir === "AB" ? `${p[i].digit}${p[j].digit}` : `${p[j].digit}${p[i].digit}`;
-              if (num === specialHistory[d].tail) totalHits++;
-            }
-            const score = round(50 + (streakTail * 18) + (totalHits / (n - 1)) * 40, 1);
-            allTailBridges.push({
+          if (tailHits > 0) {
+            tailBridges.push({
               number: nextNum,
               bridgePosition: bridgeLabel,
-              runningDays: streakTail,
-              hits: totalHits,
-              samples: n - 1,
-              historicalRate: round((totalHits / (n - 1)) * 100, 1),
-              score
+              totalHits: tailHits,
+              runningDays: tailStreak,
+              samples: totalSamples
             });
           }
         }
       }
     }
 
-    // Sắp xếp ưu tiên: Số ngày chạy cao nhất -> Điểm cao nhất
-    allHeadBridges.sort((a, b) => b.runningDays - a.runningDays || b.score - a.score);
-    allTailBridges.sort((a, b) => b.runningDays - a.runningDays || b.score - a.score);
+    // XẾP HẠNG DUY NHẤT THEO: TỔNG SỐ LẦN NỔ (Hits) GIẢM DẦN
+    headBridges.sort((a, b) => b.totalHits - a.totalHits || b.runningDays - a.runningDays);
+    tailBridges.sort((a, b) => b.totalHits - a.totalHits || b.runningDays - a.runningDays);
 
-    // Lọc lấy 2 con số KHÁC NHAU cho Top 2 Đầu và Top 2 Cuối
+    // Lọc lấy 2 số khác nhau cho Top 2 Đầu
     const top2Head = [];
     const seenHead = new Set();
-    for (const b of allHeadBridges) {
+    for (const b of headBridges) {
       if (!seenHead.has(b.number)) {
         seenHead.add(b.number);
         top2Head.push(b);
@@ -218,9 +152,10 @@ export async function onRequestGet(context) {
       }
     }
 
+    // Lọc lấy 2 số khác nhau cho Top 2 Cuối
     const top2Tail = [];
     const seenTail = new Set();
-    for (const b of allTailBridges) {
+    for (const b of tailBridges) {
       if (!seenTail.has(b.number)) {
         seenTail.add(b.number);
         top2Tail.push(b);
@@ -228,21 +163,20 @@ export async function onRequestGet(context) {
       }
     }
 
-    // Ghép cặp Ưu tiên #1 (Top 1 Đầu + Top 1 Cuối) và Ưu tiên #2 (Top 2 Đầu + Top 2 Cuối)
-    const h1 = top2Head[0] || { number: "--", bridgePosition: "Đang tính", runningDays: 0, score: 50 };
-    const t1 = top2Tail[0] || { number: "--", bridgePosition: "Đang tính", runningDays: 0, score: 50 };
-    const h2 = top2Head[1] || top2Head[0] || { number: "--", bridgePosition: "Đang tính", runningDays: 0, score: 50 };
-    const t2 = top2Tail[1] || top2Tail[0] || { number: "--", bridgePosition: "Đang tính", runningDays: 0, score: 50 };
+    const h1 = top2Head[0] || { number: "--", bridgePosition: "Không có", totalHits: 0, runningDays: 0 };
+    const t1 = top2Tail[0] || { number: "--", bridgePosition: "Không có", totalHits: 0, runningDays: 0 };
+    const h2 = top2Head[1] || h1;
+    const t2 = top2Tail[1] || t1;
 
     const pair1 = {
       head: h1.number,
       tail: t1.number,
       headBridge: h1.bridgePosition,
       tailBridge: t1.bridgePosition,
+      headHits: h1.totalHits,
+      tailHits: t1.totalHits,
       headStreak: h1.runningDays,
-      tailStreak: t1.runningDays,
-      score: round((h1.score + t1.score) / 2, 1),
-      jointScore: round((h1.score + t1.score) / 2, 1)
+      tailStreak: t1.runningDays
     };
 
     const pair2 = {
@@ -250,55 +184,33 @@ export async function onRequestGet(context) {
       tail: t2.number,
       headBridge: h2.bridgePosition,
       tailBridge: t2.bridgePosition,
+      headHits: h2.totalHits,
+      tailHits: t2.totalHits,
       headStreak: h2.runningDays,
-      tailStreak: t2.runningDays,
-      score: round((h2.score + t2.score) / 2, 1),
-      jointScore: round((h2.score + t2.score) / 2, 1)
+      tailStreak: t2.runningDays
     };
-
-    const pairs = [pair1, pair2];
 
     const sourceDate = rows[n - 1].draw_date.slice(0, 10);
     const predictionDate = new Date(`${sourceDate}T00:00:00Z`);
     predictionDate.setUTCDate(predictionDate.getUTCDate() + 1);
 
-    const historyRows = await db.prepare(`SELECT * FROM golden_v3_predictions ORDER BY prediction_date DESC LIMIT 30`).all();
-    const history = (historyRows.results || []).map(r => ({
-      ...r, pairs: JSON.parse(r.pairs_json || "[]"), evaluation: JSON.parse(r.evaluation_json || "null")
-    }));
-    const completed = history.filter(x => x.evaluated_at && x.evaluation);
-    const pairHits = completed.reduce((a, x) => a + Number(x.evaluation?.pairHits || 0), 0);
-    const headHits = completed.reduce((a, x) => a + Number(x.evaluation?.headHits || 0), 0);
-    const tailHits = completed.reduce((a, x) => a + Number(x.evaluation?.tailHits || 0), 0);
-
-    const latestSpecialFull = getSpecial(rows[n - 1]);
+    const latestSpecial = getSpecial(rows[n - 1]);
 
     return json({
       success: true,
-      version: VERSION,
       sourceLatestDate: sourceDate,
       predictionDate: predictionDate.toISOString().slice(0, 10),
-      sampleSize: rows.length,
-      dataScope: "ALL PRIZES BRIDGE -> SPECIAL TARGET",
+      sampleSize: totalSamples,
+      latestSpecial,
       recommendation: {
         pair1,
         pair2,
-        pairs
+        pairs: [pair1, pair2]
       },
       topHead: top2Head,
-      topTail: top2Tail,
-      latestSpecial: latestSpecialFull,
-      latestHead: latestSpecialFull ? latestSpecialFull.slice(0, 2) : "",
-      latestTail: latestSpecialFull ? latestSpecialFull.slice(-2) : "",
-      performance: {
-        tracked: completed.length, pairHits, headHits, tailHits,
-        pairHitRate: round(pct(completed.filter(x => (x.evaluation?.pairHits || 0) > 0).length, completed.length)),
-        headHitRate: round(pct(completed.filter(x => (x.evaluation?.headHits || 0) > 0).length, completed.length)),
-        tailHitRate: round(pct(completed.filter(x => (x.evaluation?.tailHits || 0) > 0).length, completed.length))
-      },
-      history: history.slice(0, 15)
+      topTail: top2Tail
     });
   } catch (e) {
-    return json({ success: false, version: VERSION, message: e.message, stack: e.stack }, 500);
+    return json({ success: false, message: e.message, stack: e.stack }, 500);
   }
 }
